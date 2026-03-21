@@ -43,7 +43,7 @@ BOT_CONFIG_CHECK=1 python main.py
 
 - **1行目**の列名は `config/config.py` の `SPREADSHEET_HEADER_LABELS` に載っている列について、シートと **一致**させてください（全角半角スペースの違いは正規化して比較します）。**AV・AW（Bot ステータス列・デプロイURL列）は見出し不要**で、検証の対象外です（1行目が空でも問題ありません）。
 - 上記の検証列で一致しない場合、`SPREADSHEET_HEADERS_STRICT=true`（既定）では**起動失敗**します。見出しを合わせるか、一時的に `SPREADSHEET_HEADERS_STRICT=false` で警告のみにできます。
-- **処理対象**は次を満たす行です（上から順）:（1）**業務フェーズ列**（`phase_status`・既定 **M** / `overall_status`）が **`SPREADSHEET_TARGET_AI_STATUS`** と**完全一致**。（2）**AV 列**（`ai_status`）のセル値が `完了` / `処理中` / `エラー` で始まる値でない。（3）**`SPREADSHEET_REQUIRE_HEARING_BODY_NOT_URL=true`（既定）** のとき、ヒアリング列が**空**または**先頭が http(s) の URL だけ**の行は**スキップ**（**本文がセルに入っている行のみ**着手）。（4）**`SPREADSHEET_BOT_REQUIRE_EMPTY_TEST_SITE_URL=true`（既定）** のとき、`test_url` 列が**空**。
+- **処理対象**は次を満たす行です（上から順）:（1）**業務フェーズ列**（`phase_status`・既定 **M** / `overall_status`）が **`SPREADSHEET_TARGET_AI_STATUS`** と**完全一致**。（2）**AV 列**（`ai_status`）のセル値が `完了` / `処理中` / `エラー` で始まる値でない。（3）**`SPREADSHEET_REQUIRE_HEARING_BODY_NOT_URL=true`（既定）** のとき、ヒアリング列が**空**または **http(s) URL だけで構成される**行は**スキップ**（**URL 以外の本文が1文字でもある行のみ**着手）。（4）**`SPREADSHEET_BOT_REQUIRE_EMPTY_TEST_SITE_URL=true`（既定）** のとき、`test_url` 列が**空**。
 - Bot がスプレッドシートに**書き込む列は AV と AW のみ**です。それ以外の列は更新しません。
 - **`SPREADSHEET_REQUIRED_FIELDS`**（既定: レコード番号・パートナー名・契約プラン）のいずれかが空の行は、上記を満たしても**処理しません**（ステータスも「処理中」にしません）。
 - 複数件ある場合は **行番号の昇順（シートの上から）** に処理します。

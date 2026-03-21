@@ -8,6 +8,9 @@ from typing import Any
 from config.config import (
     GOOGLE_CLOUD_PROJECT,
     GOOGLE_SHEETS_AUTH_MODE,
+    GOOGLE_SHEETS_BASIC_SITE_TYPE_SHEET_NAME,
+    GOOGLE_SHEETS_BASIC_SITE_TYPE_SKIP_HEADER,
+    GOOGLE_SHEETS_BASIC_SITE_TYPE_SPREADSHEET_ID,
     GOOGLE_SHEETS_CREDENTIALS_PATH,
     GOOGLE_SHEETS_SHEET_NAME,
     GOOGLE_SHEETS_SPREADSHEET_ID,
@@ -33,6 +36,55 @@ from modules.spreadsheet_schema import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _normalize_site_type_lookup_key(s: str) -> str:
+    """照合用に空白を圧縮し casefold（レコード番号・パートナー名の比較用）。"""
+    return " ".join((s or "").replace("\u3000", " ").split()).casefold()
+
+
+def _site_type_row_cell(row: list, idx: int) -> str:
+    return row[idx] if len(row) > idx else ""
+
+
+def resolve_basic_lp_from_site_type_rows(
+    rows: list[list],
+    record_number: str,
+    partner_name: str,
+    *,
+    skip_header: bool,
+) -> tuple[bool, str | None]:
+    """
+    サイトタイプ用シートの行から BASIC LP かを判定する（API なしの純関数）。
+
+    A=レコード番号・B=パートナー名・G=サイトタイプ。A が一致する行のうち B も一致する最初の行を使う。
+    G が（前後空白除き）大文字で LP のとき True。行が見つからない・G 空欄・その他の値は False。
+
+    Returns:
+        (is_lp, mismatch_detail) — B が一致しない A 一致行があったときは mismatch_detail にメッセージ
+    """
+    data = rows[1:] if skip_header and rows else list(rows)
+    rec_n = _normalize_site_type_lookup_key(record_number)
+    par_n = _normalize_site_type_lookup_key(partner_name)
+    mismatch_note: str | None = None
+    for row in data:
+        a = _normalize_site_type_lookup_key(_site_type_row_cell(row, 0))
+        if a != rec_n:
+            continue
+        b = _normalize_site_type_lookup_key(_site_type_row_cell(row, 1))
+        if b != par_n:
+            if mismatch_note is None:
+                mismatch_note = (
+                    f"レコード一致だがパートナー名不一致（シートB={_site_type_row_cell(row, 1)!r} "
+                    f"期待={partner_name!r}）"
+                )
+            continue
+        g_raw = (_site_type_row_cell(row, 6) or "").strip()
+        if not g_raw:
+            return False, None
+        return g_raw.upper() == "LP", None
+    return False, mismatch_note
+
 
 # Bot が書き込みしてよい列（AV・AW のみ）。それ以外の列は更新しない。
 SPREADSHEET_BOT_WRITABLE_LETTERS: frozenset[str] = frozenset(
@@ -183,6 +235,61 @@ class SpreadsheetClient:
             )
             raise
 
+    def lookup_basic_is_landing_page(self, record_number: str, partner_name: str) -> bool | None:
+        """
+        BASIC 契約時に別シートでサイトタイプを参照し、LP なら True。
+
+        ``GOOGLE_SHEETS_BASIC_SITE_TYPE_SPREADSHEET_ID`` が空のときは ``None``（呼び出し側は分岐を変えない）。
+        API 失敗時も ``None``。行が見つからない・G 空欄・G が LP 以外は ``False``（BASIC のまま）。
+        """
+        sid = GOOGLE_SHEETS_BASIC_SITE_TYPE_SPREADSHEET_ID
+        if not sid:
+            return None
+        sheet = GOOGLE_SHEETS_BASIC_SITE_TYPE_SHEET_NAME
+        range_name = a1_range(sheet, "A:G")
+        try:
+            result = (
+                self.service.spreadsheets()
+                .values()
+                .get(spreadsheetId=sid, range=range_name)
+                .execute()
+            )
+        except HttpError as e:
+            logger.error(
+                "BASIC サイトタイプシートの取得に失敗しました spreadsheet_id=%s… range=%r %s",
+                sid[:8],
+                range_name,
+                _http_error_detail(e),
+                exc_info=True,
+            )
+            if GOOGLE_SHEETS_AUTH_MODE == "application_default":
+                if _is_insufficient_sheets_scope_error(e):
+                    raise RuntimeError(
+                        _adc_sheets_scope_help("lookup_basic_is_landing_page")
+                    ) from e
+                if _is_adc_quota_project_error(e):
+                    raise RuntimeError(
+                        _adc_quota_project_help("lookup_basic_is_landing_page")
+                    ) from e
+            return None
+
+        values = result.get("values") or []
+        is_lp, mismatch = resolve_basic_lp_from_site_type_rows(
+            values,
+            record_number,
+            partner_name,
+            skip_header=GOOGLE_SHEETS_BASIC_SITE_TYPE_SKIP_HEADER,
+        )
+        if mismatch:
+            logger.warning("BASIC サイトタイプ照合: %s", mismatch)
+        logger.info(
+            "BASIC サイトタイプ照合: record=%r partner=%r → is_landing_page=%s",
+            record_number,
+            partner_name,
+            is_lp,
+        )
+        return is_lp
+
     def validate_header_labels(self) -> list[str]:
         """
         1行目の列見出しが config の SPREADSHEET_HEADER_LABELS と一致するか検証する。
@@ -260,8 +367,8 @@ class SpreadsheetClient:
 
         条件（config）:
         - phase_status 列が SPREADSHEET_TARGET_AI_STATUS と完全一致
-        - mac-mini 列（AV）が未処理（完了/処理中/エラーでない）
-        - SPREADSHEET_REQUIRE_HEARING_BODY_NOT_URL のとき: ヒアリング列が本文（http(s) URL だけの行はスキップ）
+        - mac-mini 列（AV）が未処理（完了/処理中/エラー/スキップで始まる値でない）
+        - SPREADSHEET_REQUIRE_HEARING_BODY_NOT_URL のとき: ヒアリング列が URL のみの行はスキップ（本文が1文字でもあれば着手）
         - かつ（既定）テストサイトURL列が空
 
         Args:
@@ -325,6 +432,8 @@ class SpreadsheetClient:
             # mac-mini 列（AV）が既に処理済みなら除外
             ai_status = self._cell(row, SPREADSHEET_COLUMNS["ai_status"]).strip()
             if ai_status in ("完了", "処理中") or ai_status.startswith("エラー"):
+                continue
+            if ai_status.startswith("スキップ"):
                 continue
 
             if SPREADSHEET_REQUIRE_HEARING_BODY_NOT_URL:

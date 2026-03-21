@@ -11,18 +11,39 @@ from github import Github
 logger = logging.getLogger(__name__)
 
 
+def _partner_name_slug(partner_name: str) -> str:
+    """GitHub リポジトリ名用（ASCII の英数字とハイフンのみ・連続ハイフンを圧縮）。"""
+    raw = (partner_name or "").strip().lower()
+    parts: list[str] = []
+    for ch in raw:
+        if "a" <= ch <= "z" or "0" <= ch <= "9":
+            parts.append(ch)
+        elif ch in "-_":
+            parts.append("-")
+        else:
+            parts.append("-")
+    s = "".join(parts)
+    s = re.sub(r"-+", "-", s).strip("-")
+    return s or "partner"
+
+
 def sanitize_github_repo_name(partner_name: str, record_number: str) -> str:
     """
-    GitHub リポジトリ名: ``test-{レコード番号}``（レコードは英数字のみ抽出）。
+    GitHub リポジトリ名: ``{レコード番号}-test-{パートナー名}``（英数字のみのスラッグ化）。
 
-    ``partner_name`` は後方互換のため引数に残すが、名前には使わない。
+    レコード番号は英数字のみ抽出、パートナー名は ASCII 英数字以外をハイフン化して連結。
     GitHub の名前長上限（100）に収める。
     """
-    _ = partner_name  # API 互換（main から従来どおり渡す）
     rec = re.sub(r"[^a-zA-Z0-9]", "", str(record_number).strip()) or "0"
-    name = f"test-{rec}"
+    slug = _partner_name_slug(partner_name)
+    name = f"{rec}-test-{slug}"
     if len(name) > 100:
-        name = name[:100].rstrip("-")
+        # パートナー側を削ってレコードと test を優先
+        budget = max(4, 100 - len(f"{rec}-test-"))
+        slug = slug[:budget].rstrip("-") or "p"
+        name = f"{rec}-test-{slug}"
+        if len(name) > 100:
+            name = name[:100].rstrip("-")
     return name
 
 

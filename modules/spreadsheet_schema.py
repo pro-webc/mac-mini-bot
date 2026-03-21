@@ -60,17 +60,21 @@ def normalize_header_label(value: str) -> str:
     return " ".join((value or "").replace("\u3000", " ").split()).casefold()
 
 
+# ``spec_generator.fetch_hearing_sheet`` と整合する簡易 URL 抽出
+_HEARING_URL_IN_CELL = re.compile(r"https?://[^\s\]<>\")]+", re.IGNORECASE)
+
+
 def hearing_cell_is_eligible_for_mac_mini_bot(text: str) -> bool:
     """
     ヒアリング列（AH）の値が Bot 着手対象か。
 
     - 空 → 対象外
-    - 先頭が http:// または https:// のみ（URL として貼られている）→ 対象外（スキップ）
-    - それ以外（本文がセルに直接入っている）→ 対象
+    - **URL のみ**（http(s) リンクだけで構成。改行・空白のみ残る）→ 対象外（スキップ）
+    - **本文が1文字でも残る**（URL 以外の文字）→ 対象
     """
     t = (text or "").strip()
     if not t:
         return False
-    if re.match(r"^https?://", t, re.IGNORECASE):
-        return False
-    return True
+    remainder = _HEARING_URL_IN_CELL.sub("", t)
+    remainder = re.sub(r"\s+", "", remainder)
+    return len(remainder) > 0

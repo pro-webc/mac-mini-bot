@@ -70,4 +70,48 @@ def validate_startup_config(*, require_full_pipeline: bool = True) -> StartupVal
                 "Vercel デプロイは行いません。"
             )
 
+        if cfg.BASIC_LP_USE_GEMINI_MANUAL and not cfg.GEMINI_API_KEY.strip():
+            r.errors.append(
+                "BASIC_LP_USE_GEMINI_MANUAL=true のとき GEMINI_API_KEY が必須です。"
+            )
+
+        if cfg.BASIC_CP_USE_GEMINI_MANUAL and not cfg.GEMINI_API_KEY.strip():
+            r.errors.append(
+                "BASIC_CP_USE_GEMINI_MANUAL=true のとき GEMINI_API_KEY が必須です。"
+            )
+
+        if cfg.STANDARD_CP_USE_GEMINI_MANUAL and not cfg.GEMINI_API_KEY.strip():
+            r.errors.append(
+                "STANDARD_CP_USE_GEMINI_MANUAL=true のとき GEMINI_API_KEY が必須です。"
+            )
+
+        if cfg.ADVANCE_CP_USE_GEMINI_MANUAL and not cfg.GEMINI_API_KEY.strip():
+            r.errors.append(
+                "ADVANCE_CP_USE_GEMINI_MANUAL=true のとき GEMINI_API_KEY が必須です。"
+            )
+
+        if cfg.BASIC_LP_REFACTOR_AFTER_MANUAL and not cfg.BASIC_LP_USE_GEMINI_MANUAL:
+            r.warnings.append(
+                "BASIC_LP_REFACTOR_AFTER_MANUAL=true ですが BASIC_LP_USE_GEMINI_MANUAL が無効のため、"
+                "リファクタ段階はパイプライン上で実行されません。"
+            )
+
+        if cfg.BASIC_CP_REFACTOR_AFTER_MANUAL and not cfg.BASIC_CP_USE_GEMINI_MANUAL:
+            r.warnings.append(
+                "BASIC_CP_REFACTOR_AFTER_MANUAL=true ですが BASIC_CP_USE_GEMINI_MANUAL が無効のため、"
+                "BASIC-CP リファクタ段階はパイプライン上で実行されません。"
+            )
+
+        if cfg.STANDARD_CP_REFACTOR_AFTER_MANUAL and not cfg.STANDARD_CP_USE_GEMINI_MANUAL:
+            r.warnings.append(
+                "STANDARD_CP_REFACTOR_AFTER_MANUAL=true ですが STANDARD_CP_USE_GEMINI_MANUAL が無効のため、"
+                "STANDARD-CP リファクタ段階はパイプライン上で実行されません。"
+            )
+
+        if cfg.ADVANCE_CP_REFACTOR_AFTER_MANUAL and not cfg.ADVANCE_CP_USE_GEMINI_MANUAL:
+            r.warnings.append(
+                "ADVANCE_CP_REFACTOR_AFTER_MANUAL=true ですが ADVANCE_CP_USE_GEMINI_MANUAL が無効のため、"
+                "ADVANCE-CP リファクタ段階はパイプライン上で実行されません。"
+            )
+
     return r

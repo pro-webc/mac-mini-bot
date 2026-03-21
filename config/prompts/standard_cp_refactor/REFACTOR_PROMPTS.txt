@@ -1,0 +1,10 @@
+STANDARD-CP マニュアル完了後の「リファクタ段階」で Gemini に渡すプロンプトの構成（他プランと同じ結合ロジック）。
+
+【結合順（modules/basic_lp_refactor_gemini.build_basic_lp_refactor_user_prompt）】
+1. 本ディレクトリの preface_intro.txt（STANDARD-CP 専用・1段落）
+2. ../basic_lp_refactor/preface_shared.txt（出力形式・スコープ・画像方針。BASIC LP / BASIC-CP / STANDARD-CP 共通）
+3. ../basic_lp_refactor/refactoring_instruction.txt（Next.js App Router 分割・page.tsx・globals 等の技術指示。全プラン共通）
+4. 末尾に ===== BEGIN_CANVAS_SOURCE ===== … END … で、手順7-4（空なら7-3）の単一ファイルソース
+
+【成果物】
+- パス付きマークダウンフェンスの複数ファイルソース（テキストのみ）。実画像生成は行わない。

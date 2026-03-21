@@ -7,6 +7,7 @@ from pathlib import Path
 
 from config.config import OUTPUT_DIR, SITE_BUILD_ENABLED, SITE_IMPLEMENTATION_ENABLED
 
+from modules.contract_workflow import ContractWorkBranch
 from modules.site_build import _ensure_package_json, verify_site_build
 
 logger = logging.getLogger(__name__)
@@ -66,12 +67,24 @@ class SiteImplementer:
     def is_configured(self) -> bool:
         return True
 
-    def implement(self, spec: dict, site_dir: Path, contract_plan: str = "") -> tuple[bool, str]:
+    def implement(
+        self,
+        spec: dict,
+        site_dir: Path,
+        contract_plan: str = "",
+        *,
+        work_branch: ContractWorkBranch | None = None,
+    ) -> tuple[bool, str]:
         """
         Returns:
             (成功, 最後のビルドログまたはメッセージ)
         """
         _ = contract_plan
+        if work_branch is not None:
+            logger.info(
+                "サイト実装: 契約プラン作業分岐 work_branch=%s",
+                work_branch.value,
+            )
         if not SITE_IMPLEMENTATION_ENABLED:
             logger.info("SITE_IMPLEMENTATION_ENABLED=false のためスキップ")
             return True, "skipped"

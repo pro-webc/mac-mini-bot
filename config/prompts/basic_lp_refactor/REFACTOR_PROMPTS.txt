@@ -1,0 +1,7 @@
+BASIC LP マニュアル完了後の「リファクタ段階」で Gemini に渡すプロンプトの構成。
+
+【結合順】
+1. 本ディレクトリの preface_intro.txt（BASIC LP 専用）
+2. 本ディレクトリの preface_shared.txt（BASIC LP / BASIC-CP / STANDARD-CP 共通スコープ・出力形式）
+3. 本ディレクトリの refactoring_instruction.txt（技術指示・上記3プラン共通）
+4. 末尾に BEGIN/END ブロックで Canvas 単一ファイルソース

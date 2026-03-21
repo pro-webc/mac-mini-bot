@@ -8,6 +8,7 @@ from typing import Any
 import yaml
 from config.config import get_common_technical_spec, get_contract_plan_info
 
+from modules.contract_workflow import ContractWorkBranch
 from modules.site_script_parse import parse_llm_spec_or_site_script
 
 logger = logging.getLogger(__name__)
@@ -216,6 +217,11 @@ def _apply_common_technical_to_spec(spec: dict[str, Any]) -> dict[str, Any]:
     return spec
 
 
+def apply_common_technical_to_spec(spec: dict[str, Any]) -> dict[str, Any]:
+    """仕様 dict に共通 technical_spec を付与する（プラン別パイプラインから利用）。"""
+    return _apply_common_technical_to_spec(spec)
+
+
 def build_requirements_result_mock(
     hearing_sheet_content: str,
     appo_memo: str,
@@ -287,7 +293,7 @@ def build_spec_dict_mock(
         )
     else:
         logger.info("モック TEXT_LLM: レガシー仕様 JSON を解釈しました")
-    return _apply_common_technical_to_spec(data)
+    return apply_common_technical_to_spec(data)
 
 
 def run_mock_text_llm_pipeline(
@@ -297,9 +303,13 @@ def run_mock_text_llm_pipeline(
     sales_notes: str,
     contract_plan: str,
     partner_name: str,
+    work_branch: ContractWorkBranch,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """
     要望抽出と仕様生成を **1 工程のモック TEXT_LLM** として実行する。
+
+    Args:
+        work_branch: 契約プラン由来の作業分岐（実 LLM チェーンの分岐と揃える）。
 
     Returns:
         (requirements_result, spec)
@@ -317,7 +327,8 @@ def run_mock_text_llm_pipeline(
         partner_name,
     )
     logger.info(
-        "モック TEXT_LLM 工程完了 plan_type=%s site_build_prompt_chars=%s",
+        "モック TEXT_LLM 工程完了 work_branch=%s plan_type=%s site_build_prompt_chars=%s",
+        work_branch.value,
         requirements_result.get("plan_type"),
         len(requirements_result.get("site_build_prompt") or ""),
     )

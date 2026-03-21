@@ -24,6 +24,21 @@ def _parse_positive_int(
     except ValueError:
         return default
 
+
+def _parse_float_env(
+    name: str, default: float, *, minimum: float, maximum: float
+) -> float:
+    """環境変数を float として解釈（不正時は default、範囲クランプ）"""
+    raw = os.getenv(name)
+    if raw is None or not str(raw).strip():
+        return default
+    try:
+        v = float(str(raw).strip())
+        return max(minimum, min(maximum, v))
+    except ValueError:
+        return default
+
+
 # Google Sheets設定
 # service_account: credentials の JSON（サービスアカウント鍵）
 # application_default: JSON 不要。通常は `gcloud auth application-default login` で取得したユーザー資格情報
@@ -40,6 +55,16 @@ GOOGLE_SHEETS_CREDENTIALS_PATH = os.getenv(
 GOOGLE_SHEETS_SPREADSHEET_ID = os.getenv("GOOGLE_SHEETS_SPREADSHEET_ID", "")
 # 案件取得・更新対象のシート名（タブ名）
 GOOGLE_SHEETS_SHEET_NAME = os.getenv("GOOGLE_SHEETS_SHEET_NAME", "Sheet1").strip() or "Sheet1"
+# メインシートの契約が BASIC のとき、サイトタイプ（LP かどうか）を参照する別スプレッドシート（空なら照会しない）
+GOOGLE_SHEETS_BASIC_SITE_TYPE_SPREADSHEET_ID = os.getenv(
+    "GOOGLE_SHEETS_BASIC_SITE_TYPE_SPREADSHEET_ID", ""
+).strip()
+GOOGLE_SHEETS_BASIC_SITE_TYPE_SHEET_NAME = os.getenv(
+    "GOOGLE_SHEETS_BASIC_SITE_TYPE_SHEET_NAME", "Sheet1"
+).strip() or "Sheet1"
+GOOGLE_SHEETS_BASIC_SITE_TYPE_SKIP_HEADER = os.getenv(
+    "GOOGLE_SHEETS_BASIC_SITE_TYPE_SKIP_HEADER", "true"
+).strip().lower() in ("1", "true", "yes")
 # ADC 利用時のクォータプロジェクト（任意・未設定だと UserWarning が出る場合あり）
 GOOGLE_CLOUD_PROJECT = os.getenv("GOOGLE_CLOUD_PROJECT", "").strip()
 # 1行目の列見出しが期待と異なるとき、true なら起動失敗（false は警告のみ）
@@ -79,7 +104,67 @@ except ValueError:
 
 # API キー（将来の実 LLM 接続などで利用）
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+# Gemini unary RPC のサーバ待ち上限（秒）。大規模 Canvas 出力は 60s 既定では不足しがち
+GEMINI_RPC_TIMEOUT_SEC = _parse_float_env(
+    "GEMINI_RPC_TIMEOUT_SEC", 900.0, minimum=60.0, maximum=3600.0
+)
+# DeadlineExceeded（504）時の追加試行回数（0 なら再試行なし）
+GEMINI_RPC_DEADLINE_RETRIES = _parse_positive_int(
+    "GEMINI_RPC_DEADLINE_RETRIES", 2, minimum=0, maximum=10
+)
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
+# BASIC LP: 社内マニュアルどおりの Gemini 多段プロンプト（true のとき GEMINI_API_KEY 必須）
+BASIC_LP_USE_GEMINI_MANUAL = os.getenv(
+    "BASIC_LP_USE_GEMINI_MANUAL", "false"
+).strip().lower() in ("1", "true", "yes")
+# サイト制作は品質優先: 未設定時は Gemini 2.5 Pro（GEMINI_BASIC_LP_MODEL で上書き可）
+_DEFAULT_GEMINI_SITE_MODEL = "gemini-2.5-pro"
+GEMINI_BASIC_LP_MODEL = (
+    os.getenv("GEMINI_BASIC_LP_MODEL", _DEFAULT_GEMINI_SITE_MODEL)
+    or _DEFAULT_GEMINI_SITE_MODEL
+).strip()
+# 手順8の単一ファイル出力のあと、リファクタ指示どおりの複数ファイル出力へ変換（Gemini 新規チャット1回）
+BASIC_LP_REFACTOR_AFTER_MANUAL = os.getenv(
+    "BASIC_LP_REFACTOR_AFTER_MANUAL", "true"
+).strip().lower() in ("1", "true", "yes")
+
+# BASIC（コーポレート1ページ）: BASIC-CP 制作マニュアルどおりの Gemini 多段プロンプト
+BASIC_CP_USE_GEMINI_MANUAL = os.getenv(
+    "BASIC_CP_USE_GEMINI_MANUAL", "false"
+).strip().lower() in ("1", "true", "yes")
+_raw_gemini_basic_cp = (os.getenv("GEMINI_BASIC_CP_MODEL") or "").strip()
+GEMINI_BASIC_CP_MODEL = _raw_gemini_basic_cp or GEMINI_BASIC_LP_MODEL
+# 手順7-3 のあと、リファクタ指示どおりの複数ファイル出力へ変換（Gemini 新規チャット1回）
+BASIC_CP_REFACTOR_AFTER_MANUAL = os.getenv(
+    "BASIC_CP_REFACTOR_AFTER_MANUAL", "true"
+).strip().lower() in ("1", "true", "yes")
+
+# STANDARD（コーポレート・6ページ想定）: STANDARD-CP 制作マニュアルどおりの Gemini 多段プロンプト
+STANDARD_CP_USE_GEMINI_MANUAL = os.getenv(
+    "STANDARD_CP_USE_GEMINI_MANUAL", "false"
+).strip().lower() in ("1", "true", "yes")
+_raw_gemini_standard_cp = (os.getenv("GEMINI_STANDARD_CP_MODEL") or "").strip()
+GEMINI_STANDARD_CP_MODEL = _raw_gemini_standard_cp or GEMINI_BASIC_LP_MODEL
+STANDARD_CP_REFACTOR_AFTER_MANUAL = os.getenv(
+    "STANDARD_CP_REFACTOR_AFTER_MANUAL", "true"
+).strip().lower() in ("1", "true", "yes")
+# 手順2の「ブログ独立1ページ」行をプロンプトに含める（false でマニュアル「不要なら削除」に相当）
+STANDARD_CP_INCLUDE_BLOG_PAGE = os.getenv(
+    "STANDARD_CP_INCLUDE_BLOG_PAGE", "true"
+).strip().lower() in ("1", "true", "yes")
+
+# ADVANCE（コーポレート・12ページ想定）: ADVANCE-CP 制作マニュアルどおりの Gemini 多段プロンプト
+ADVANCE_CP_USE_GEMINI_MANUAL = os.getenv(
+    "ADVANCE_CP_USE_GEMINI_MANUAL", "false"
+).strip().lower() in ("1", "true", "yes")
+_raw_gemini_advance_cp = (os.getenv("GEMINI_ADVANCE_CP_MODEL") or "").strip()
+GEMINI_ADVANCE_CP_MODEL = _raw_gemini_advance_cp or GEMINI_BASIC_LP_MODEL
+ADVANCE_CP_REFACTOR_AFTER_MANUAL = os.getenv(
+    "ADVANCE_CP_REFACTOR_AFTER_MANUAL", "true"
+).strip().lower() in ("1", "true", "yes")
+ADVANCE_CP_INCLUDE_BLOG_PAGE = os.getenv(
+    "ADVANCE_CP_INCLUDE_BLOG_PAGE", "true"
+).strip().lower() in ("1", "true", "yes")
 
 # npm ビルド検証
 SITE_BUILD_ENABLED = os.getenv("SITE_BUILD_ENABLED", "true").strip().lower() in (

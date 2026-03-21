@@ -48,9 +48,8 @@ def _load_raw() -> dict[str, Any]:
         stage_blob: dict[str, Any] = {}
         yaml_paths = sorted(stage_dir.glob("*.yaml"))
         if not yaml_paths:
-            raise FileNotFoundError(
-                f"プロンプト YAML がありません: {stage_dir}（*.yaml を1つ以上置いてください）"
-            )
+            # CP/LP マニュアルなど *.txt のみのフォルダは別経路で読み込む（工程 YAML とは独立）
+            continue
         for path in yaml_paths:
             with open(path, encoding="utf-8") as f:
                 data = yaml.safe_load(f)
@@ -64,6 +63,11 @@ def _load_raw() -> dict[str, Any]:
         if name in merged:
             raise ValueError(f"プロンプト工程名の重複: {name!r}")
         merged[name] = stage_blob
+    if not merged:
+        raise FileNotFoundError(
+            f"*.yaml を含む工程フォルダがありません（{_PROMPTS_DIR}）。"
+            "少なくとも common/technical_spec.yaml 等が必要です。"
+        )
     return merged
 
 

@@ -163,7 +163,14 @@ class SpecGenerator:
             if not re.match(r"^https?://", raw, re.IGNORECASE):
                 m = re.search(r"https?://[^\s\]<>\")]+", raw)
                 if m:
-                    return self.fetch_hearing_sheet(m.group(0))
+                    fetched = self.fetch_hearing_sheet(m.group(0))
+                    if (fetched or "").strip():
+                        return fetched
+                    logger.warning(
+                        "ヒアリング列内の URL 取得が空のため、セル全文を本文として使用します（先頭 %s 文字）",
+                        min(len(raw), 200),
+                    )
+                    return raw
                 logger.info(
                     "ヒアリングシート列が URL ではないため、本文としてそのまま使用します（先頭 %s 文字）",
                     min(len(raw), 200),

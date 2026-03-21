@@ -2,7 +2,7 @@
 
 パイプライン概略:
   1. ヒアリングシート類の抽出（`modules.case_extraction`）
-  2. TEXT_LLM（要望・仕様。実装は `modules.text_llm_stage`、現状モックは `modules.llm_mock`）
+  2. TEXT_LLM（要望・仕様。`modules.text_llm_stage` — プラン別に Gemini マニュアルまたは `llm_mock`）
   3. サイト生成・検証・GitHub へソース push・（任意）Vercel
 """
 from __future__ import annotations
@@ -24,6 +24,7 @@ from config.config import (
     SITE_IMPLEMENTATION_ENABLED,
     SPREADSHEET_AI_STATUS_ERROR_MAX_LEN,
     SPREADSHEET_HEADERS_STRICT,
+    get_contract_plan_info,
 )
 from config.log_theme import (
     all_done_banner,
@@ -35,7 +36,9 @@ from config.log_theme import (
 )
 from config.types import CaseRecord
 from config.validation import validate_startup_config
+from modules.basic_lp_generated_apply import apply_contract_outputs_to_site_dir
 from modules.case_extraction import extract_hearing_bundle
+from modules.contract_workflow import ContractWorkBranch, resolve_contract_work_branch
 from modules.github_client import GitHubClient, sanitize_github_repo_name
 from modules.site_build import verify_site_build
 from modules.site_generator import SiteGenerator
@@ -61,6 +64,24 @@ def _format_ai_status_error(exc: BaseException) -> str:
         "（modules.llm_mock.build_spec_dict_mock）。",
         " modules.text_llm_stage",
         "（modules.text_llm_stage）。",
+        " modules.basic_lp_text_llm",
+        "（modules.basic_lp_text_llm）。",
+        " modules.basic_text_llm",
+        "（modules.basic_text_llm）。",
+        " modules.basic_lp_gemini_manual",
+        "（modules.basic_lp_gemini_manual）。",
+        " modules.basic_cp_gemini_manual",
+        "（modules.basic_cp_gemini_manual）。",
+        " modules.standard_cp_gemini_manual",
+        "（modules.standard_cp_gemini_manual）。",
+        " modules.advance_cp_gemini_manual",
+        "（modules.advance_cp_gemini_manual）。",
+        " modules.standard_text_llm",
+        "（modules.standard_text_llm）。",
+        " modules.advance_text_llm",
+        "（modules.advance_text_llm）。",
+        " modules.basic_lp_generated_apply",
+        "（modules.basic_lp_generated_apply）。",
         " modules.case_extraction",
         "（modules.case_extraction）。",
     ):
@@ -137,14 +158,71 @@ class WebsiteBot:
                 case,
                 fetch_hearing_sheet=self.spec_generator.fetch_hearing_sheet,
             )
+            if not (hearing_bundle.hearing_sheet_content or "").strip():
+                logger.warning(
+                    "ヒアリング本文が空のため案件をスキップします row=%s record=%s partner=%s",
+                    case.get("row_number"),
+                    case.get("record_number"),
+                    case.get("partner_name"),
+                )
+                self.spreadsheet.update_ai_status(
+                    case["row_number"],
+                    "スキップ: ヒアリング本文なし（AH列の取得結果が空）",
+                )
+                return None
 
+            plan_raw = (case.get("contract_plan") or "").strip()
+            plan_info = get_contract_plan_info(plan_raw)
+            work_branch = resolve_contract_work_branch(case["contract_plan"])
+            if work_branch == ContractWorkBranch.BASIC:
+                lp_flag = self.spreadsheet.lookup_basic_is_landing_page(
+                    str(case.get("record_number") or ""),
+                    str(case.get("partner_name") or ""),
+                )
+                if lp_flag is True:
+                    work_branch = ContractWorkBranch.BASIC_LP
+                    logger.info(
+                        "BASIC サイトタイプシートにより作業分岐を BASIC LP に変更しました "
+                        "(record=%r)",
+                        case.get("record_number"),
+                    )
             logger.info(
-                "【フェーズ2】TEXT_LLM 処理（要望・仕様）… 現状モック — 実LLMは modules.text_llm_stage を拡張"
+                "契約プラン作業分岐: plan=%r branch=%s resolved_type=%s pages=%s",
+                plan_raw,
+                work_branch.value,
+                plan_info.get("type"),
+                plan_info.get("pages"),
             )
+
+            if work_branch == ContractWorkBranch.BASIC_LP:
+                logger.info(
+                    "【フェーズ2】TEXT_LLM（BASIC LP・1ページランディング）… "
+                    "modules.basic_lp_text_llm"
+                )
+            elif work_branch == ContractWorkBranch.BASIC:
+                logger.info(
+                    "【フェーズ2】TEXT_LLM（BASIC・コーポレート1ページ）… "
+                    "modules.basic_text_llm（現状モック）"
+                )
+            elif work_branch == ContractWorkBranch.STANDARD:
+                logger.info(
+                    "【フェーズ2】TEXT_LLM（STANDARD・コーポレート複数ページ）… "
+                    "modules.standard_text_llm"
+                )
+            elif work_branch == ContractWorkBranch.ADVANCE:
+                logger.info(
+                    "【フェーズ2】TEXT_LLM（ADVANCE・コーポレート12ページ想定）… "
+                    "modules.advance_text_llm"
+                )
+            else:
+                logger.info(
+                    "【フェーズ2】TEXT_LLM 処理（要望・仕様）… 現状モック — 実LLMは modules.text_llm_stage を拡張"
+                )
             requirements_result, spec = run_text_llm_stage(
                 hearing_bundle,
                 contract_plan=case["contract_plan"],
                 partner_name=case["partner_name"],
+                work_branch=work_branch,
             )
 
             logger.info(
@@ -154,12 +232,23 @@ class WebsiteBot:
             site_name = f"{case['partner_name']}-{case['record_number']}"
             site_dir = self.site_generator.generate_site(spec, [], site_name)
 
+            n_gen = apply_contract_outputs_to_site_dir(
+                spec, site_dir, work_branch=work_branch
+            )
+            if n_gen:
+                logger.info(
+                    "› 契約分岐 %s: 生成マークダウンをサイトに %s ファイル反映…",
+                    work_branch.value,
+                    n_gen,
+                )
+
             if SITE_IMPLEMENTATION_ENABLED:
                 logger.info("› サイト実装を実行（モック: テンプレ土台のビルド検証）…")
                 ok_impl, impl_log = self.site_implementer.implement(
                     spec,
                     site_dir,
                     case["contract_plan"],
+                    work_branch=work_branch,
                 )
                 if not ok_impl:
                     raise RuntimeError(
@@ -182,7 +271,7 @@ class WebsiteBot:
             github_url = self.github_client.push_to_github(
                 site_dir,
                 repo_name,
-                f"{case['partner_name']}のWebサイト",
+                "test",
             )
 
             if BOT_DEPLOY_URL_SOURCE == "github":
@@ -262,7 +351,16 @@ class WebsiteBot:
             )
 
             for case in cases:
-                self.process_case(case)
+                try:
+                    self.process_case(case)
+                except Exception as e:
+                    # process_case 内で既に exc_info 付きログ済みのため、ここは要約のみ
+                    logger.error(
+                        "案件が失敗しましたがバッチは続行します row=%s record=%s: %s",
+                        case.get("row_number"),
+                        case.get("record_number"),
+                        e,
+                    )
 
             logger.info(all_done_banner(use_color=_uc))
 

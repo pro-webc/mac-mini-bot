@@ -64,8 +64,10 @@ def test_a1_range() -> None:
         ("  ", False),
         ("https://example.com", False),
         ("http://a.jp/x", False),
+        ("https://a.com\nhttps://b.com", False),
         ("本文のみ", True),
         ("説明\nhttps://x.com", True),
+        ("先頭URLだが本文あり https://x.com 続き", True),
     ],
 )
 def test_hearing_cell_eligible(text: str, eligible: bool) -> None:
