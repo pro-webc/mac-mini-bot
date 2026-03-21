@@ -1,4 +1,4 @@
-"""サイト実装の ImagePlaceholder 下限（画像パイプライン前提）"""
+"""Next.js テンプレートの ImagePlaceholder 下限（実装プロンプトとの整合）"""
 
 from pathlib import Path
 

@@ -1,7 +1,6 @@
 """起動時設定の検証（フェイルファスト・警告の分離）"""
 from __future__ import annotations
 
-import os
 import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -36,14 +35,6 @@ def validate_startup_config(*, require_full_pipeline: bool = True) -> StartupVal
         r.warnings.append(
             "SITE_BUILD_ENABLED=true ですが npm が PATH にありません。ビルド検証は失敗します。"
         )
-
-    # --- 画像パイプライン ---
-    if cfg.IMAGE_GEN_ENABLED and not cfg.IMAGE_GEN_SKIP_RUN:
-        _igm_raw = os.getenv("IMAGE_GEN_MODE", "").strip().lower()
-        if _igm_raw and _igm_raw not in ("from_placeholder_source", "standalone_spec"):
-            r.warnings.append(
-                f"IMAGE_GEN_MODE={_igm_raw!r} は無効です。from_placeholder_source として扱われます。"
-            )
 
     # --- デプロイ系 ---
     if require_full_pipeline:

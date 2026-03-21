@@ -20,7 +20,7 @@ pip install --upgrade pip
 pip install -r requirements.txt -r requirements-dev.txt
 ```
 
-`requirements.txt` … 本番実行に必要な PyPI パッケージ（Sheets / GitHub / Vercel / 画像 等）。  
+`requirements.txt` … 本番実行に必要な PyPI パッケージ（Sheets / GitHub / Vercel 等）。  
 `requirements-dev.txt` … テスト・Lint（CI では両方インストール）。
 
 ## 3. Cursor CLI（任意・将来用）

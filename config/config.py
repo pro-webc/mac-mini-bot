@@ -77,49 +77,9 @@ try:
 except ValueError:
     SPREADSHEET_AI_STATUS_ERROR_MAX_LEN = 200
 
-# API キー（互換のため残置。画像パイプラインは PIL のみで参照しない）
+# API キー（将来の実 LLM 接続などで利用）
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
-
-# 画像生成パイプライン（PIL プレースホルダのみ。IMAGE_GEN_PROVIDER はログ用に保持）
-IMAGE_GEN_ENABLED = os.getenv("IMAGE_GEN_ENABLED", "false").strip().lower() in (
-    "1",
-    "true",
-    "yes",
-)
-# openai | gemini | pillow | cursor_agent_cli（いずれも実装は PIL プレースホルダのみ）
-_raw_igp = os.getenv("IMAGE_GEN_PROVIDER", "pillow").strip().lower()
-IMAGE_GEN_PROVIDER = (
-    _raw_igp
-    if _raw_igp in ("openai", "gemini", "pillow", "cursor_agent_cli")
-    else "pillow"
-)
-# 未設定時は IMAGE_GEN_ALLOW_FALLBACK_TO_MAIN_KEYS が true のときのみメインキーを使用
-IMAGE_GEN_API_KEY = os.getenv("IMAGE_GEN_API_KEY", "").strip()
-IMAGE_GEN_ALLOW_FALLBACK_TO_MAIN_KEYS = os.getenv(
-    "IMAGE_GEN_ALLOW_FALLBACK_TO_MAIN_KEYS", "false"
-).strip().lower() in ("1", "true", "yes")
-# from_placeholder_source: 実装済み TSX 内の ImagePlaceholder を走査してプロンプト化
-# standalone_spec: 仕様書の image_requirements 等のみ（従来に近い）
-_raw_igm = os.getenv("IMAGE_GEN_MODE", "from_placeholder_source").strip().lower()
-IMAGE_GEN_MODE = (
-    _raw_igm
-    if _raw_igm in ("from_placeholder_source", "standalone_spec")
-    else "from_placeholder_source"
-)
-IMAGE_GEN_AFTER_SITE = os.getenv("IMAGE_GEN_AFTER_SITE", "true").strip().lower() in (
-    "1",
-    "true",
-    "yes",
-)
-IMAGE_GEN_OPENAI_MODEL = os.getenv("IMAGE_GEN_OPENAI_MODEL", "dall-e-3")
-IMAGE_GEN_DALLE_SIZE = os.getenv("IMAGE_GEN_DALLE_SIZE", "1024x1024")
-# true のとき、IMAGE_GEN_ENABLED=true でも当該プロセスでは画像生成・置換・画像後ビルドを行わない（.env は変えず1回限りスキップ）
-IMAGE_GEN_SKIP_RUN = os.getenv("IMAGE_GEN_SKIP_RUN", "false").strip().lower() in (
-    "1",
-    "true",
-    "yes",
-)
 
 # npm ビルド検証
 SITE_BUILD_ENABLED = os.getenv("SITE_BUILD_ENABLED", "true").strip().lower() in (
@@ -139,19 +99,6 @@ SITE_IMPLEMENTATION_ENABLED = os.getenv("SITE_IMPLEMENTATION_ENABLED", "true").s
 SITE_KEEP_TEMPLATE_APP_ROUTES = os.getenv(
     "SITE_KEEP_TEMPLATE_APP_ROUTES", "false"
 ).strip().lower() in ("1", "true", "yes")
-
-
-def resolve_image_gen_api_key(provider: str) -> str:
-    """画像用 API キー（専用キー優先）"""
-    if IMAGE_GEN_API_KEY:
-        return IMAGE_GEN_API_KEY
-    if not IMAGE_GEN_ALLOW_FALLBACK_TO_MAIN_KEYS:
-        return ""
-    if provider == "openai":
-        return OPENAI_API_KEY
-    if provider == "gemini":
-        return GEMINI_API_KEY
-    return ""
 
 # GitHub設定
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN", "")

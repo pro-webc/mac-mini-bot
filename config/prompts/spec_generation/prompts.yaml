@@ -69,7 +69,7 @@ user_template: |
       aspect_hint: "16:9"
   ```
 
-  - **image_placeholder_slots** は **最低 3 件**。**1 件以上はヒーロー／メインビジュアル**用。`description` は英日可だが **具体的**に。
+  - **image_placeholder_slots** は **最低 3 件**（サイト実装時の画像枠・コピー設計の手がかり）。**1 件以上はヒーロー／メインビジュアル**用。`description` は英日可だが **具体的**に。
   - **複数ページ**のときは `page_path` をページごとに分ける。
 
   ## 品質

@@ -13,11 +13,6 @@ import sys
 from pathlib import Path
 from typing import Any
 
-# logging_setup → config を読むため、config より前に CLI 用の環境変数を反映する
-if "--skip-images" in sys.argv:
-    os.environ["IMAGE_GEN_SKIP_RUN"] = "1"
-    sys.argv = [a for a in sys.argv if a != "--skip-images"]
-
 from config.logging_setup import configure_logging
 
 configure_logging()
@@ -25,7 +20,6 @@ configure_logging()
 from config.config import (
     BOT_DEPLOY_URL_SOURCE,
     BOT_MAX_CASES,
-    IMAGE_GEN_SKIP_RUN,
     SITE_BUILD_ENABLED,
     SITE_IMPLEMENTATION_ENABLED,
     SPREADSHEET_AI_STATUS_ERROR_MAX_LEN,
@@ -43,7 +37,6 @@ from config.types import CaseRecord
 from config.validation import validate_startup_config
 from modules.case_extraction import extract_hearing_bundle
 from modules.github_client import GitHubClient, sanitize_github_repo_name
-from modules.image_generator import ImageGenerator
 from modules.site_build import verify_site_build
 from modules.site_generator import SiteGenerator
 from modules.site_implementer import SiteImplementer
@@ -87,7 +80,6 @@ class WebsiteBot:
         """SpreadsheetClient を常に初期化する。"""
         self.spreadsheet = SpreadsheetClient()
         self.spec_generator = SpecGenerator()
-        self.image_generator = ImageGenerator()
         self.site_implementer = SiteImplementer()
         self.site_generator = SiteGenerator()
         self._github_client: GitHubClient | None = None
@@ -181,25 +173,6 @@ class WebsiteBot:
                 if not ok_b:
                     raise RuntimeError(
                         "npm build に失敗: " + (blog[-2000:] if blog else "")
-                    )
-
-            if self.image_generator.is_enabled() and not IMAGE_GEN_SKIP_RUN:
-                logger.info("› 画像パイプライン（別コンテキストで生成）…")
-                self.image_generator.generate_after_site(site_dir)
-                if SITE_BUILD_ENABLED:
-                    ok_img_b, img_blog = verify_site_build(
-                        site_dir, skip_install=True
-                    )
-                    if not ok_img_b:
-                        raise RuntimeError(
-                            "画像追加後の npm build に失敗しました。ログ末尾: "
-                            + ((img_blog or "")[-2000:])
-                        )
-            else:
-                if self.image_generator.is_enabled() and IMAGE_GEN_SKIP_RUN:
-                    logger.info(
-                        "› 画像パイプラインをスキップ（IMAGE_GEN_SKIP_RUN=true。"
-                        " .env の IMAGE_GEN_ENABLED は変更していません）…"
                     )
 
             logger.info("› GitHub にソースコードを push…")

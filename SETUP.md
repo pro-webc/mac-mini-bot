@@ -6,7 +6,6 @@
 - Node.js 18 以上と **npm**（生成サイトの `npm run build`）
 - Google Cloud Platform（Sheets API）・GitHub・Vercel（本番パイプライン実行時）
 - **TEXT_LLM は現状モック**（外部 LLM / Cursor CLI は不要）。実 LLM を接続するときは `modules/text_llm_stage.py` を拡張
-- **画像**: 既定は **PIL プレースホルダ**（`IMAGE_GEN_PROVIDER` はログ用）。Gemini / OpenAI 画像 API を使う場合のみ各 API キーが必要
 - （任意）**Cursor CLI**: `bash scripts/install_cursor_cli.sh` または `INSTALL_CURSOR_CLI=1 ./setup.sh`。将来エージェント連携で使う場合に PATH に `~/.local/bin` を含める
 
 ## セットアップ手順
@@ -197,24 +196,6 @@ python main.py
 | `CURSOR_API_KEY` | Cursor CLI 用（任意。`agent login` の代わり） |
 | `CURSOR_AGENT_MODEL` | 任意。指定時のみ `agent --model` に渡す。**未指定ならアカウント既定**（有料プランで Named モデルを使う場合は未指定か `gpt-5.2` 等を明示） |
 
-**画像だけ Gemini・テキストは Cursor CLI** にする例:
-
-1. [Cursor CLI](https://cursor.com/docs/cli/overview) を入れ、`agent` がターミナルで叩けることを確認する。  
-2. `.env` で `TEXT_LLM_PROVIDER=cursor_agent_cli`、`CURSOR_AGENT_COMMAND=bash scripts/cursor_agent_stdio.sh`（リポジトリ付属。作業ディレクトリはプロジェクトルート推奨）。  
-3. `IMAGE_GEN_PROVIDER=gemini`、`IMAGE_GEN_ENABLED=true`、`GEMINI_API_KEY` を設定。専用キーが無い場合は `IMAGE_GEN_ALLOW_FALLBACK_TO_MAIN_KEYS=true` で `GEMINI_API_KEY` にフォールバック。
-
-**画像**は仕様書・サイト実装 LLM と**別の API キー**を推奨（`IMAGE_GEN_API_KEY`）。メインキーにフォールバックする場合のみ `IMAGE_GEN_ALLOW_FALLBACK_TO_MAIN_KEYS=true`。
-
-| 変数 | 説明 |
-|------|------|
-| `IMAGE_GEN_ENABLED` | `true` でサイト実装**後**に画像パイプライン実行 |
-| `IMAGE_GEN_PROVIDER` | `openai`（DALL-E 3） / `gemini` / `pillow`（PIL のみ） |
-| `IMAGE_GEN_MODE` | `from_placeholder_source`（TSX の ImagePlaceholder 走査）または `standalone_spec`（仕様書の image_requirements のみ） |
-| `IMAGE_GEN_AFTER_SITE` | `true`（既定）で実装完了後にのみ画像生成 |
-| `IMAGE_GEN_SKIP_RUN` | `true` のとき**当該実行だけ**画像工程をスキップ（`IMAGE_GEN_ENABLED` は変えずに試せる）。同等: `python main.py --skip-images` / `./run.sh --skip-images` |
-
-生成物: `public/images/generated/*.png` と `docs/generated_images.json`。画風の一貫用に `docs/visual_style_brief.json`（実装直前に自動出力）を参照します。
-
 ## 定期実行の設定（macOS）
 
 macOSで定期実行するには、`launchd`を使用します：
@@ -301,12 +282,6 @@ launchctl unload ~/Library/LaunchAgents/com.websitebot.plist
 - 既定ではデプロイ直後に API で **`ssoProtection`（Vercel Authentication）・パスワード保護・Trusted IPs** をプロジェクト単位で解除します（`VERCEL_FORCE_PUBLIC_DEPLOYMENTS=true`）。
 - それでもログインを求める場合は **チーム全体の Deployment Protection** が優先されている可能性があります。Vercel ダッシュボードの Team Settings → Security などで確認してください。
 - 自動解除をやめたい場合は `VERCEL_FORCE_PUBLIC_DEPLOYMENTS=false` にします。
-
-### 画像生成エラー
-
-- `IMAGE_GEN_PROVIDER=openai` のときは `IMAGE_GEN_API_KEY`（またはフォールバック許可時は `OPENAI_API_KEY`）を確認
-- `gemini` のときは画像 API 用キーを確認（Gemini が画像バイナリを返さない場合は PIL プレースホルダにフォールバック）
-- `pillow` のみなら外部 API は不要（開発用）
 
 ## 開発・テスト
 

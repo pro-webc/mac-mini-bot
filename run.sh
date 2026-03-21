@@ -14,11 +14,4 @@ fi
 # Pythonパスを設定
 export PYTHONPATH="${PYTHONPATH}:$(pwd)"
 
-# 画像生成のみ今回スキップ: ./run.sh --skip-images または IMAGE_GEN_SKIP_RUN=1 ./run.sh
-if [ "${1:-}" = "--skip-images" ]; then
-  export IMAGE_GEN_SKIP_RUN=1
-  shift
-fi
-
-# Botを実行（残りの引数は python に渡す。例: ./run.sh --skip-images）
 exec python main.py "$@"

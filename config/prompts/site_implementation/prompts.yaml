@@ -40,10 +40,10 @@ user_template: |
   【厳守】
   - `app/page.tsx` / `app/layout.tsx` で import するコンポーネントは、**同じ応答内で** それぞれ `<<<FILE>>>` として必ず全文を出力すること（1つでも欠けるとビルド前に不足ファイルの stub が自動挿入され、未完成のままになる）
   - **CTA の見た目はテンプレ固定にしない**: `design_spec` の `primary` / `primary_foreground` / `border` 等に合わせ、`lib/ctaButtonClass.ts` の Tailwind クラスを**案件ごとに調整してよい**（必要なら `<<<FILE lib/ctaButtonClass.ts>>>` で全文を出力）。**`components/CtaButton.tsx` と色・hover・focus-visible を矛盾なく同期**する。フォーム送信ボタン等は `import { ctaButtonClass } from "@/lib/ctaButtonClass"` を維持。**lib 配下は TypeScript（.ts）のみ**（JSX は置かない）。**`CtaButton.tsx` 編集時は括弧・テンプレートリテラルを必ず閉じる**（未閉じは `ContactFormSection` 経由で Syntax Error になる）
-  - 既存の `components/ImagePlaceholder.tsx` と `GoogleMapEmbed.tsx` を import して使用可能
-  - **【ImagePlaceholder は必須・複数】** 後工程の画像生成は TSX 内の `<ImagePlaceholder />` を走査する。**サイト全体で `ImagePlaceholder` を最低 3 箇所以上**置くこと（1〜2 件・0 件は不可）。**各ページのヒーロー／メインビジュアル相当には必ず 1 箇所**（全面ベタ色だけで写真枠を省略しない）。あとは仕様の `image_placeholder_slots` があればそれに沿い、なければ **サービス・実績・会社・採用**など写真が自然なセクションに最低あと 2 箇所。
-  - 各所で `import ImagePlaceholder from "@/components/ImagePlaceholder"` とし、`description="..."`（ダブルクォート）に**画角・被写体・雰囲気**を具体的に書く。`aspectClassName`（例 `aspect-video`, `aspect-[4/3]`）を付与。必要なら `overlayText`。
-  - Unsplash・外部ストック URL・実ファイル画像は使わない。画像箇所は ImagePlaceholder のみ（生成後に `public/images/generated/` へ差し替えられる）
+  - 既存の `components/ImagePlaceholder.tsx` と `GoogleMapEmbed.tsx` を import して使用可能（`docs/TECH_REQUIREMENTS.md` の画像・地図ルールに従う）
+  - **【ビジュアルはこの応答で完結】** 後工程の自動画像生成はない。**ヒーローおよび主要セクション**に `ImagePlaceholder` で枠と意図を示す（全面ベタ色だけで写真枠を省略しない）。仕様の `image_placeholder_slots` があれば実装に反映する。
+  - `import ImagePlaceholder from "@/components/ImagePlaceholder"` とし、`description="..."` に画角・被写体・雰囲気を具体的に書く。`aspectClassName`（例 `aspect-video`）を付与。必要なら `overlayText`。
+  - Unsplash・外部ストック URL・リポジトリへの実画像ファイル配置は禁止（技術要件どおりプレースホルダで表現）
   - **禁止**: `next/image` の実ファイル `src`、`<img src="https://...">`、プレースホルダ無しのヒーロー（アイコンだけ・グラデのみ等で枠ゼロ）
   - 図表は HTML + Tailwind でマークアップ
   - アイコンは lucide-react または react-icons（Simple Icons）。lucide は https://lucide.dev/icons にある名前のみ。`Pipe` は export されない（`Droplets` / `Wrench` / `Cable` 等に置き換え）
