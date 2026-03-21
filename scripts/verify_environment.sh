@@ -19,26 +19,26 @@ check_cmd() {
   fi
 }
 
-check_ver() {
-  local name="$1"
-  local cmd="$2"
-  if command -v "$cmd" >/dev/null 2>&1; then
-    echo "[OK] $name: $($cmd 2>/dev/null | head -1)"
-  else
-    echo "[NG] $name"
-    ok=1
-  fi
-}
-
-echo "=== mac-mini-bot 環境チェック（$ROOT）==="
+echo "=== mac-mini-bot 環境チェック (${ROOT}) ==="
 echo ""
 
-check_ver "Python 3" "python3"
-if command -v python3 >/dev/null 2>&1; then
-  pyver=$(python3 -c 'import sys; print("%d.%d" % sys.version_info[:2])')
-  echo "     バージョン: $(python3 --version)"
-  # 3.10 未満は警告のみ
-  if python3 -c 'import sys; sys.exit(0 if sys.version_info >= (3, 10) else 1)' 2>/dev/null; then
+# プロジェクトの .venv を最優先（macOS 既定の python3 は 3.9 のことがある）
+PY=
+if [ -x "$ROOT/.venv/bin/python" ]; then
+  PY="$ROOT/.venv/bin/python"
+  echo "[OK] Python（.venv）: $PY"
+elif command -v python3 >/dev/null 2>&1; then
+  PY="$(command -v python3)"
+  echo "[OK] Python 3（PATH）: $PY"
+else
+  echo "[NG] Python 3 も .venv/bin/python も見つかりません"
+  ok=1
+fi
+
+if [ -n "${PY}" ]; then
+  pyver=$("$PY" -c 'import sys; print("%d.%d" % sys.version_info[:2])')
+  echo "     バージョン: $($PY --version 2>&1)"
+  if "$PY" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 10) else 1)' 2>/dev/null; then
     :
   else
     echo "[WARN] Python 3.10 以上を推奨します（現在 ${pyver}）"
@@ -46,7 +46,16 @@ if command -v python3 >/dev/null 2>&1; then
   fi
 fi
 
-check_cmd "pip（venv 内推奨）" "pip" "python3 -m pip install -r requirements.txt"
+if [ -x "$ROOT/.venv/bin/pip" ]; then
+  echo "[OK] pip（.venv）: $ROOT/.venv/bin/pip"
+elif command -v pip >/dev/null 2>&1; then
+  echo "[OK] pip（PATH）: $(command -v pip)"
+elif command -v python3 >/dev/null 2>&1 && python3 -m pip --version >/dev/null 2>&1; then
+  echo "[OK] pip（python3 -m pip）"
+else
+  echo "[NG] pip が見つかりません: .venv を作り直すか python3 -m pip install -r requirements.txt"
+  ok=1
+fi
 check_cmd "Node.js（npm / Next ビルド用）" "node" "https://nodejs.org/"
 check_cmd "npm" "npm" "Node に同梱"
 
@@ -54,6 +63,9 @@ check_cmd "npm" "npm" "Node に同梱"
 if command -v agent >/dev/null 2>&1; then
   echo "[OK] Cursor CLI (agent): $(command -v agent)"
   agent --version 2>/dev/null || true
+  echo "     --- agent whoami ---"
+  agent whoami 2>/dev/null | sed 's/^/     /' || echo "     (whoami 失敗)"
+  echo "     注: agent -p（本 bot の TEXT_LLM）は IDE とは別枠の利用上限になることがあります"
 elif [ -x "$HOME/.local/bin/agent" ]; then
   echo "[WARN] agent は ~/.local/bin にありますが PATH に通っていません"
   echo "       export PATH=\"\$HOME/.local/bin:\$PATH\""

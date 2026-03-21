@@ -13,22 +13,14 @@ logger = logging.getLogger(__name__)
 
 def sanitize_github_repo_name(partner_name: str, record_number: str) -> str:
     """
-    GitHub リポジトリ名: 「レコード番号-パートナー名」（英数字・ハイフンのみ）。
+    GitHub リポジトリ名: ``test-{レコード番号}``（レコードは英数字のみ抽出）。
 
-    パートナー名が日本語のみ等で空に近い場合は `site` をプレースホルダに使う。
+    ``partner_name`` は後方互換のため引数に残すが、名前には使わない。
     GitHub の名前長上限（100）に収める。
     """
+    _ = partner_name  # API 互換（main から従来どおり渡す）
     rec = re.sub(r"[^a-zA-Z0-9]", "", str(record_number).strip()) or "0"
-    raw = (partner_name or "").strip()
-    partner_ascii = re.sub(r"[^a-zA-Z0-9]+", "-", raw)
-    partner_ascii = re.sub(r"-+", "-", partner_ascii).strip("-").lower()
-    if not partner_ascii:
-        partner_ascii = "site"
-    # "{rec}-{partner}" が 100 文字以内
-    prefix = f"{rec}-"
-    max_partner_len = max(1, 100 - len(prefix))
-    partner_ascii = partner_ascii[:max_partner_len].rstrip("-") or "site"
-    name = f"{prefix}{partner_ascii}"
+    name = f"test-{rec}"
     if len(name) > 100:
         name = name[:100].rstrip("-")
     return name

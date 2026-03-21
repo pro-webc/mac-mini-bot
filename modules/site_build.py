@@ -8,11 +8,19 @@ import shutil
 import subprocess
 from pathlib import Path
 
+from config.config import TEMPLATE_DIR
+
 logger = logging.getLogger(__name__)
 
 
 def run_npm_install(site_dir: Path, timeout_sec: int = 600) -> tuple[bool, str]:
     """npm ci（推奨）または npm install を実行"""
+    if not site_dir.is_dir():
+        return False, f"サイトディレクトリが存在しません: {site_dir}"
+    _ensure_package_json(site_dir)
+    if not (site_dir / "package.json").is_file():
+        return False, f"package.json が見つかりません: {site_dir / 'package.json'}"
+
     npm = shutil.which("npm")
     if not npm:
         return False, "npm が PATH にありません。Node.js をインストールしてください。"
@@ -38,8 +46,30 @@ def run_npm_install(site_dir: Path, timeout_sec: int = 600) -> tuple[bool, str]:
         return False, str(e)
 
 
+def _ensure_package_json(site_dir: Path) -> None:
+    """package.json 欠落時はテンプレートから最小復元する。"""
+    if not site_dir.is_dir():
+        logger.warning("site_dir が存在しないため package.json 復元をスキップ: %s", site_dir)
+        return
+    pkg = site_dir / "package.json"
+    if pkg.is_file():
+        return
+    template_pkg = TEMPLATE_DIR / "nextjs_template" / "package.json"
+    if not template_pkg.is_file():
+        return
+    text = template_pkg.read_text(encoding="utf-8").replace("{{SITE_NAME}}", site_dir.name)
+    pkg.write_text(text, encoding="utf-8")
+    logger.warning("package.json が欠落していたためテンプレートから復元: %s", pkg)
+
+
 def run_npm_build(site_dir: Path, timeout_sec: int = 900) -> tuple[bool, str]:
     """npm run build"""
+    if not site_dir.is_dir():
+        return False, f"サイトディレクトリが存在しません: {site_dir}"
+    _ensure_package_json(site_dir)
+    if not (site_dir / "package.json").is_file():
+        return False, f"package.json が見つかりません: {site_dir / 'package.json'}"
+
     npm = shutil.which("npm")
     if not npm:
         return False, "npm が PATH にありません。"
@@ -156,6 +186,7 @@ def run_npm_lint(site_dir: Path, timeout_sec: int = 300) -> tuple[bool, str]:
 
 def verify_site_build(site_dir: Path, skip_install: bool = False) -> tuple[bool, str]:
     """install → build を連続実行（skip_install=True で node_modules 既存時の再ビルドのみ）"""
+    _ensure_package_json(site_dir)
     if not skip_install:
         ok, log = run_npm_install(site_dir)
         if not ok:

@@ -1,23 +1,193 @@
-"""仕様書生成モジュール"""
+"""第2段・サイト台本生成（Markdown + 末尾 YAML）。レガシー仕様 JSON も解釈可。
+
+正常ルート以外でのフォールバックは行わない（README「エラー処理の原則」参照）。
+"""
+from __future__ import annotations
+
 import json
 import logging
 import re
-from typing import Dict, List, Optional
+from typing import Any, Dict, Optional
 
 import requests
-from config.config import (
-    get_common_technical_spec,
-    get_common_technical_spec_prompt_block,
-)
+from config.config import get_common_technical_spec, get_contract_plan_info
+from config.prompt_settings import format_prompt, get_prompt_str, get_technical_spec_prompt_block
+from modules.site_script_parse import parse_llm_spec_or_site_script
 from modules.text_llm import is_text_llm_configured, text_llm_complete
 
 logger = logging.getLogger(__name__)
 
+# パース不能時の user 追記（最大 1 回だけ再 LLM）
+_SPEC_SCRIPT_RETRY_USER_SUFFIX = """
+
+---
+## 出力形式の再指定（必須）
+直前の応答はパイプラインが解釈できませんでした。次を **両方** 満たしてください。
+
+1. **先頭から Markdown サイト台本**（`#` / `##` でセクション化した顧客向けコピー全文。複数ページは `## ページ: /about` で区切る）
+2. **応答の最後に 1 つだけ** fenced:
+
+```yaml
+site_overview:
+  site_name: "必須・非空"
+  purpose: "..."
+  target_users: "..."
+design_spec:
+  color_scheme:
+    background: "#fafaf9"
+    primary: "#0f766e"
+    text: "#0f172a"
+    border: "#e2e8f0"
+    primary_foreground: "#ffffff"
+  typography: {}
+  layout_mood: "..."
+  design_principles: ["..."]
+ux_spec:
+  primary_conversion: { label: "...", action: "..." }
+  secondary_actions: []
+  navigation_model: "..."
+  trust_placement: "..."
+  mobile_notes: "..."
+function_spec: {}
+image_placeholder_slots:
+  - { page_path: "/", section_id: "hero", description: "具体的な画角・被写体", aspect_hint: "16:9" }
+  - { page_path: "/", section_id: "sub1", description: "...", aspect_hint: "4:3" }
+  - { page_path: "/", section_id: "sub2", description: "...", aspect_hint: "16:9" }
+```
+
+- YAML 以外の本文は **最低でも数段落・複数見出し**（80文字以上）
+- 先頭から `{` で始まる **JSON だけ**の応答はこの段では **禁止**（第2段は台本＋末尾 YAML）
+"""
+
+
+def _briefing_value_as_text(v: Any) -> str:
+    if isinstance(v, (dict, list)):
+        try:
+            return json.dumps(v, ensure_ascii=False)
+        except (TypeError, ValueError):
+            return str(v)
+    return str(v)
+
+
+def _plan_info_as_briefing_lines(plan_info: Dict[str, Any]) -> str:
+    lines: list[str] = []
+    for k in sorted(plan_info.keys()):
+        v = plan_info.get(k)
+        if v is None or v == "":
+            continue
+        lines.append(f"- {k}: {_briefing_value_as_text(v)}")
+    return "\n".join(lines) if lines else "（項目なし）"
+
+
+def compose_spec_input_briefing(
+    *,
+    partner_name: str,
+    contract_plan: str,
+    contract_pages: int,
+    page_rule: str,
+    plan_info: Dict[str, Any],
+    hearing_sheet_content: str,
+    site_build_prompt: str,
+    requirements_result: Dict[str, Any],
+    max_chars: int = 120_000,
+) -> str:
+    """
+    第2段 LLM へ渡す入力を **JSONではなくプレーンテキスト1本**にまとめる。
+    （第2段の出力は Markdown サイト台本＋末尾 YAML。レガシー運用では JSON のみも解釈可）
+    """
+    chunks: list[str] = []
+    chunks.append("【パートナー名】")
+    chunks.append((partner_name or "").strip() or "（未記入）")
+    chunks.append("")
+    chunks.append("【契約プラン（システム）】")
+    chunks.append((contract_plan or "").strip() or "（未記入）")
+    chunks.append("")
+    chunks.append("【契約ページ数（厳守・変更禁止）】")
+    chunks.append(str(contract_pages))
+    chunks.append("")
+    chunks.append("【ページ構成に関する指示】")
+    chunks.append(page_rule.strip())
+    chunks.append("")
+    chunks.append("【契約プラン詳細（システム・テキスト化）】")
+    chunks.append(_plan_info_as_briefing_lines(plan_info))
+    chunks.append("")
+    chunks.append("【ヒアリング原文】")
+    chunks.append((hearing_sheet_content or "").strip() or "（空）")
+    chunks.append("")
+    chunks.append("【第1段・サイト制作マスタープロンプト（最優先）】")
+    chunks.append(site_build_prompt.strip())
+    chunks.append("")
+
+    pt = requirements_result.get("plan_type")
+    if pt:
+        chunks.append("【システム確定 plan_type】")
+        chunks.append(str(pt))
+        chunks.append("")
+
+    cm = requirements_result.get("contract_max_pages")
+    if cm is not None:
+        chunks.append("【contract_max_pages（参照）】")
+        chunks.append(str(cm))
+        chunks.append("")
+
+    cv = requirements_result.get("client_voice")
+    if isinstance(cv, str) and cv.strip():
+        sbp_head = site_build_prompt.strip()[:400]
+        if cv.strip()[:400] != sbp_head:
+            chunks.append("【第1段・client_voice（補足・テキスト）】")
+            chunks.append(cv.strip())
+            chunks.append("")
+
+    ibn = requirements_result.get("internal_build_notes")
+    if isinstance(ibn, list) and ibn:
+        chunks.append("【第1段・内部メモ（サイト非掲載・参照のみ）】")
+        for x in ibn:
+            if x is not None and str(x).strip():
+                chunks.append(f"- {x}")
+        chunks.append("")
+
+    oq = requirements_result.get("open_questions")
+    if isinstance(oq, list) and oq:
+        chunks.append("【要確認事項】")
+        for x in oq:
+            if x is not None and str(x).strip():
+                chunks.append(f"- {x}")
+        chunks.append("")
+
+    facts = requirements_result.get("facts")
+    if isinstance(facts, dict) and facts:
+        chunks.append("【第1段・補足ファクト（テキスト化）】")
+        for fk, fv in facts.items():
+            if fv is None or fv == "":
+                continue
+            if isinstance(fv, list):
+                chunks.append(f"- {fk}:")
+                for it in fv:
+                    chunks.append(f"  - {it}")
+            else:
+                chunks.append(f"- {fk}: {_briefing_value_as_text(fv)}")
+        chunks.append("")
+
+    out = "\n".join(chunks).strip()
+    if len(out) > max_chars:
+        logger.warning(
+            "第2段ブリーフが長いため %s 文字に切り詰めました（元 %s）",
+            max_chars,
+            len(out),
+        )
+        half = max_chars // 2 - 80
+        out = (
+            out[:half]
+            + "\n\n…[truncated]…\n\n"
+            + out[-half:]
+        )
+    return out
+
 
 class SpecGenerator:
-    """ヒアリングシート、要望、契約プランから仕様書を生成"""
-    
-    def __init__(self):
+    """ヒアリング・第1段ブリーフからサイト台本（＋YAMLメタ）を生成。内部API名は互換のため generate_spec のまま。"""
+
+    def __init__(self) -> None:
         if not is_text_llm_configured():
             raise ValueError(
                 "テキスト LLM が未設定です。"
@@ -27,7 +197,7 @@ class SpecGenerator:
 
     def _llm(self, prompt: str, system: str, temperature: float = 0.3) -> str:
         return text_llm_complete(user=prompt, system=system, temperature=temperature)
-    
+
     def _merge_common_technical_spec(self, extra: Optional[Dict] = None) -> Dict:
         """全プラン共通の技術要件を technical_spec に統合（スタックと共通要件は常に上書き固定）"""
         merged: Dict = {}
@@ -41,7 +211,7 @@ class SpecGenerator:
         ]
         merged["common_requirements"] = get_common_technical_spec()
         return merged
-    
+
     def _apply_common_technical_to_spec(self, spec: Dict) -> Dict:
         """LLM出力の仕様書に共通技術要件をマージ"""
         ts = spec.get("technical_spec")
@@ -50,14 +220,14 @@ class SpecGenerator:
         else:
             spec["technical_spec"] = self._merge_common_technical_spec()
         return spec
-    
+
     def fetch_hearing_sheet(self, url: str) -> Optional[str]:
         """
         ヒアリングシートの内容を取得
-        
+
         Args:
             url: ヒアリングシートURL
-            
+
         Returns:
             ヒアリングシートの内容（テキスト）
         """
@@ -93,707 +263,112 @@ class SpecGenerator:
                 response = requests.get(raw, timeout=60)
                 if response.status_code == 200:
                     return response.text
-            
+
             return None
         except Exception as e:
             logger.error(f"ヒアリングシート取得エラー: {e}")
             return None
-    
+
     def generate_spec(
         self,
         hearing_sheet_content: str,
         requirements_result: Dict,
         contract_plan: str,
-        partner_name: str
-    ) -> Dict:
-        """
-        仕様書を生成
-        
-        Args:
-            hearing_sheet_content: ヒアリングシートの内容
-            requirements_result: 抽出された要望と分析結果（BASIC LPの場合は詳細情報を含む）
-            contract_plan: 契約プラン
-            partner_name: パートナー名
-            
-        Returns:
-            仕様書（辞書形式）
-        """
-        # BASIC LPプランの場合
-        if requirements_result.get("plan_type") == "basic_lp":
-            return self._generate_basic_lp_spec(requirements_result, contract_plan, partner_name)
-        
-        # BASICプラン（1ページコーポレートサイト）の場合
-        if requirements_result.get("plan_type") == "basic":
-            return self._generate_basic_spec(requirements_result, contract_plan, partner_name)
-        
-        # STANDARD / ADVANCE（複数ページ）の場合
-        if requirements_result.get("plan_type") in ("standard", "advance"):
-            return self._generate_multi_page_spec(requirements_result, contract_plan, partner_name)
-        
-        # その他のプランの場合
-        requirements = requirements_result.get("requirements", {})
-        requirements_text = self._format_requirements(requirements)
-        
-        prompt = f"""
-以下の情報から、Webサイトの詳細な仕様書を作成してください。
-
-【パートナー名】
-{partner_name}
-
-【契約プラン】
-{contract_plan}
-
-【ヒアリングシート内容】
-{hearing_sheet_content}
-
-【抽出された要望】
-{requirements_text}
-
-以下の項目を含む詳細な仕様書をJSON形式で作成してください：
-
-1. サイト概要
-   - サイト名
-   - 目的
-   - ターゲットユーザー
-
-2. デザイン仕様
-   - カラースキーム（ベースカラー、メインカラー、アクセントカラー）
-   - タイポグラフィ（フォント、サイズ）
-   - レイアウトスタイル
-   - レスポンシブ対応
-
-3. ページ構成
-   - 各ページのURL、タイトル、説明
-   - ページ階層
-
-4. 機能仕様
-   - 各機能の詳細説明
-   - 実装方法
-
-5. コンテンツ仕様
-   - 各セクションの内容
-   - 画像要件
-   - テキスト要件
-
-6. 技術仕様
-   - 使用技術スタック
-   - パフォーマンス要件
-   - SEO要件
-
-{get_common_technical_spec_prompt_block()}
-
-JSON形式で出力してください。
-"""
-        
-        try:
-            result_text = self._llm(
-                prompt,
-                "あなたはWebサイトの仕様書を作成する専門家です。",
-                0.3,
-            )
-            
-            # JSONをパース
-            import re
-            json_match = re.search(r'\{.*\}', result_text, re.DOTALL)
-            if json_match:
-                spec = json.loads(json_match.group())
-                spec = self._apply_common_technical_to_spec(spec)
-            else:
-                # フォールバック: 基本的な仕様書構造を返す
-                spec = self._create_default_spec(partner_name, contract_plan, requirements_text)
-            
-            logger.info("仕様書の生成が完了しました")
-            return spec
-            
-        except Exception as e:
-            logger.error(f"仕様書生成エラー: {e}")
-            # エラー時はデフォルト仕様書を返す
-            return self._create_default_spec(partner_name, contract_plan, requirements_text)
-    
-    def _format_requirements(self, requirements: Dict[str, list]) -> str:
-        """要望をテキスト形式にフォーマット"""
-        text = ""
-        category_names = {
-            "design_requirements": "デザイン要望",
-            "function_requirements": "機能要望",
-            "content_requirements": "コンテンツ要望",
-            "technical_requirements": "技術要望",
-            "other_requirements": "その他要望"
-        }
-        
-        for category, items in requirements.items():
-            if items:
-                text += f"\n【{category_names.get(category, category)}】\n"
-                for item in items:
-                    text += f"- {item}\n"
-        
-        return text
-    
-    def _create_default_spec(
-        self,
-        partner_name: str,
-        contract_plan: str,
-        requirements_text: str
-    ) -> Dict:
-        """デフォルト仕様書を作成"""
-        return {
-            "site_overview": {
-                "site_name": f"{partner_name} 公式サイト",
-                "purpose": "企業情報の提供とお問い合わせ",
-                "target_users": "一般ユーザー"
-            },
-            "design_spec": {
-                "color_scheme": {
-                    "base_color": "#FFFFFF",
-                    "main_color": "#333333",
-                    "accent_color": "#0066CC"
-                },
-                "typography": {
-                    "font_family": "Noto Sans JP, sans-serif",
-                    "base_size": "16px"
-                },
-                "layout_style": "モダンでクリーン",
-                "responsive": True
-            },
-            "page_structure": [
-                {
-                    "url": "/",
-                    "title": "トップページ",
-                    "description": "メインビジュアル、サービス紹介、お問い合わせ"
-                }
-            ],
-            "function_spec": [],
-            "content_spec": {
-                "sections": [],
-                "image_requirements": [],
-                "text_requirements": []
-            },
-            "technical_spec": self._merge_common_technical_spec(
-                {
-                    "performance": "Lighthouse 90点以上",
-                    "seo": "基本的なSEO対策を実装",
-                }
-            ),
-        }
-    
-    def _generate_basic_lp_spec(
-        self,
-        requirements_result: Dict,
-        contract_plan: str,
-        partner_name: str
-    ) -> Dict:
-        """BASIC LPプラン用の仕様書を生成"""
-        extracted_info = requirements_result.get("extracted_info", {})
-        analysis = requirements_result.get("analysis", {})
-        wireframe = requirements_result.get("wireframe", {})
-        lp_content = requirements_result.get("lp_content", {})
-        
-        # デザイン要件を定義
-        design_requirements = self._define_design_requirements(
-            extracted_info,
-            analysis,
-            requirements_result
-        )
-        
-        # 仕様書を構築
-        spec = {
-            "site_overview": {
-                "site_name": extracted_info.get("company_info", {}).get("service_name", f"{partner_name} LP"),
-                "purpose": "ランディングページによるコンバージョン獲得",
-                "target_users": analysis.get("target_analysis", {}).get("core_target", ""),
-                "plan_type": "basic_lp"
-            },
-            "design_spec": design_requirements,
-            "page_structure": [
-                {
-                    "url": "/",
-                    "title": "ランディングページ",
-                    "description": "1ページ完結型のLP",
-                    "sections": wireframe.get("sections", [])
-                }
-            ],
-            "function_spec": {
-                "contact_form": lp_content.get("form", {}),
-                "cta_buttons": self._extract_cta_buttons(lp_content)
-            },
-            "content_spec": {
-                "sections": lp_content.get("sections", []),
-                "image_requirements": self._extract_image_requirements(lp_content),
-                "text_requirements": self._extract_text_requirements(lp_content)
-            },
-            "technical_spec": self._merge_common_technical_spec(
-                {
-                    "performance": "Lighthouse 90点以上",
-                    "seo": "基本的なSEO対策を実装",
-                    "conversion_tracking": "コンバージョン計測の実装",
-                }
-            ),
-            "analysis": analysis,
-            "extracted_info": extracted_info,
-            "wireframe": wireframe,
-            "lp_content": lp_content
-        }
-        
-        logger.info("BASIC LP仕様書の生成が完了しました")
-        return spec
-    
-    def _define_design_requirements(
-        self,
-        extracted_info: Dict,
-        analysis: Dict,
-        requirements_result: Dict
-    ) -> Dict:
-        """デザイン要件を定義"""
-        prompt = f"""
-以下の情報から、LPのデザイン要件を定義してください。
-
-【抽出された情報】
-{json.dumps(extracted_info, ensure_ascii=False, indent=2)}
-
-【分析結果】
-{json.dumps(analysis, ensure_ascii=False, indent=2)}
-
-これまでの情報整理やヒアリングシート等の要望から、以下のデザイン要件を定義してください：
-
-1. カラースキーム（ベースカラー、メインカラー、アクセントカラー）
-2. タイポグラフィ（フォント、サイズ）
-3. レイアウトスタイル
-4. レスポンシブ対応
-5. 画像・イラストのスタイル
-6. CTAボタンのデザイン
-
-{get_common_technical_spec_prompt_block()}
-
-JSON形式で出力してください：
-{{
-  "color_scheme": {{
-    "base_color": "#FFFFFF",
-    "main_color": "#333333",
-    "accent_color": "#0066CC"
-  }},
-  "typography": {{
-    "font_family": "Noto Sans JP, sans-serif",
-    "base_size": "16px",
-    "heading_sizes": {{
-      "h1": "2.5rem",
-      "h2": "2rem",
-      "h3": "1.5rem"
-    }}
-  }},
-  "layout_style": "モダンでクリーン",
-  "responsive": true,
-  "image_style": "画像スタイルの説明",
-  "cta_button_style": "CTAボタンのデザイン説明"
-}}
-"""
-        
-        try:
-            result_text = self._llm(
-                prompt,
-                "あなたはLPデザインの専門家です。",
-                0.3,
-            )
-            
-            # JSONをパース
-            import re
-            json_match = re.search(r'\{.*\}', result_text, re.DOTALL)
-            if json_match:
-                design_requirements = json.loads(json_match.group())
-            else:
-                design_requirements = {
-                    "color_scheme": {
-                        "base_color": "#FFFFFF",
-                        "main_color": "#333333",
-                        "accent_color": "#0066CC"
-                    },
-                    "typography": {
-                        "font_family": "Noto Sans JP, sans-serif",
-                        "base_size": "16px"
-                    },
-                    "layout_style": "モダンでクリーン",
-                    "responsive": True
-                }
-            
-            return design_requirements
-            
-        except Exception as e:
-            logger.error(f"デザイン要件定義エラー: {e}")
-            return {
-                "color_scheme": {
-                    "base_color": "#FFFFFF",
-                    "main_color": "#333333",
-                    "accent_color": "#0066CC"
-                },
-                "typography": {
-                    "font_family": "Noto Sans JP, sans-serif",
-                    "base_size": "16px"
-                },
-                "layout_style": "モダンでクリーン",
-                "responsive": True
-            }
-    
-    def _extract_cta_buttons(self, lp_content: Dict) -> List[Dict]:
-        """CTAボタンを抽出"""
-        cta_buttons = []
-        for section in lp_content.get("sections", []):
-            if section.get("content", {}).get("cta"):
-                cta_buttons.append(section["content"]["cta"])
-        return cta_buttons
-    
-    def _extract_image_requirements(self, lp_content: Dict) -> List[Dict]:
-        """画像要件を抽出"""
-        image_requirements = []
-        for section in lp_content.get("sections", []):
-            images = section.get("content", {}).get("images", [])
-            image_requirements.extend(images)
-        return image_requirements
-    
-    def _extract_text_requirements(self, lp_content: Dict) -> List[str]:
-        """テキスト要件を抽出"""
-        text_requirements = []
-        for section in lp_content.get("sections", []):
-            text = section.get("content", {}).get("text", "")
-            if text:
-                text_requirements.append(text)
-        return text_requirements
-    
-    def _generate_basic_spec(
-        self,
-        requirements_result: Dict,
-        contract_plan: str,
-        partner_name: str
-    ) -> Dict:
-        """BASICプラン（1ページコーポレートサイト）用の仕様書を生成"""
-        extracted_info = requirements_result.get("extracted_info", {})
-        site_structure = requirements_result.get("site_structure", {})
-        site_content = requirements_result.get("site_content", {})
-        
-        # デザイン要件を定義
-        design_requirements = self._define_basic_design_requirements(
-            extracted_info,
-            requirements_result
-        )
-        
-        # 仕様書を構築
-        spec = {
-            "site_overview": {
-                "site_name": extracted_info.get("company_info", {}).get("service_name", f"{partner_name} 公式サイト"),
-                "purpose": extracted_info.get("site_purpose", {}).get("purpose", "企業情報の提供とお問い合わせ"),
-                "target_users": extracted_info.get("target_persona", {}).get("target", ""),
-                "plan_type": "basic",
-                "pages": 1
-            },
-            "design_spec": design_requirements,
-            "page_structure": [
-                {
-                    "url": "/",
-                    "title": "トップページ",
-                    "description": "1ページ完結型のコーポレートサイト",
-                    "sections": site_structure.get("sections", [])
-                }
-            ],
-            "function_spec": {
-                "contact_form": site_content.get("form", {}),
-                "cta_buttons": self._extract_basic_cta_buttons(site_content),
-                "service_tabs": self._check_service_tabs(extracted_info)
-            },
-            "content_spec": {
-                "sections": site_content.get("sections", []),
-                "image_requirements": self._extract_basic_image_requirements(site_content),
-                "text_requirements": self._extract_basic_text_requirements(site_content),
-                "services": extracted_info.get("what", {}).get("services", [])
-            },
-            "technical_spec": self._merge_common_technical_spec(
-                {
-                    "performance": "Lighthouse 90点以上",
-                    "seo": "基本的なSEO対策を実装",
-                }
-            ),
-            "extracted_info": extracted_info,
-            "site_structure": site_structure,
-            "site_content": site_content
-        }
-        
-        logger.info("BASIC仕様書の生成が完了しました")
-        return spec
-    
-    def _define_basic_design_requirements(
-        self,
-        extracted_info: Dict,
-        requirements_result: Dict
-    ) -> Dict:
-        """BASICプランのデザイン要件を定義"""
-        prompt = f"""
-以下の情報から、1ページコーポレートサイトのデザイン要件を定義してください。
-
-【抽出された情報】
-{json.dumps(extracted_info, ensure_ascii=False, indent=2)}
-
-スプレッドシートの情報からデザインを考え、以下のデザイン要件を定義してください：
-
-1. カラースキーム（ベースカラー、メインカラー、アクセントカラー）
-2. タイポグラフィ（フォント、サイズ）
-3. レイアウトスタイル
-4. レスポンシブ対応
-5. 画像・イラストのスタイル
-6. CTAボタンのデザイン
-7. サービスタブのデザイン（サービスが4つ以上ある場合）
-
-{get_common_technical_spec_prompt_block()}
-
-JSON形式で出力してください：
-{{
-  "color_scheme": {{
-    "base_color": "#FFFFFF",
-    "main_color": "#333333",
-    "accent_color": "#0066CC"
-  }},
-  "typography": {{
-    "font_family": "Noto Sans JP, sans-serif",
-    "base_size": "16px",
-    "heading_sizes": {{
-      "h1": "2.5rem",
-      "h2": "2rem",
-      "h3": "1.5rem"
-    }}
-  }},
-  "layout_style": "モダンでクリーン",
-  "responsive": true,
-  "image_style": "画像スタイルの説明",
-  "cta_button_style": "CTAボタンのデザイン説明",
-  "service_tab_style": "サービスタブのデザイン説明（該当する場合）"
-}}
-"""
-        
-        try:
-            result_text = self._llm(
-                prompt,
-                "あなたはコーポレートサイトデザインの専門家です。",
-                0.3,
-            )
-            
-            # JSONをパース
-            import re
-            json_match = re.search(r'\{.*\}', result_text, re.DOTALL)
-            if json_match:
-                design_requirements = json.loads(json_match.group())
-            else:
-                design_requirements = {
-                    "color_scheme": {
-                        "base_color": "#FFFFFF",
-                        "main_color": "#333333",
-                        "accent_color": "#0066CC"
-                    },
-                    "typography": {
-                        "font_family": "Noto Sans JP, sans-serif",
-                        "base_size": "16px"
-                    },
-                    "layout_style": "モダンでクリーン",
-                    "responsive": True
-                }
-            
-            return design_requirements
-            
-        except Exception as e:
-            logger.error(f"BASICデザイン要件定義エラー: {e}")
-            return {
-                "color_scheme": {
-                    "base_color": "#FFFFFF",
-                    "main_color": "#333333",
-                    "accent_color": "#0066CC"
-                },
-                "typography": {
-                    "font_family": "Noto Sans JP, sans-serif",
-                    "base_size": "16px"
-                },
-                "layout_style": "モダンでクリーン",
-                "responsive": True
-            }
-    
-    def _extract_basic_cta_buttons(self, site_content: Dict) -> List[Dict]:
-        """BASICサイトのCTAボタンを抽出"""
-        cta_buttons = []
-        for section in site_content.get("sections", []):
-            if section.get("content", {}).get("cta"):
-                cta_buttons.append(section["content"]["cta"])
-        return cta_buttons
-    
-    def _check_service_tabs(self, extracted_info: Dict) -> bool:
-        """サービスタブが必要かチェック（サービスが4つ以上ある場合）"""
-        services = extracted_info.get("what", {}).get("services", [])
-        return len(services) >= 4
-    
-    def _extract_basic_image_requirements(self, site_content: Dict) -> List[Dict]:
-        """BASICサイトの画像要件を抽出"""
-        image_requirements = []
-        for section in site_content.get("sections", []):
-            images = section.get("content", {}).get("images", [])
-            image_requirements.extend(images)
-        return image_requirements
-    
-    def _extract_basic_text_requirements(self, site_content: Dict) -> List[str]:
-        """BASICサイトのテキスト要件を抽出"""
-        text_requirements = []
-        for section in site_content.get("sections", []):
-            text = section.get("content", {}).get("text", "")
-            if text:
-                text_requirements.append(text)
-        return text_requirements
-    
-    def _generate_multi_page_spec(
-        self,
-        requirements_result: Dict,
-        contract_plan: str,
-        partner_name: str
-    ) -> Dict:
-        """STANDARD / ADVANCE（複数ページ）の仕様書"""
-        extracted_info = requirements_result.get("extracted_info", {})
-        site_map = requirements_result.get("site_map", {})
-        max_pages = requirements_result.get("max_pages", 6)
-        plan_type = requirements_result.get("plan_type", "standard")
-        
-        design_spec = self._define_multi_page_design_requirements(
-            extracted_info,
-            site_map,
-            contract_plan,
-            partner_name,
-        )
-        
-        page_structure = self._site_map_to_page_structure(site_map)
-        
-        spec = {
-            "site_overview": {
-                "site_name": extracted_info.get("company_info", {}).get(
-                    "service_name",
-                    f"{partner_name} 公式サイト",
-                ),
-                "purpose": extracted_info.get("site_purpose", {}).get(
-                    "purpose",
-                    "コーポレートサイト（複数ページ）",
-                ),
-                "target_users": extracted_info.get("target_persona", {}).get("target", ""),
-                "plan_type": plan_type,
-                "contract_plan": contract_plan,
-                "max_pages": max_pages,
-            },
-            "design_spec": design_spec,
-            "page_structure": page_structure,
-            "information_architecture": site_map,
-            "function_spec": {
-                "contact_page_required": True,
-                "company_page_required": True,
-                "blog_page_policy": "不要ならサイトマップに含めない",
-                "navigation_rules": {
-                    "top_is_hub": True,
-                    "no_orphan_subpages": True,
-                    "no_same_page_only_cta": True,
-                    "contact_section_on_non_contact_pages": True,
-                },
-            },
-            "content_spec": {
-                "extracted_hearing": extracted_info,
-                "services": extracted_info.get("what", {}).get("services", []),
-            },
-            "technical_spec": self._merge_common_technical_spec(
-                {
-                    "performance": "Lighthouse 90点以上",
-                    "seo": "各下層ページのメタ情報・構造化データを設計",
-                }
-            ),
-        }
-        logger.info("複数ページ仕様書の生成が完了しました（%s）", plan_type)
-        return spec
-    
-    def _site_map_to_page_structure(self, site_map: Dict) -> List[Dict]:
-        """サイトマップを page_structure 配列に変換"""
-        out: List[Dict] = []
-        top = site_map.get("top_page") or {}
-        if top:
-            out.append(
-                {
-                    "url": top.get("path", "/"),
-                    "title": "TOP",
-                    "description": top.get("purpose", "下層への目次・導線"),
-                    "sections": top.get("sections", []),
-                }
-            )
-        for p in site_map.get("subpages") or []:
-            out.append(
-                {
-                    "url": p.get("path", ""),
-                    "title": p.get("title", ""),
-                    "description": p.get("role", ""),
-                    "sections": p.get("sections", []),
-                    "contact_cta_section": p.get("contact_cta_section", False),
-                }
-            )
-        return out
-    
-    def _define_multi_page_design_requirements(
-        self,
-        extracted_info: Dict,
-        site_map: Dict,
-        contract_plan: str,
         partner_name: str,
     ) -> Dict:
-        """スプレッドシート由来の整理情報とサイトマップからデザイン要件を定義"""
-        prompt = f"""
-以下の情報から、複数ページのコーポレートサイトのデザイン要件を定義してください。
-
-【パートナー名】{partner_name}
-【契約プラン】{contract_plan}
-
-【ヒアリング整理データ】
-{json.dumps(extracted_info, ensure_ascii=False, indent=2)}
-
-【サイトマップ・IA】
-{json.dumps(site_map, ensure_ascii=False, indent=2)}
-
-TOPは下層へのハブであること、サービスページはLP的なセクション構成になりうることを考慮し、
-トーン＆マナー、カラー、タイポ、コンポーネント方針、画像の雰囲気、ボタン・カードの統一ルールをJSONで出力してください。
-
-{get_common_technical_spec_prompt_block()}
-
-JSON形式:
-{{
-  "color_scheme": {{"base_color": "", "main_color": "", "accent_color": ""}},
-  "typography": {{"font_family": "", "base_size": "", "heading_policy": ""}},
-  "layout_style": "",
-  "responsive": true,
-  "component_guidelines": {{
-    "service_page_sections": "",
-    "hub_top_sections": "",
-    "navigation_buttons": ""
-  }},
-  "imagery_direction": ""
-}}
-"""
-        try:
-            result_text = self._llm(
-                prompt,
-                "あなたはコーポレートサイトのデザインシステム担当です。",
-                0.3,
+        """
+        サイト台本を生成（TEXT_LLM。パース失敗時は形式指定を付けて最大 1 回再試行）。
+        入力は `compose_spec_input_briefing` のブリーフ。出力は **Markdown + 末尾 ```yaml```**（またはレガシー仕様 JSON）。
+        """
+        plan_info = get_contract_plan_info(contract_plan)
+        contract_pages = int(plan_info.get("pages") or 1)
+        page_rule = (
+            "サイト台本は **トップ（/）のみ**の単一ページ構成とすること（`## ページ:` は `/` のみ）。"
+            if contract_pages <= 1
+            else (
+                f"サイト台本に **`## ページ: /...` でちょうど {contract_pages} 個のルート**（それぞれ一意のパス）を書くこと。"
+                "コンテンツが薄くてもページを統合・省略して数を減らさない。"
+                "トップを含め、一覧・詳細・問い合わせ等へ内容を配分してよい。"
             )
-            
-            import re
-            json_match = re.search(r"\{.*\}", result_text, re.DOTALL)
-            if json_match:
-                return json.loads(json_match.group())
+        )
+        sbp = (requirements_result.get("site_build_prompt") or "").strip()
+        if not sbp:
+            # 旧第1段JSON（site_build_prompt なし）との互換
+            cv = requirements_result.get("client_voice")
+            if isinstance(cv, str) and cv.strip():
+                sbp = (
+                    "【互換: 第1段に site_build_prompt が無いため client_voice を主入力とする】\n"
+                    + cv.strip()
+                )
+            else:
+                sbp = (
+                    "【互換: 第1段の要約のみ】\n"
+                    + json.dumps(requirements_result, ensure_ascii=False, indent=2)[:8000]
+                )
+        input_briefing_text = compose_spec_input_briefing(
+            partner_name=partner_name,
+            contract_plan=contract_plan,
+            contract_pages=contract_pages,
+            page_rule=page_rule,
+            plan_info=plan_info,
+            hearing_sheet_content=hearing_sheet_content or "",
+            site_build_prompt=sbp,
+            requirements_result=requirements_result,
+        )
+        prompt = format_prompt(
+            "spec_generation.user_template",
+            contract_pages=str(contract_pages),
+            input_briefing_text=input_briefing_text,
+            technical_block=get_technical_spec_prompt_block(),
+        )
+        system = get_prompt_str("spec_generation.system")
+        try:
+            raw = self._llm(prompt, system, 0.25)
         except Exception as e:
-            logger.error("複数ページデザイン要件定義エラー: %s", e)
-        
-        return {
-            "color_scheme": {
-                "base_color": "#FFFFFF",
-                "main_color": "#333333",
-                "accent_color": "#0066CC",
-            },
-            "typography": {
-                "font_family": "Noto Sans JP, sans-serif",
-                "base_size": "16px",
-            },
-            "layout_style": "モダンでクリーン、TOPは導線重視",
-            "responsive": True,
-            "component_guidelines": {},
-            "imagery_direction": "",
-        }
+            raise RuntimeError(
+                "仕様書生成: TEXT_LLM の呼び出しに失敗しました（modules.spec_generator.generate_spec）。"
+                f" 原因: {e}"
+            ) from e
+
+        if not (raw or "").strip():
+            raise RuntimeError(
+                "サイト台本生成: LLM の応答が空です（modules.spec_generator.generate_spec）。"
+            )
+
+        try:
+            data, mode = parse_llm_spec_or_site_script(raw)
+        except ValueError as e:
+            logger.warning("サイト台本生成: 初回パース失敗 (%s)。形式再指定で再試行します。", e)
+            try:
+                raw2 = self._llm(prompt + _SPEC_SCRIPT_RETRY_USER_SUFFIX, system, 0.15)
+            except Exception as e2:
+                raise RuntimeError(
+                    "サイト台本生成: 再試行の TEXT_LLM 呼び出しに失敗しました（modules.spec_generator.generate_spec）。"
+                    f" 原因: {e2}"
+                ) from e2
+            if not (raw2 or "").strip():
+                raise RuntimeError(
+                    "サイト台本生成: 再試行の応答が空です（modules.spec_generator.generate_spec）。"
+                )
+            raw = raw2
+            try:
+                data, mode = parse_llm_spec_or_site_script(raw)
+            except ValueError as e3:
+                raise RuntimeError(
+                    "サイト台本生成: 再試行後もパースできませんでした（modules.spec_generator）。"
+                    f" 原因: {e3} 応答先頭: {(raw or '')[:800]!r}"
+                ) from e3
+
+        if not isinstance(data, dict) or not data.get("site_overview"):
+            raise RuntimeError(
+                "サイト台本生成: 内部エラー（site_overview なし）（modules.spec_generator）。"
+            )
+
+        if mode == "site_script":
+            logger.info(
+                "サイト台本生成完了（Markdown+YAML） site_script_chars=%s",
+                len((data.get("site_script_md") or "")),
+            )
+        else:
+            logger.info("仕様書 JSON（レガシー）を解釈しました（spec_generator）")
+        return self._apply_common_technical_to_spec(data)

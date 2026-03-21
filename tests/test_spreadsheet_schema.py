@@ -46,14 +46,14 @@ def test_invalid_column() -> None:
 
 
 def test_quote_sheet_name_for_a1() -> None:
-    assert quote_sheet_name_for_a1("Sheet1") == "'Sheet1'"
+    assert quote_sheet_name_for_a1("Sheet1") == "Sheet1"
     assert quote_sheet_name_for_a1("案件一覧") == "'案件一覧'"
     assert quote_sheet_name_for_a1("O'Reilly") == "'O''Reilly'"
     assert quote_sheet_name_for_a1("MyData") == "MyData"
 
 
 def test_a1_range() -> None:
-    assert a1_range("Sheet1", "1:1") == "'Sheet1'!1:1"
+    assert a1_range("Sheet1", "1:1") == "Sheet1!1:1"
     assert a1_range("データ", "A:Z") == "'データ'!A:Z"
 
 

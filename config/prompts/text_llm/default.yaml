@@ -1,0 +1,2 @@
+# TEXT_LLM 既定 system（system 引数省略時）
+default_system: "あなたは指示に従うアシスタントです。"

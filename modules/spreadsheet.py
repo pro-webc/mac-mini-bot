@@ -139,7 +139,9 @@ class SpreadsheetClient:
                     scopes=scopes,
                     quota_project_id=quota,
                 )
-                self.service = build("sheets", "v4", credentials=credentials)
+                self.service = build(
+                    "sheets", "v4", credentials=credentials, cache_discovery=False
+                )
                 logger.info(
                     "Google Sheets API 認証に成功しました "
                     "(application_default, spreadsheet_id=%s…, sheet=%r)",
@@ -158,7 +160,9 @@ class SpreadsheetClient:
                 scopes=scopes,
             )
 
-            self.service = build("sheets", "v4", credentials=credentials)
+            self.service = build(
+                "sheets", "v4", credentials=credentials, cache_discovery=False
+            )
             logger.info(
                 "Google Sheets API 認証に成功しました (service_account, spreadsheet_id=%s…, sheet=%r)",
                 self.spreadsheet_id[:8] if self.spreadsheet_id else "",
@@ -187,9 +191,9 @@ class SpreadsheetClient:
             不一致メッセージのリスト（空なら OK）
         """
         mismatches: list[str] = []
-        # A1:AW1 のような列終端付きレンジは API で "Unable to parse range" になる環境があるため、
-        # 1 行目全体を行番号のみで取得する（Sheet1!1:1）
-        range_name = a1_range(self.sheet_name, "1:1")
+        # 行だけの 1:1 は Sheet1 のように末尾が数字のシート名と組み合わさると API が
+        # "Unable to parse range" になることがあるため、A1〜期待末尾列で明示する。
+        range_name = a1_range(self.sheet_name, f"A1:{self._data_range_end}1")
         try:
             result = (
                 self.service.spreadsheets()

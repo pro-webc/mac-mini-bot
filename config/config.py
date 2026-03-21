@@ -68,6 +68,15 @@ try:
 except ValueError:
     BOT_MAX_CASES = 0
 
+# mac-mini（AV）列のエラー表示の最大文字数（「エラー: 」を除く本文側の上限に近い挙動。50〜500）
+_raw_ai_err = os.getenv("SPREADSHEET_AI_STATUS_ERROR_MAX_LEN", "200").strip()
+try:
+    SPREADSHEET_AI_STATUS_ERROR_MAX_LEN = max(
+        50, min(500, int(_raw_ai_err, 10))
+    )
+except ValueError:
+    SPREADSHEET_AI_STATUS_ERROR_MAX_LEN = 200
+
 # API キー（画像生成など。テキストの要望・仕様・サイト実装は CLI のみ modules.text_llm）
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
@@ -84,10 +93,13 @@ IMAGE_GEN_ENABLED = os.getenv("IMAGE_GEN_ENABLED", "false").strip().lower() in (
     "true",
     "yes",
 )
-# openai | gemini | pillow （pillow=PILプレースホルダのみ・外部APIなし）
+# openai | gemini | pillow | cursor_agent_cli
+# cursor_agent_cli: TEXT_LLM と同じ CURSOR_AGENT_COMMAND。応答 JSON の png_base64 を PNG として保存
 _raw_igp = os.getenv("IMAGE_GEN_PROVIDER", "pillow").strip().lower()
 IMAGE_GEN_PROVIDER = (
-    _raw_igp if _raw_igp in ("openai", "gemini", "pillow") else "pillow"
+    _raw_igp
+    if _raw_igp in ("openai", "gemini", "pillow", "cursor_agent_cli")
+    else "pillow"
 )
 # 未設定時は IMAGE_GEN_ALLOW_FALLBACK_TO_MAIN_KEYS が true のときのみメインキーを使用
 IMAGE_GEN_API_KEY = os.getenv("IMAGE_GEN_API_KEY", "").strip()
@@ -109,6 +121,12 @@ IMAGE_GEN_AFTER_SITE = os.getenv("IMAGE_GEN_AFTER_SITE", "true").strip().lower()
 )
 IMAGE_GEN_OPENAI_MODEL = os.getenv("IMAGE_GEN_OPENAI_MODEL", "dall-e-3")
 IMAGE_GEN_DALLE_SIZE = os.getenv("IMAGE_GEN_DALLE_SIZE", "1024x1024")
+# true のとき、IMAGE_GEN_ENABLED=true でも当該プロセスでは画像生成・置換・画像後ビルドを行わない（.env は変えず1回限りスキップ）
+IMAGE_GEN_SKIP_RUN = os.getenv("IMAGE_GEN_SKIP_RUN", "false").strip().lower() in (
+    "1",
+    "true",
+    "yes",
+)
 
 # npm ビルド検証
 SITE_BUILD_ENABLED = os.getenv("SITE_BUILD_ENABLED", "true").strip().lower() in (
@@ -124,6 +142,10 @@ SITE_IMPLEMENTATION_ENABLED = os.getenv("SITE_IMPLEMENTATION_ENABLED", "true").s
     "true",
     "yes",
 )
+# true のとき、土台コピー後もテンプレ付属の app/about 等のデモルートを残す（既定 false: 契約ページ数とズレ防止のため削除）
+SITE_KEEP_TEMPLATE_APP_ROUTES = os.getenv(
+    "SITE_KEEP_TEMPLATE_APP_ROUTES", "false"
+).strip().lower() in ("1", "true", "yes")
 
 
 def resolve_image_gen_api_key(provider: str) -> str:
@@ -315,22 +337,10 @@ def get_common_technical_spec() -> dict:
 
 
 def get_common_technical_spec_prompt_block() -> str:
-    """LLMプロンプト用の技術要件テキストブロック"""
-    return """
-【技術要件（全プラン共通・必須遵守）】
-- Next.js (App Router), React, Tailwind CSS
-- セクション単位でコンポーネントを作成すること（1セクション=1コンポーネントを原則）
-- CSSの@import（Google Fonts等）は、CSSファイルまたは<style>の最上部に配置。:root・セレクタ・プロパティ等の他ルールより前。守らないとビルドエラー
-- 図解・表は画像ではなく、マークアップ＋Tailwindでコーディング生成
-- アイコン: 基本は Lucide React（https://lucide.dev/icons で実在する名前のみ import）。`Pipe` 等の存在しない名前は使わない（配管イメージは `Droplets` / `Wrench` / `Cable` 等）。SNSは Simple Icons。アイコンを画像プレースホルダにしない
-- Unsplash禁止。実画像は設置しない。画像プレースホルダー枠＋詳細説明で意図を示す。画像上に載せるテキストはオーバーレイとして表示
-- 所在地: Google Maps 埋め込み。マップエリアに画像・プレースホルダ禁止。対応エリア用の画像・イラストは禁止。所在地が明確ならピン表示
+    """LLMプロンプト用の技術要件テキストブロック（`config/prompts/common/`）。"""
+    from config.prompt_settings import get_technical_spec_prompt_block
 
-【スタイリング要件（全プラン共通）】
-- Tailwind中心の実装。CSS変数使用時も要素ごとに明示的に色指定
-- bodyの継承に頼らずテキスト要素ごとに色指定
-- ボタンは hover / active / disabled 等、状態ごとに色を明示
-"""
+    return get_technical_spec_prompt_block()
 
 
 # 出力ディレクトリを作成

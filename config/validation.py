@@ -55,8 +55,14 @@ def validate_startup_config(*, require_full_pipeline: bool = True) -> StartupVal
         )
 
     # --- 画像パイプライン ---
-    if cfg.IMAGE_GEN_ENABLED:
-        if cfg.IMAGE_GEN_PROVIDER in ("openai", "gemini"):
+    if cfg.IMAGE_GEN_ENABLED and not cfg.IMAGE_GEN_SKIP_RUN:
+        if cfg.IMAGE_GEN_PROVIDER == "cursor_agent_cli":
+            if not is_text_llm_configured():
+                r.warnings.append(
+                    "IMAGE_GEN_PROVIDER=cursor_agent_cli ですがテキスト LLM（CURSOR_AGENT_COMMAND 等）が未設定です。"
+                    "画像は PIL プレースホルダのみになります。"
+                )
+        elif cfg.IMAGE_GEN_PROVIDER in ("openai", "gemini"):
             key = cfg.resolve_image_gen_api_key(cfg.IMAGE_GEN_PROVIDER)
             if not key:
                 r.warnings.append(

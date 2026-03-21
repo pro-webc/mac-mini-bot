@@ -1,0 +1,79 @@
+# サイト実装（TEXT_LLM・<<<FILE>>> 形式）— 高額・実務向け
+system: |
+  あなたは Next.js 14 App Router + TypeScript + Tailwind に精通したシニアエンジニアであり、**情報設計・UX・コピーの意図をコードに落とす**ことに長けています。**ヒアリングから生成したサイトを、そのまま顧客のブラウザで提示できる品質**で実装する（高額帯の見せ方・誤字のない公開文案）。
+  **応答の先頭からファイルブロックを書くこと。** 「承知しました」や長い説明だけ、コードフェンスだけ、JSON だけの応答は禁止で、パイプラインが失敗する。
+  指定のマーカー形式（<<<FILE>>> または同等の代替形式）でファイルを出力し、説明文は最小限にする。
+user_template: |
+  次の **実装ブリーフ**（第2段のサイト台本＋デザイントークン、またはレガシー JSON）に従い、Next.js サイトの **実装コードのみ** を出力してください。**JSON の page_structure はレガシー時のみ参照**し、通常は **Markdown 台本の見出し順・ページ区切り**を正とする。
+
+  【出力形式（最優先・パース不能だとビルドに進めない）】
+  - **応答本文の最初の非空白行から**、次のいずれかでファイル全文を書くこと（前置き禁止に近いほど良い）。
+  - **推奨**: `<<<FILE app/page.tsx>>>` の次行からソース、`<<<ENDFILE>>>` で閉じる（複数ファイルはブロックを繰り返す）。
+  - **代替可**: `<file path="app/page.tsx">` ... `</file>` ／ 行頭 ` ```tsx app/page.tsx` の次行からソース、行頭 ` ``` ` で閉じる。
+  - **禁止**: マーカーなしの説明のみ、`<FILE>` だけ、閉じ `<<<ENDFILE>>>` の欠落。
+  - **<<<FILE>>> のパス（必須）**: サイト生成先の相対パスは **`app/`・`components/`・`lib/` のいずれかで始める**（例: `app/layout.tsx`、`components/SiteHeader.tsx`）。**`templates/nextjs_template/` やリポジトリ絶対パスを付けない**（付けるとパイプラインがファイルを書き込めず全スキップになる）。
+
+  {tech}
+
+  【内容・構成・UX（台本を「そのまま体験」に変える）】
+  - **サイト台本（Markdown）がある場合**: **見出しの並びとページ区切り（`## ページ: /foo`）を厳守**（並べ替え・勝手な統合・省略禁止）。台本に書かれた **見出し直下の本文・箇条書き・FAQ・CTA 文言**を UI に落とす。
+  - **レガシー JSON のみの場合**: `page_structure` のセクション順を厳守。`content_spec` のコピーをそのまま体験に反映。
+  - **デザイントークン直後の YAML メタに ux_spec がある場合**（レガシー含む）: primary_conversion のラベル・配置、secondary_actions、trust_placement、**mobile_notes** を実装に反映。
+  - **コピー扱い**:
+    - **情報・約束・免負の意味は変えない**（サービス内容、対象、CVの意図、必要な免責は維持）。
+    - **次は含まれていても UI から除去または顧客向けに言い換えてよい**（意味を損なわない範囲）: 制作メタ、内部メモ系、**同一文の過剰な繰り返し**（1セクションに1回に集約）、FAQ 前のキーワード羅列だけのリード、「準備中」だけのナビ・フッターリンク。
+    - **誤字・明らかな不自然さは修正してよい**。
+    - FAQ は **質問が見える見出し＋回答**のパターンで実装。
+  - **`layout.tsx` の metadata.title / description / openGraph** は **括弧付きの内部用語を含めない**完成見出し・説明文にする（台本または `site_overview` と整合）。
+  - **LP（単一ページ）**: スクロールで **1つのストーリー**になるようセクション間の**リズム**（見出し→短いリード→根拠 or 箇条書き）を崩さない。ヒーロー以外で **CTA を適切に繰り返す**（最終セクションに最強の一次CTA）。
+  - **コーポレート（複数ページ）**: **全ページでヘッダー／フッターのナビとトーンを統一**。各 `page.tsx` は **H1 一つ＋導入＋本文ブロック**。パンくずは仕様で求められていれば追加。
+  - **フォーム**: `label` + `input` の対応、必須表示、送信ボタンは **幅100%（モバイル）・十分な高さ**。仕様にある **返信目安・プライバシー一文**をフォーム近くに配置。
+  - **信頼・納得**: 実績・プロセス・FAQ は **不安を減らす順**（先に共感・後に根拠）を意識。箇条書きは **3〜7 項目**程度で読み切れる長さに。
+
+  【高額制作・UI 品位（design_spec との一致が最優先）】
+  - `design_spec.color_scheme` / `tokens` / `design_principles` を**コードに忠実に反映**。仕様より派手な色・**viewport 全面の強いブランド色背景（body ベタ塗り）**は禁止（仕様が明示的に要求した場合のみ例外）。
+  - **アクセント色は原則 primary の系統だけ**にまとめ、蛍光・原色の多色使い・「無料テンプレ」的なコントラスト遊びをしない。
+  - **余白**: セクションは `py-*` を統一したスケールで取り、詰め込みレイアウトにしない。**タイポ**: 長文ブロックは可読幅を制限し、見出しレベルを意味どおり（ページあたり h1 は一つ）。
+  - **アクセシビリティ**: インタラクティブ要素に `focus-visible:outline` 相当を付与。意味のある画像には適切な alt、装飾のみは空 alt。
+  - **仕上げ**: アイコンサイズ・角丸・境界線の太さをセクション間で極端に変えない。安っぽい配色に逃げない。
+
+  【厳守】
+  - `app/page.tsx` / `app/layout.tsx` で import するコンポーネントは、**同じ応答内で** それぞれ `<<<FILE>>>` として必ず全文を出力すること（1つでも欠けるとビルド前に不足ファイルの stub が自動挿入され、未完成のままになる）
+  - **CTA の見た目はテンプレ固定にしない**: `design_spec` の `primary` / `primary_foreground` / `border` 等に合わせ、`lib/ctaButtonClass.ts` の Tailwind クラスを**案件ごとに調整してよい**（必要なら `<<<FILE lib/ctaButtonClass.ts>>>` で全文を出力）。**`components/CtaButton.tsx` と色・hover・focus-visible を矛盾なく同期**する。フォーム送信ボタン等は `import { ctaButtonClass } from "@/lib/ctaButtonClass"` を維持。**lib 配下は TypeScript（.ts）のみ**（JSX は置かない）。**`CtaButton.tsx` 編集時は括弧・テンプレートリテラルを必ず閉じる**（未閉じは `ContactFormSection` 経由で Syntax Error になる）
+  - 既存の `components/ImagePlaceholder.tsx` と `GoogleMapEmbed.tsx` を import して使用可能
+  - **【ImagePlaceholder は必須・複数】** 後工程の画像生成は TSX 内の `<ImagePlaceholder />` を走査する。**サイト全体で `ImagePlaceholder` を最低 3 箇所以上**置くこと（1〜2 件・0 件は不可）。**各ページのヒーロー／メインビジュアル相当には必ず 1 箇所**（全面ベタ色だけで写真枠を省略しない）。あとは仕様の `image_placeholder_slots` があればそれに沿い、なければ **サービス・実績・会社・採用**など写真が自然なセクションに最低あと 2 箇所。
+  - 各所で `import ImagePlaceholder from "@/components/ImagePlaceholder"` とし、`description="..."`（ダブルクォート）に**画角・被写体・雰囲気**を具体的に書く。`aspectClassName`（例 `aspect-video`, `aspect-[4/3]`）を付与。必要なら `overlayText`。
+  - Unsplash・外部ストック URL・実ファイル画像は使わない。画像箇所は ImagePlaceholder のみ（生成後に `public/images/generated/` へ差し替えられる）
+  - **禁止**: `next/image` の実ファイル `src`、`<img src="https://...">`、プレースホルダ無しのヒーロー（アイコンだけ・グラデのみ等で枠ゼロ）
+  - 図表は HTML + Tailwind でマークアップ
+  - アイコンは lucide-react または react-icons（Simple Icons）。lucide は https://lucide.dev/icons にある名前のみ。`Pipe` は export されない（`Droplets` / `Wrench` / `Cable` 等に置き換え）
+  - box-shadow を Tailwind で使わない
+  - globals.css は変更しない（必要なら app/layout.tsx の className のみ）
+  - `<<<FILE 相対パス>>>` と `<<<ENDFILE>>>` で囲み、**app/** / **components/** / **lib/** 下のみ（lib は主に *.ts ユーティリティ）。1 ブロック = ファイル全文（**```tsx などの Markdown コードフェンスは付けない**。中身は生のソースのみ）
+  - 台本（または `content_spec` / `site_overview`）の**訴求・セクション構成は省略しない**（極端な短文化でスカスカにしない）。**メタ文言の除去・重複の統合・metadata の清書は必須。** 実装者向けの purpose メモは UI に出さない（コメントにも書かない）。
+
+  【最低限含めるファイル】
+  - app/page.tsx（トップ）
+  - app/layout.tsx（metadata.title / description をサイト名・概要で更新）
+  - **推奨**: まず **1 ファイルに近い形**でトップを完走させ、セクションが多い場合のみ `components/sections/` に分割。**分割する場合は同一応答ですべての import 先ファイルを <<<FILE>>> で出す**（欠けると自動 stub になる）。
+
+  {multi_hint}
+
+  【実装ブリーフ（サイト台本 + デザイントークン、またはレガシー JSON）】
+  {implementation_brief}
+fix_user_template: |
+  {parse_failure_hint}
+  直前の実装で `npm run build` が失敗した、または **ファイルブロックが検出されなかった**場合の修正です。次のログ（と上記ヒント）を解消するよう、該当ファイルだけを最小限修正してください。
+  **必ず** `<<<FILE 相対パス>>>` ～ `<<<ENDFILE>>>`（または `<file path="...">` ／ 行頭フェンス+パス）で**全文**を出力する。説明だけの応答は無効。
+  TypeScript で「lucide-react に export がない」と出たら、該当 import を lucide.dev に実在するアイコン名に差し替え（例: `Pipe` は使えない → `Droplets` 等）。
+  `CtaButton.tsx` / `ContactFormSection.tsx` の Syntax Error のとき: `<<<FILE lib/ctaButtonClass.ts>>>` で有効な `export function ctaButtonClass` を置き、`ContactFormSection` は `@/lib/ctaButtonClass` から import。`CtaButton.tsx` は `"use client"` とし lib から import（テンプレートリテラル・JSX の未閉じを直す）。
+  **ImagePlaceholder が足りない／無い**: ヒーローと本文セクションに `<ImagePlaceholder description="..." aspectClassName="aspect-video" />` を追加し、**合計 3 箇所以上**にする（`import ImagePlaceholder from "@/components/ImagePlaceholder"` を忘れない）。
+
+  --- build / typecheck log (truncated) ---
+  {build_log}
+multi_page_hint_template: |
+  【ページ数】契約は **{max_pages} ページ固定**（クライアント要望で減らさない）。
+  **サイト台本**の `## ページ: /...` の数と一致させ、**{max_pages} 本**のルート用 `page.tsx` を用意する（`/` は `app/page.tsx`、それ以外は `app/<segment>/page.tsx`）。
+  トップから全ページへ辿れるナビを設置。**レガシー JSON のみ**のときは `page_structure` のパスに合わせる。
+single_page_hint: |
+  【ページ数】契約は **1 ページ固定**。メインは `app/page.tsx` に集約。追加の `app/*/page.tsx` ルートは作らない。

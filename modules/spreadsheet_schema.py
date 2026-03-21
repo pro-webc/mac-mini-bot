@@ -36,17 +36,14 @@ def max_column_index_for_map(column_letters: Iterable[str]) -> int:
 
 def quote_sheet_name_for_a1(sheet_name: str) -> str:
     """
-    A1 レンジ用のシート名。シングルクォートで囲む条件:
-    - 日本語・空白・記号を含む
-    - 末尾が数字（例: Sheet1）… !1:1 や !2:100000 などと続くと API がレンジを誤解釈し
-      「Unable to parse range」になるため必ずクォートする
+    A1 レンジ用のシート名。Google Sheets API v4 では次のとおり:
+    - 英字・数字・アンダースコアのみの識別子（例: Sheet1, MyData）はクォートしない
+      （'Sheet1'!1:1 のようにクォートすると環境によって 400 Unable to parse range になる）
+    - 日本語・空白・記号・シングルクォートを含む名前はシングルクォートで囲み、' は '' にエスケープ
     """
     s = sheet_name.strip()
     if not s:
         raise ValueError("sheet name is empty")
-    if s[-1].isdigit():
-        escaped = s.replace("'", "''")
-        return f"'{escaped}'"
     if re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", s):
         return s
     escaped = s.replace("'", "''")
@@ -54,7 +51,7 @@ def quote_sheet_name_for_a1(sheet_name: str) -> str:
 
 
 def a1_range(sheet_name: str, cell_range: str) -> str:
-    """例: a1_range('Sheet1', '1:1') -> \"'Sheet1'!1:1\""""
+    """例: a1_range('Sheet1', '1:1') -> \"Sheet1!1:1\""""
     return f"{quote_sheet_name_for_a1(sheet_name)}!{cell_range}"
 
 

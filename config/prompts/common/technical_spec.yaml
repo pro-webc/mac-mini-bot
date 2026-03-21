@@ -1,0 +1,27 @@
+# 仕様書生成・サイト実装で共有する技術要件（高額・実務向けサイト製作）
+technical_spec_prompt_block: |
+  【技術要件（全プラン共通・必須遵守）】
+  - Next.js (App Router), React, Tailwind CSS
+  - セクション単位でコンポーネントを作成すること（1セクション=1コンポーネントを原則）
+  - CSSの@import（Google Fonts等）は、CSSファイルまたは<style>の最上部に配置。:root・セレクタ・プロパティ等の他ルールより前。守らないとビルドエラー
+  - 図解・表は画像ではなく、マークアップ＋Tailwindでコーディング生成
+  - アイコン: 基本は Lucide React（https://lucide.dev/icons で実在する名前のみ import）。`Pipe` 等の存在しない名前は使わない（配管イメージは `Droplets` / `Wrench` / `Cable` 等）。SNSは Simple Icons。アイコンを画像プレースホルダにしない
+  - Unsplash禁止。実画像は設置しない。**実装では `components/ImagePlaceholder.tsx` をサイト内に複数（最低 3 箇所・ヒーローに必ず 1）配置し**、枠＋詳細説明で意図を示す（後工程の画像生成パイプラインが TSX を走査する）。画像上に載せるテキストはオーバーレイとして表示
+  - 所在地: Google Maps 埋め込み。マップエリアに画像・プレースホルダ禁止。対応エリア用の画像・イラストは禁止。所在地が明確ならピン表示
+  - 装飾目的の box-shadow（Tailwind の shadow-*）は使わない。区切りは境界線・余白・タイポ階層で行う
+
+  【スタイリング要件（全プラン共通・高額制作向け）】
+  - **design_spec の color_scheme / tokens を最優先**し、仕様に無い派手な色の追加・勝手な全面ベタ塗りは禁止。`body` / `html` の背景は **白・stone/zinc/neutral の 50〜100 系など低彩度**を既定とし、ブランドの強い色は**ヘッダー帯・CTA・リンク・アクセント要素**に限定する
+  - テキスト色は **コントラスト確保のため要素に明示**するが、**色の種類は design_spec で定めた palette に収める**（本文・弱め本文・見出し・primary上で足りる構成に）。「要素ごとに別々の任意 hex を乱発」しない
+  - ボタン・リンクは hover / active / focus-visible / disabled を **primary 系の明度差**で揃え、**虹色の複数CTA色**にしない
+  - タイポグラフィは仕様の typography に沿い、長文は `max-w-prose` 相当の可読幅を確保。見出し階層（h1 はページ1つ）を乱さない
+  - セクション間の **縦リズムを揃える**（例: 主要セクションは同一の py スケール）。詰め込みすぎない
+  - Tailwind の任意値 `bg-[#..]` は **design_spec で定義した色の反映に限定**し、実装者の即興で飽和色を増やさない
+
+  【UX・読みやすさ・操作（全プラン共通・実装で守る）】
+  - **タップ領域**: 主要なリンク・ボタンは **min-h-[44px] min-w-[44px]** を目安に確保（モバイル）
+  - **フォーム**: 各入力に **視覚的に紐づく label**（`htmlFor` / `id`）。`placeholder` は補助のみ。**必須**はラベル側で分かるように。`inputmode` / `autocomplete` は仕様の function_spec に従う
+  - **フォーカス**: キーボード操作で辿れること。`focus-visible:outline` または同等でフォーカスリングを消さない
+  - **動き**: 装飾アニメは最小限。`prefers-reduced-motion:reduce` 時は過剰な motion を抑える（`motion-safe:` 等の利用可）
+  - **ランドマーク**: `<main>` を各ページに一つ。`nav` に `aria-label`。見出しは階層を飛ばさない（h1→h2→h3）
+  - **情報の優先度**: モバイルで横スクロールを起こさない。長い表は `overflow-x-auto` またはカード化を検討（仕様に表がある場合）

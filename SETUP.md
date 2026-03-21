@@ -26,6 +26,14 @@ INSTALL_CURSOR_CLI=1 ./setup.sh
 bash scripts/verify_environment.sh
 ```
 
+一括で **pytest + 設定検証**まで回す場合（初回は TEXT_LLM スモークを飛ばすと安全）:
+
+```bash
+SKIP_TEXT_LLM_SMOKE=1 bash scripts/run_all_local_checks.sh
+# Cursor CLI の quota に余裕があるときだけスモーク込み:
+# bash scripts/run_all_local_checks.sh
+```
+
 別マシンへの複製手順の一覧は **`DEPLOYMENT.md`** を参照。
 
 起動前に設定だけ検証する場合（**.env の必須項目＋スプレッドシート1行目の列見出し**まで確認）:
@@ -214,6 +222,7 @@ python -m skills.image_generation.skill "モダンな企業のヒーロー画像
 | `IMAGE_GEN_PROVIDER` | `openai`（DALL-E 3） / `gemini` / `pillow`（PIL のみ） |
 | `IMAGE_GEN_MODE` | `from_placeholder_source`（TSX の ImagePlaceholder 走査）または `standalone_spec`（仕様書の image_requirements のみ） |
 | `IMAGE_GEN_AFTER_SITE` | `true`（既定）で実装完了後にのみ画像生成 |
+| `IMAGE_GEN_SKIP_RUN` | `true` のとき**当該実行だけ**画像工程をスキップ（`IMAGE_GEN_ENABLED` は変えずに試せる）。同等: `python main.py --skip-images` / `./run.sh --skip-images` |
 
 生成物: `public/images/generated/*.png` と `docs/generated_images.json`。画風の一貫用に `docs/visual_style_brief.json`（実装直前に自動出力）を参照します。
 
@@ -263,6 +272,24 @@ launchctl unload ~/Library/LaunchAgents/com.websitebot.plist
 ```
 
 ## トラブルシューティング
+
+### Cursor CLI が「usage limit」「Get Cursor Pro」になる（無料プランに落ちた？）
+
+**必ずしも無料プランではありません。** stderr に Pro と出ても、**有料（Ultra 等）でもエージェント／モデル別の枠や月次リセット前の上限**で同種のメッセージが出る報告があります（例: [フォーラム: Cursor-Agent CLI Limit Hit](https://forum.cursor.com/t/cursor-agent-cli-limit-hit/128577)）。IDE のチャットが使えても **`agent -p`（本 bot の TEXT_LLM）は別の消費として数えられる**ことがあります。
+
+**CLI 側で「プラン名」はほぼ見えません。** `agent about` は **メールと CLI バージョン**程度です（`User Email` が IDE のアカウントと一致するかの確認用）。
+
+1. **ログインしているアカウントを確認**  
+   `PATH` に `~/.local/bin` を通したうえで `agent whoami`。表示メールが **Cursor エディター（Settings → Account）と同じか**確認する。
+2. **別 OS ユーザーで bot を動かしている**（launchd など）場合、そのユーザー用に **`agent login`** していないと、別セッション／未契約扱いになることがある。`sudo -u そのユーザー agent whoami` で確認。
+3. **セッションの取り直し**  
+   `agent logout` のあと `agent login`（ブラウザ認証）。古いトークンが残っているときに効くことがある。
+4. **ダッシュボードで枠と請求サイクル**  
+   [cursor.com](https://cursor.com) にログインし **Usage / Billing（設定タブ）** でエージェント利用量・リセット日を確認。メッセージに **「Auto に切り替え」「Spend Limit」** と出る場合は、フォーラムでも Pro 利用中に同様の表示があった事例がある（上記リンク参照）。
+5. **API キー運用**  
+   組織で CLI 用キーを配っている場合は `agent --api-key` または環境変数 **`CURSOR_API_KEY`**（`.env`）。`agent --help` の `--api-key` を参照。
+6. **それでも bot を回したい**  
+   `.env` で **`TEXT_LLM_PROVIDER=claude_code_cli`** と **`CLAUDE_CODE_COMMAND`** に切り替え、または（実装されている場合）OpenAI 等の API 経路を使う。
 
 ### Google Sheets API認証エラー
 

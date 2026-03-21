@@ -17,5 +17,10 @@ def test_parse_positive_int_clamp(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_image_gen_provider_normalized(monkeypatch: pytest.MonkeyPatch) -> None:
     """不正な IMAGE_GEN_PROVIDER は pillow に正規化される（config 再読込は別プロセスで検証）"""
-    assert cfg.IMAGE_GEN_PROVIDER in ("openai", "gemini", "pillow")
+    assert cfg.IMAGE_GEN_PROVIDER in (
+        "openai",
+        "gemini",
+        "pillow",
+        "cursor_agent_cli",
+    )
     assert cfg.IMAGE_GEN_MODE in ("from_placeholder_source", "standalone_spec")

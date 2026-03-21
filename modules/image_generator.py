@@ -1,10 +1,20 @@
-"""画像生成（サイト実装・仕様書 LLM とは別 API / 別コンテキストで実行）。
+"""画像生成（第4工程相当・サイト実装 LLM とは別 API / 別コンテキスト）。
 
-GEMINI_API_KEY / google.generativeai は IMAGE_GEN_PROVIDER=gemini のときのみ使用する。
-テキスト（要望抽出・仕様書・コード生成）は modules.text_llm を用いる。
+既定モード **from_placeholder_source** は、実装済み TSX 内の `<ImagePlaceholder />` を走査し、
+`docs/visual_style_brief.json` と `docs/image_pipeline_context.json`（site_implementer が書く）をマージし、
+画風を揃えて生成後に `next/image` へ差し替える。`generate_after_site(site_dir)` のみでも動作する。
+
+- IMAGE_GEN_PROVIDER=gemini | openai | cursor_agent_cli | pillow（詳細は README / config）
+
+当該実行だけ画像を飛ばすときは **main.py** の `IMAGE_GEN_SKIP_RUN` または `--skip-images`。
+
+テキスト台本・コード生成は modules.text_llm。第2段の `image_placeholder_slots` は
+`visual_style_brief.reference_slot_descriptions` とスタンドアロン生成のフォールバックに使う。
 """
 from __future__ import annotations
 
+import base64
+import binascii
 import hashlib
 import json
 import logging
@@ -25,8 +35,100 @@ from config.config import (
     OUTPUT_DIR,
     resolve_image_gen_api_key,
 )
+from config.prompt_settings import format_prompt, get_prompt_str
+from modules.text_llm import is_text_llm_configured, text_llm_complete
 
 logger = logging.getLogger(__name__)
+
+_PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
+
+
+def _image_cursor_cli_timeout_sec() -> int:
+    """
+    cursor_agent_cli 画像1枚あたりの subprocess タイムアウト（秒）。
+
+    未設定時は **3600**（1時間）。PNG の base64 を 1 応答に載せるため TEXT_LLM より遅くなりがちで、
+    既定 1200 秒だとタイムアウトしやすい。
+    IMAGE_GEN_CLI_TIMEOUT_SEC で上書き。TEXT_LLM と揃えたい場合は IMAGE_GEN_CLI_TIMEOUT_SEC=1200 等。
+    """
+    raw = (os.getenv("IMAGE_GEN_CLI_TIMEOUT_SEC") or "").strip()
+    if raw:
+        return max(60, int(raw))
+    return 3600
+
+
+def _is_png(data: bytes) -> bool:
+    return len(data) >= 8 and data[:8] == _PNG_MAGIC
+
+
+def _extract_png_bytes_from_cursor_response(text: str) -> Optional[bytes]:
+    """
+    Cursor / Claude CLI のテキスト応答から PNG バイナリを取り出す。
+    想定: data:image/png;base64,... または JSON の png_base64 / image_base64。
+    """
+    raw = (text or "").strip()
+    if not raw:
+        return None
+
+    m = re.search(
+        r"data:image/png;base64,([A-Za-z0-9+/=\s]+)", raw, re.IGNORECASE | re.DOTALL
+    )
+    if m:
+        b64 = re.sub(r"\s+", "", m.group(1))
+        try:
+            out = base64.b64decode(b64, validate=False)
+            if _is_png(out):
+                return out
+        except (binascii.Error, ValueError):
+            pass
+
+    def _try_json_obj(j: Any) -> Optional[bytes]:
+        if not isinstance(j, dict):
+            return None
+        for key in ("png_base64", "image_base64", "base64"):
+            val = j.get(key)
+            if not isinstance(val, str) or not val.strip():
+                continue
+            b64 = re.sub(r"\s+", "", val.strip())
+            try:
+                out = base64.b64decode(b64, validate=False)
+                if _is_png(out):
+                    return out
+            except (binascii.Error, ValueError):
+                continue
+        return None
+
+    try:
+        j = json.loads(raw)
+        got = _try_json_obj(j)
+        if got:
+            return got
+    except json.JSONDecodeError:
+        pass
+
+    fm = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", raw)
+    if fm:
+        inner = fm.group(1).strip()
+        try:
+            j = json.loads(inner)
+            got = _try_json_obj(j)
+            if got:
+                return got
+        except json.JSONDecodeError:
+            pass
+
+    lb = raw.find("{")
+    rb = raw.rfind("}")
+    if lb != -1 and rb > lb:
+        try:
+            j = json.loads(raw[lb : rb + 1])
+            got = _try_json_obj(j)
+            if got:
+                return got
+        except json.JSONDecodeError:
+            pass
+
+    return None
 
 
 def _slug(s: str, max_len: int = 48) -> str:
@@ -45,6 +147,18 @@ def _load_visual_style_brief(site_dir: Path) -> Dict[str, Any]:
         return {}
 
 
+def _load_image_pipeline_context(site_dir: Path) -> Dict[str, Any]:
+    """site_implementer が書いた第2段メタ（画像・スタンドアロン用）。無ければ空 dict。"""
+    p = site_dir / "docs" / "image_pipeline_context.json"
+    if not p.is_file():
+        return {}
+    try:
+        raw = json.loads(p.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError):
+        return {}
+    return raw if isinstance(raw, dict) else {}
+
+
 def _brief_to_style_prefix(brief: Dict[str, Any]) -> str:
     if not brief:
         return (
@@ -56,10 +170,29 @@ def _brief_to_style_prefix(brief: Dict[str, Any]) -> str:
         str(brief.get("industry_or_purpose") or ""),
         json.dumps(brief.get("color_scheme") or {}, ensure_ascii=False),
     ]
+    refs = brief.get("reference_slot_descriptions") or []
+    if isinstance(refs, list) and refs:
+        joined = " | ".join(str(r) for r in refs[:6] if r)
+        if joined:
+            parts.append("Planned image subjects (site brief): " + joined[:1200])
     rules = brief.get("image_consistency_rules") or []
     if isinstance(rules, list):
         parts.append("\n".join(str(r) for r in rules))
     return "\n".join(p for p in parts if p).strip() or _brief_to_style_prefix({})
+
+
+def _merge_visual_style_brief(disk: Dict[str, Any], spec: Dict[str, Any]) -> Dict[str, Any]:
+    """ディスクの brief を優先し、欠けたキーは spec から補完（第2段 YAML との全体整合）。"""
+    merged = _brief_from_spec(spec)
+    if not disk:
+        return merged
+    for k, v in disk.items():
+        if v is None:
+            continue
+        if v == "" or v == [] or v == {}:
+            continue
+        merged[k] = v
+    return merged
 
 
 def _iter_image_placeholder_matches(site_dir: Path):
@@ -243,6 +376,11 @@ class ImageGenerator:
                 self._gemini_model = genai.GenerativeModel(_img_model)
             else:
                 logger.warning("画像生成 gemini: IMAGE_GEN_API_KEY 未設定（フォールバックも無効）")
+        elif self.provider == "cursor_agent_cli":
+            if not is_text_llm_configured():
+                logger.warning(
+                    "画像生成 cursor_agent_cli: テキスト LLM（CURSOR_AGENT_COMMAND 等）が未設定です"
+                )
         elif self.provider == "pillow":
             pass
         else:
@@ -254,6 +392,8 @@ class ImageGenerator:
     def is_provider_ready(self) -> bool:
         if not self.enabled:
             return False
+        if self.provider == "cursor_agent_cli":
+            return is_text_llm_configured()
         if self.provider == "openai":
             return self._openai_image_client is not None
         if self.provider == "gemini":
@@ -262,11 +402,11 @@ class ImageGenerator:
 
     def generate_after_site(
         self,
-        spec: Dict,
         site_dir: Path,
+        spec: Optional[Dict[str, Any]] = None,
     ) -> Tuple[List[Dict[str, Any]], Path]:
         """
-        サイト実装後に実行。モードに応じてプレースホルダ走査または仕様書ベース。
+        サイト実装後に実行。`spec` が無いときは `docs/image_pipeline_context.json` を読む。
         Returns:
             (エントリリスト, manifest パス)
         """
@@ -276,9 +416,16 @@ class ImageGenerator:
             logger.info("IMAGE_GEN_AFTER_SITE=false — スキップ")
             return [], site_dir / "docs" / "generated_images.json"
 
+        eff_spec = spec if spec is not None else _load_image_pipeline_context(site_dir)
+        if spec is None and not eff_spec:
+            logger.info(
+                "image_pipeline_context.json がありません（実装スキップ時など）。"
+                "visual_style_brief のみで続行します。"
+            )
+
         if self.mode == "from_placeholder_source":
-            return self._generate_from_placeholders(spec, site_dir)
-        return self._generate_standalone_spec(spec, site_dir)
+            return self._generate_from_placeholders(eff_spec, site_dir)
+        return self._generate_standalone_spec(eff_spec, site_dir)
 
     def _write_manifest(self, site_dir: Path, entries: List[Dict[str, Any]]) -> Path:
         docs = site_dir / "docs"
@@ -301,7 +448,7 @@ class ImageGenerator:
     def _generate_from_placeholders(
         self, spec: Dict, site_dir: Path
     ) -> Tuple[List[Dict[str, Any]], Path]:
-        brief = _load_visual_style_brief(site_dir)
+        brief = _merge_visual_style_brief(_load_visual_style_brief(site_dir), spec)
         style = _brief_to_style_prefix(brief)
         slots = _scan_placeholder_slots(site_dir)
         if not slots:
@@ -313,16 +460,24 @@ class ImageGenerator:
         out_dir.mkdir(parents=True, exist_ok=True)
         entries: List[Dict[str, Any]] = []
 
+        n_slots = len(slots)
         for i, slot in enumerate(slots):
             desc = slot["description"]
             overlay = slot.get("overlayText") or ""
+            logger.info(
+                "ImagePlaceholder 画像 %d/%d（%s）— 次の行まで Cursor CLI が無言で走ることがあります",
+                i + 1,
+                n_slots,
+                slot.get("source_file", "?"),
+            )
             slug = _slug(f"{slot['source_file']}-{i}-{desc}")
             filename = f"{slug}.png"
             rel_public = f"/images/generated/{filename}"
-            full_prompt = (
-                f"{style}\n\n"
-                f"Subject / scene for website section: {desc}\n"
-                f"(Optional overlay context for designer — do not render as text: {overlay})"
+            full_prompt = format_prompt(
+                "image_generation.placeholder_slot_prompt_template",
+                style=style,
+                desc=desc,
+                overlay=overlay,
             )
             path = out_dir / filename
             ok = self._generate_one_file(full_prompt, path)
@@ -345,14 +500,21 @@ class ImageGenerator:
     def _generate_standalone_spec(
         self, spec: Dict, site_dir: Path
     ) -> Tuple[List[Dict[str, Any]], Path]:
-        """仕様書の image_requirements 等からスロットを構成（サイトソース不要）"""
-        brief = _load_visual_style_brief(site_dir) or _brief_from_spec(spec)
+        """プレースホルダ無し時: content_spec / 第2段 image_placeholder_slots からプロンプト列を構成"""
+        disk = _load_visual_style_brief(site_dir)
+        brief = _merge_visual_style_brief(disk, spec)
         style = _brief_to_style_prefix(brief)
         content = spec.get("content_spec") or {}
         reqs = content.get("image_requirements") or []
         if isinstance(reqs, str):
             reqs = [reqs]
         site_name = (spec.get("site_overview") or {}).get("site_name", "site")
+        if not reqs:
+            slots = spec.get("image_placeholder_slots") or []
+            if isinstance(slots, list):
+                for s in slots:
+                    if isinstance(s, dict) and (s.get("description") or "").strip():
+                        reqs.append(str(s["description"]).strip())
         if not reqs:
             reqs = [f"{site_name} のヒーロー向けメインビジュアル（プロフェッショナル）"]
 
@@ -366,7 +528,11 @@ class ImageGenerator:
             slug = _slug(f"spec-{i}-{req}")
             filename = f"{slug}.png"
             path = out_dir / filename
-            full_prompt = f"{style}\n\nWebsite image: {req}"
+            full_prompt = format_prompt(
+                "image_generation.openai_style_line_template",
+                style=style,
+                req=req,
+            )
             ok = self._generate_one_file(full_prompt, path)
             entries.append(
                 {
@@ -381,9 +547,69 @@ class ImageGenerator:
 
         return entries, self._write_manifest(site_dir, entries)
 
+    def _cursor_agent_image_attempt(self, prompt: str, output_path: Path) -> bool:
+        """TEXT_LLM と同じ Cursor CLI。応答 JSON の png_base64 を PNG として保存。"""
+        if not is_text_llm_configured():
+            return False
+        user = get_prompt_str("image_generation.cursor_agent_user_prefix") + prompt
+        system_main = get_prompt_str("image_generation.cursor_agent_system").strip()
+        system_fb = get_prompt_str("image_generation.cursor_agent_system_fallback").strip()
+        tout = _image_cursor_cli_timeout_sec()
+
+        def _call(system: str, temp: float) -> str:
+            return text_llm_complete(
+                user=user,
+                system=system,
+                temperature=temp,
+                cli_timeout_sec=tout,
+            )
+
+        logger.info(
+            "Cursor 画像: CLI 起動（この呼び出し最大約 %d 秒・終わるまでログが増えないのは正常）",
+            tout,
+        )
+        try:
+            raw = _call(system_main, 0.4)
+        except Exception as e:
+            logger.error("Cursor 画像生成（CLI）失敗: %s", e)
+            return False
+        if not (raw or "").strip():
+            return False
+        stripped = raw.strip()
+        if '"error"' in stripped.lower() and "png_base64" not in stripped:
+            logger.warning(
+                "Cursor が png_base64 を含まない応答を返しました（先頭 300 文字）: %s",
+                stripped[:300],
+            )
+            return False
+        data = _extract_png_bytes_from_cursor_response(raw)
+        if not data:
+            logger.info(
+                "Cursor 画像: 初回から PNG を解釈できなかったためフォールバック system で再試行します（最大約 %d 秒）",
+                tout,
+            )
+            try:
+                raw2 = _call(system_fb, 0.2)
+            except Exception as e2:
+                logger.error("Cursor 画像生成（フォールバック）失敗: %s", e2)
+                return False
+            data = _extract_png_bytes_from_cursor_response(raw2 or "")
+        if not data:
+            logger.warning(
+                "Cursor 応答から有効な PNG base64 を解釈できませんでした（先頭 400 文字）: %s",
+                raw[:400],
+            )
+            return False
+        output_path.write_bytes(data)
+        logger.info("Cursor CLI 経由の PNG を保存: %s", output_path)
+        return True
+
     def _generate_one_file(self, prompt: str, output_path: Path) -> bool:
         output_path.parent.mkdir(parents=True, exist_ok=True)
         try:
+            if self.provider == "cursor_agent_cli":
+                if self._cursor_agent_image_attempt(prompt, output_path):
+                    return True
             if self.provider == "openai" and self._openai_image_client:
                 if self._openai_dalle(prompt, output_path):
                     return True
@@ -413,9 +639,7 @@ class ImageGenerator:
         return True
 
     def _gemini_image_attempt(self, prompt: str, output_path: Path) -> bool:
-        enhanced = (
-            "Generate a high-quality image for a professional website.\n" + prompt
-        )
+        enhanced = get_prompt_str("image_generation.gemini_user_prefix") + prompt
         response = self._gemini_model.generate_content(enhanced)
         if hasattr(response, "images") and response.images:
             with open(output_path, "wb") as f:
@@ -470,26 +694,33 @@ class ImageGenerator:
             return []
 
         if site_dir and site_dir.is_dir():
-            entries, _ = self.generate_after_site(spec, site_dir)
+            entries, _ = self.generate_after_site(site_dir, spec)
             return [
                 {"purpose": e.get("id", "image"), "path": Path(e["localPath"])}
                 for e in entries
                 if e.get("localPath")
             ]
 
-        # レガシー: 出力ディレクトリのみ（仕様書ベース・サイト未生成時）
+        # レガシー: 出力ディレクトリのみ（サイト未生成時）
         base = output_dir or (OUTPUT_DIR / "images")
         base.mkdir(parents=True, exist_ok=True)
         images: List[Dict[str, Path]] = []
         content = spec.get("content_spec") or {}
         reqs = content.get("image_requirements") or []
         if not reqs:
+            slots = spec.get("image_placeholder_slots") or []
+            if isinstance(slots, list):
+                for s in slots:
+                    if isinstance(s, dict) and (s.get("description") or "").strip():
+                        reqs.append(str(s["description"]).strip())
+        if not reqs:
             reqs = ["hero visual"]
+        style = _brief_to_style_prefix(_brief_from_spec(spec))
         for i, req in enumerate(reqs):
             if not isinstance(req, str):
                 req = str(req)
             p = base / f"legacy_{i}.png"
-            self._generate_one_file(_brief_to_style_prefix({}) + "\n" + req, p)
+            self._generate_one_file(style + "\n" + req, p)
             images.append({"purpose": f"content_{i+1}", "path": p})
         return images
 
@@ -497,12 +728,27 @@ class ImageGenerator:
 def _brief_from_spec(spec: Dict) -> Dict[str, Any]:
     overview = spec.get("site_overview") or {}
     design = spec.get("design_spec") or {}
-    return {
-        "layout_mood": design.get("layout_style", ""),
+    layout_mood = design.get("layout_mood") or design.get("layout_style", "")
+    ref_desc: list[str] = []
+    slots = spec.get("image_placeholder_slots") or []
+    if isinstance(slots, list):
+        for s in slots[:10]:
+            if isinstance(s, dict):
+                d = (s.get("description") or "").strip()
+                if d:
+                    ref_desc.append(d[:240])
+    out: Dict[str, Any] = {
+        "site_name": overview.get("site_name", ""),
+        "target_users": overview.get("target_users", ""),
+        "layout_mood": layout_mood,
         "industry_or_purpose": overview.get("purpose", ""),
-        "color_scheme": design.get("color_scheme", {}),
+        "typography_hint": design.get("typography", {}),
+        "color_scheme": design.get("color_scheme") or design.get("colors") or {},
         "image_consistency_rules": [
             "Professional cohesive style",
             "No text in images",
         ],
     }
+    if ref_desc:
+        out["reference_slot_descriptions"] = ref_desc
+    return out

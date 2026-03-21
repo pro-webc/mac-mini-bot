@@ -8,6 +8,7 @@
 - `app/layout.tsx` / `app/page.tsx`（page はスタブのみ）
 - `app/globals.css`（`@import` 先頭・Tailwind ディレクティブのみ）
 - `components/ImagePlaceholder.tsx` / `GoogleMapEmbed.tsx`（技術要件どおりの部品）
+- `lib/ctaButtonClass.ts`（CTA 用 Tailwind クラス。実装 LLM が `design_spec` に合わせて `<<<FILE>>>` で上書き可能）
 - `components/sections/`（空＋ README。セクションはここに追加）
 - `TECH_REQUIREMENTS.md`（プラン共通の技術要項）
 
@@ -19,4 +20,4 @@
 
 ## 次のステップ
 
-仕様書（`spec`）に基づき `app/page.tsx` および `components/sections/*` を生成・編集する。
+仕様書（`spec`）に基づき `app/page.tsx`・`components/sections/*`・必要なら `lib/*.ts` を生成・編集する。
