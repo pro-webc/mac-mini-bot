@@ -1,0 +1,44 @@
+"""起動時検証ロジック"""
+import config.config as cfg
+from config.validation import validate_startup_config
+
+
+def test_validation_fails_without_any_llm_key(monkeypatch) -> None:
+    monkeypatch.setenv("TEXT_LLM_PROVIDER", "cursor_agent_cli")
+    monkeypatch.setattr(cfg, "OPENAI_API_KEY", "")
+    monkeypatch.setattr(cfg, "GEMINI_API_KEY", "")
+    monkeypatch.setattr(cfg, "CLAUDE_CODE_COMMAND", "")
+    monkeypatch.setattr(cfg, "CURSOR_AGENT_COMMAND", "")
+    r = validate_startup_config(require_full_pipeline=False)
+    assert not r.ok
+    assert any("テキスト LLM" in e for e in r.errors)
+
+
+def test_validation_full_pipeline_requires_sheet_and_tokens(monkeypatch) -> None:
+    monkeypatch.setenv("TEXT_LLM_PROVIDER", "cursor_agent_cli")
+    monkeypatch.setattr(cfg, "CURSOR_AGENT_COMMAND", "echo")
+    monkeypatch.setattr(cfg, "GOOGLE_SHEETS_SPREADSHEET_ID", "")
+    monkeypatch.setattr(cfg, "GOOGLE_SHEETS_AUTH_MODE", "service_account")
+    monkeypatch.setattr(cfg, "GOOGLE_SHEETS_CREDENTIALS_PATH", "/nonexistent/creds.json")
+    monkeypatch.setattr(cfg, "GITHUB_TOKEN", "")
+    monkeypatch.setattr(cfg, "VERCEL_TOKEN", "")
+    r = validate_startup_config(require_full_pipeline=True)
+    assert not r.ok
+    assert any("SPREADSHEET" in e for e in r.errors)
+    assert any("GITHUB_TOKEN" in e for e in r.errors)
+    assert any("VERCEL_TOKEN" in e for e in r.errors)
+
+
+def test_validation_application_default_skips_credential_file(monkeypatch) -> None:
+    """JSON パスが無くても application_default + GOOGLE_CLOUD_PROJECT なら起動検証は通る"""
+    monkeypatch.setenv("TEXT_LLM_PROVIDER", "cursor_agent_cli")
+    monkeypatch.setattr(cfg, "CURSOR_AGENT_COMMAND", "echo")
+    monkeypatch.setattr(cfg, "GOOGLE_SHEETS_SPREADSHEET_ID", "sheet_id_ok")
+    monkeypatch.setattr(cfg, "GOOGLE_SHEETS_AUTH_MODE", "application_default")
+    monkeypatch.setattr(cfg, "GOOGLE_CLOUD_PROJECT", "test-gcp-project")
+    monkeypatch.setattr(cfg, "GOOGLE_SHEETS_CREDENTIALS_PATH", "/nonexistent/creds.json")
+    monkeypatch.setattr(cfg, "GITHUB_TOKEN", "tok")
+    monkeypatch.setattr(cfg, "VERCEL_TOKEN", "vtok")
+    r = validate_startup_config(require_full_pipeline=True)
+    assert r.ok
+    assert not any("Google 認証ファイル" in e for e in r.errors)

@@ -1,0 +1,338 @@
+"""設定管理モジュール"""
+import os
+from pathlib import Path
+
+from dotenv import load_dotenv
+
+# .envファイルを読み込む
+load_dotenv()
+
+# プロジェクトルート
+PROJECT_ROOT = Path(__file__).parent.parent
+
+
+def _parse_positive_int(
+    name: str, default: int, *, minimum: int = 1, maximum: int = 100
+) -> int:
+    """環境変数を正の整数として解釈（不正時は default、範囲クランプ）"""
+    raw = os.getenv(name)
+    if raw is None or not str(raw).strip():
+        return default
+    try:
+        v = int(str(raw).strip(), 10)
+        return max(minimum, min(maximum, v))
+    except ValueError:
+        return default
+
+# Google Sheets設定
+# service_account: credentials の JSON（サービスアカウント鍵）
+# application_default: JSON 不要。通常は `gcloud auth application-default login` で取得したユーザー資格情報
+_raw_gs_auth = os.getenv("GOOGLE_SHEETS_AUTH_MODE", "service_account").strip().lower()
+GOOGLE_SHEETS_AUTH_MODE = (
+    _raw_gs_auth
+    if _raw_gs_auth in ("service_account", "application_default")
+    else "service_account"
+)
+GOOGLE_SHEETS_CREDENTIALS_PATH = os.getenv(
+    "GOOGLE_SHEETS_CREDENTIALS_PATH",
+    str(PROJECT_ROOT / "credentials" / "google-credentials.json")
+)
+GOOGLE_SHEETS_SPREADSHEET_ID = os.getenv("GOOGLE_SHEETS_SPREADSHEET_ID", "")
+# 案件取得・更新対象のシート名（タブ名）
+GOOGLE_SHEETS_SHEET_NAME = os.getenv("GOOGLE_SHEETS_SHEET_NAME", "Sheet1").strip() or "Sheet1"
+# ADC 利用時のクォータプロジェクト（任意・未設定だと UserWarning が出る場合あり）
+GOOGLE_CLOUD_PROJECT = os.getenv("GOOGLE_CLOUD_PROJECT", "").strip()
+# 1行目の列見出しが期待と異なるとき、true なら起動失敗（false は警告のみ）
+SPREADSHEET_HEADERS_STRICT = os.getenv("SPREADSHEET_HEADERS_STRICT", "true").strip().lower() in (
+    "1",
+    "true",
+    "yes",
+)
+# Bot が処理する行の条件（1）AI統合ステータス列は「フェーズ」用。次の値と完全一致する行のみ。
+SPREADSHEET_TARGET_AI_STATUS = os.getenv(
+    "SPREADSHEET_TARGET_AI_STATUS", "デモサイト制作中"
+).strip()
+# （2）テストサイトURL列が空である行のみ（true のとき）。デモ未着手の案件を区別するため。
+SPREADSHEET_BOT_REQUIRE_EMPTY_TEST_SITE_URL = os.getenv(
+    "SPREADSHEET_BOT_REQUIRE_EMPTY_TEST_SITE_URL", "true"
+).strip().lower() in ("1", "true", "yes")
+# true のとき: ヒアリング列が URL（http/https 始まり）の行はスキップ。本文が入っている行のみ着手
+SPREADSHEET_REQUIRE_HEARING_BODY_NOT_URL = os.getenv(
+    "SPREADSHEET_REQUIRE_HEARING_BODY_NOT_URL", "true"
+).strip().lower() in ("1", "true", "yes")
+
+# 1回の起動で処理する案件の最大件数（0 または未設定で無制限・上から順）
+_raw_max_cases = os.getenv("BOT_MAX_CASES", "").strip()
+try:
+    BOT_MAX_CASES = max(0, int(_raw_max_cases, 10)) if _raw_max_cases else 0
+except ValueError:
+    BOT_MAX_CASES = 0
+
+# API キー（画像生成など。テキストの要望・仕様・サイト実装は CLI のみ modules.text_llm）
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
+
+# テキスト LLM: cursor_agent_cli | claude_code_cli（未設定時は CURSOR_AGENT_COMMAND 優先で cursor とみなす）
+TEXT_LLM_PROVIDER = os.getenv("TEXT_LLM_PROVIDER", "").strip().lower()
+# Claude Code / Cursor を CLI で呼ぶ（標準入力にプロンプト、標準出力を返答として読む）
+CLAUDE_CODE_COMMAND = os.getenv("CLAUDE_CODE_COMMAND", "")
+CURSOR_AGENT_COMMAND = os.getenv("CURSOR_AGENT_COMMAND", "")
+
+# 画像生成パイプライン（仕様書/サイト実装 LLM とは完全に分離したコンテキスト・キー推奨）
+IMAGE_GEN_ENABLED = os.getenv("IMAGE_GEN_ENABLED", "false").strip().lower() in (
+    "1",
+    "true",
+    "yes",
+)
+# openai | gemini | pillow （pillow=PILプレースホルダのみ・外部APIなし）
+_raw_igp = os.getenv("IMAGE_GEN_PROVIDER", "pillow").strip().lower()
+IMAGE_GEN_PROVIDER = (
+    _raw_igp if _raw_igp in ("openai", "gemini", "pillow") else "pillow"
+)
+# 未設定時は IMAGE_GEN_ALLOW_FALLBACK_TO_MAIN_KEYS が true のときのみメインキーを使用
+IMAGE_GEN_API_KEY = os.getenv("IMAGE_GEN_API_KEY", "").strip()
+IMAGE_GEN_ALLOW_FALLBACK_TO_MAIN_KEYS = os.getenv(
+    "IMAGE_GEN_ALLOW_FALLBACK_TO_MAIN_KEYS", "false"
+).strip().lower() in ("1", "true", "yes")
+# from_placeholder_source: 実装済み TSX 内の ImagePlaceholder を走査してプロンプト化
+# standalone_spec: 仕様書の image_requirements 等のみ（従来に近い）
+_raw_igm = os.getenv("IMAGE_GEN_MODE", "from_placeholder_source").strip().lower()
+IMAGE_GEN_MODE = (
+    _raw_igm
+    if _raw_igm in ("from_placeholder_source", "standalone_spec")
+    else "from_placeholder_source"
+)
+IMAGE_GEN_AFTER_SITE = os.getenv("IMAGE_GEN_AFTER_SITE", "true").strip().lower() in (
+    "1",
+    "true",
+    "yes",
+)
+IMAGE_GEN_OPENAI_MODEL = os.getenv("IMAGE_GEN_OPENAI_MODEL", "dall-e-3")
+IMAGE_GEN_DALLE_SIZE = os.getenv("IMAGE_GEN_DALLE_SIZE", "1024x1024")
+
+# npm ビルド検証
+SITE_BUILD_ENABLED = os.getenv("SITE_BUILD_ENABLED", "true").strip().lower() in (
+    "1",
+    "true",
+    "yes",
+)
+SITE_BUILD_MAX_FIX_ATTEMPTS = _parse_positive_int(
+    "SITE_BUILD_MAX_FIX_ATTEMPTS", 3, minimum=1, maximum=20
+)
+SITE_IMPLEMENTATION_ENABLED = os.getenv("SITE_IMPLEMENTATION_ENABLED", "true").strip().lower() in (
+    "1",
+    "true",
+    "yes",
+)
+
+
+def resolve_image_gen_api_key(provider: str) -> str:
+    """画像用 API キー（専用キー優先）"""
+    if IMAGE_GEN_API_KEY:
+        return IMAGE_GEN_API_KEY
+    if not IMAGE_GEN_ALLOW_FALLBACK_TO_MAIN_KEYS:
+        return ""
+    if provider == "openai":
+        return OPENAI_API_KEY
+    if provider == "gemini":
+        return GEMINI_API_KEY
+    return ""
+
+# GitHub設定
+GITHUB_TOKEN = os.getenv("GITHUB_TOKEN", "")
+GITHUB_USERNAME = os.getenv("GITHUB_USERNAME", "")
+
+# Vercel設定
+VERCEL_TOKEN = os.getenv("VERCEL_TOKEN", "")
+VERCEL_TEAM_ID = os.getenv("VERCEL_TEAM_ID", "")
+# GitHub 連携デプロイ時の参照ブランチ（push 先と一致させる。例: main / master）
+VERCEL_GIT_REF = (os.getenv("VERCEL_GIT_REF", "main") or "main").strip()
+# true（既定）: POST /v13/deployments の gitSource（ダッシュボードの Git 連携と同様・GitHub App 必須）
+# false: GitHub zipball + POST /v2/files（連携なしのファイルデプロイ。push 自動デプロイは別途手動接続が必要になりやすい）
+VERCEL_DEPLOY_USE_GIT_SOURCE = os.getenv(
+    "VERCEL_DEPLOY_USE_GIT_SOURCE", "true"
+).strip().lower() in ("1", "true", "yes")
+# デプロイ先 URL をスプレッドシートに書く方法: vercel（既定）| github（Vercel をスキップし GitHub URL のみ記録）
+_raw_deploy_url_src = os.getenv("BOT_DEPLOY_URL_SOURCE", "vercel").strip().lower()
+BOT_DEPLOY_URL_SOURCE = (
+    _raw_deploy_url_src if _raw_deploy_url_src in ("vercel", "github") else "vercel"
+)
+# デプロイURLをログイン不要で閲覧できるよう、プロジェクトのデプロイ保護を API で解除する
+VERCEL_FORCE_PUBLIC_DEPLOYMENTS = os.getenv(
+    "VERCEL_FORCE_PUBLIC_DEPLOYMENTS", "true"
+).strip().lower() in ("1", "true", "yes")
+
+# その他設定
+LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
+OUTPUT_DIR = Path(os.getenv("OUTPUT_DIR", str(PROJECT_ROOT / "output")))
+TEMPLATE_DIR = Path(os.getenv("TEMPLATE_DIR", str(PROJECT_ROOT / "templates")))
+
+# スプレッドシート列マッピング
+SPREADSHEET_COLUMNS = {
+    "record_number": "B",  # record_id
+    "partner_name": "C",   # client_name
+    "contract_plan": "D",  # plan_type
+    # SPREADSHEET_TARGET_AI_STATUS と照合する列（例: overall_status）
+    "phase_status": "M",
+    # Bot 専用（列名 mac-mini）: 処理中 / 完了 / エラー（業務フェーズ列とは別）
+    "ai_status": "AV",
+    "phase_deadline": "T",  # phase_deadline
+    "appo_memo": "AD",     # ap_recording_memo
+    "sales_notes": "AE",   # sales_note_pre_demo
+    "hearing_sheet_url": "AH",  # hearing_sheet_url
+    "test_site_url": "AJ",      # test_url
+    "deploy_url": "AW",         # デプロイURL（書き込み）
+}
+
+# 1行目に期待する列名（SPREADSHEET_COLUMNS の各列と整合させること）
+# ※実シートの英語ヘッダーに合わせる（日本語シートの場合は .env で別途調整）
+SPREADSHEET_HEADER_LABELS: dict[str, str] = {
+    "record_number": "record_id",
+    "partner_name": "client_name",
+    "contract_plan": "plan_type",
+    "phase_status": "overall_status",
+    "ai_status": "mac-mini",
+    "phase_deadline": "phase_deadline",
+    "appo_memo": "ap_recording_memo",
+    "sales_notes": "sales_note_pre_demo",
+    "hearing_sheet_url": "hearing_sheet_url",
+    "test_site_url": "test_url",
+    "deploy_url": "デプロイURL",
+}
+
+# いずれかが空の行は対象フェーズでも処理しない（カンマ区切り・SPREADSHEET_COLUMNS のキーのみ）
+_raw_req_fields = os.getenv(
+    "SPREADSHEET_REQUIRED_FIELDS",
+    "record_number,partner_name,contract_plan",
+)
+SPREADSHEET_REQUIRED_CASE_FIELDS: tuple[str, ...] = tuple(
+    k.strip()
+    for k in _raw_req_fields.split(",")
+    if k.strip() and k.strip() in SPREADSHEET_COLUMNS
+)
+if not SPREADSHEET_REQUIRED_CASE_FIELDS:
+    SPREADSHEET_REQUIRED_CASE_FIELDS = (
+        "record_number",
+        "partner_name",
+        "contract_plan",
+    )
+
+# 契約プラン情報
+CONTRACT_PLANS = {
+    "BASIC LP": {
+        "name": "BASIC LP",
+        "pages": 1,
+        "type": "landing_page"
+    },
+    "BASIC": {
+        "name": "BASIC",
+        "pages": 1,
+        "type": "website"
+    },
+    "STANDARD": {
+        "name": "STANDARD",
+        "pages": 6,
+        "type": "website"
+    },
+    "ADVANCE": {
+        "name": "ADVANCE",
+        "pages": 12,
+        "type": "website"
+    }
+}
+
+def get_contract_plan_info(plan_name: str) -> dict:
+    """
+    契約プラン情報を取得
+    
+    Args:
+        plan_name: 契約プラン名
+        
+    Returns:
+        契約プラン情報（見つからない場合はデフォルト）
+    """
+    # プラン名の正規化（大文字小文字を無視）
+    plan_name_upper = plan_name.upper() if plan_name else ""
+    
+    for key, value in CONTRACT_PLANS.items():
+        if key.upper() == plan_name_upper or value["name"].upper() == plan_name_upper:
+            return value
+    
+    # デフォルト（STANDARD）
+    return CONTRACT_PLANS["STANDARD"]
+
+
+# プラン共通の技術・スタイリング要件（仕様書・コード生成の双方で参照）
+COMMON_TECHNICAL_SPEC = {
+    "stack": {
+        "framework": "Next.js (App Router)",
+        "ui": "React",
+        "styling": "Tailwind CSS",
+    },
+    "architecture": {
+        "components": "セクション単位でコンポーネントを分割（1セクション=1コンポーネントを原則）",
+        "app_router": True,
+    },
+    "css_rules": {
+        "import_order": (
+            "CSSの@import（Google Fonts等）は、globals.css または <style> の"
+            "最上部に配置。:root・セレクタ・その他のルールより前。違反するとビルドエラー。"
+        ),
+    },
+    "content_visualization": {
+        "diagrams_and_tables": "図解・比較表は画像ではなくマークアップ＋Tailwindで実装",
+    },
+    "icons": {
+        "default": "Lucide React（lucide-react）",
+        "sns": "Simple Icons（react-icons の si 等、Simple Icons準拠）",
+        "forbidden": "アイコンを画像プレースホルダーで代用することは禁止",
+    },
+    "images": {
+        "unsplash": "Unsplash の利用禁止",
+        "real_assets": "実画像ファイルは配置しない",
+        "placeholder": (
+            "画像プレースホルダーUI（枠・比率・説明テキスト）で何が表示されるべきかを明示。"
+            "画像上に載せるべきテキストはオーバーレイとしてデザイン上そのまま表示"
+        ),
+    },
+    "maps": {
+        "location": "所在地表示時は Google Maps を埋め込み（iframe/embed）。マップ表示エリアに画像・プレースホルダーは置かない",
+        "service_area": "「対応エリア」用の画像・イラストは生成・配置とも禁止",
+        "pin": "会社所在地が明確な場合は地図にピン表示",
+    },
+    "styling_policy": {
+        "tailwind_refactor": "Next.js + Tailwind へのリファクタ前提で実装",
+        "css_variables": "CSS変数を使う場合も各要素に明示的にクラスで色を指定",
+        "text_color": "body の色継承に依存せず、テキスト要素ごとに色を指定",
+        "buttons": "ボタンは default / hover / active / disabled 等、状態ごとに色を明示",
+    },
+}
+
+
+def get_common_technical_spec() -> dict:
+    """プラン共通の技術要件（辞書）"""
+    return COMMON_TECHNICAL_SPEC.copy()
+
+
+def get_common_technical_spec_prompt_block() -> str:
+    """LLMプロンプト用の技術要件テキストブロック"""
+    return """
+【技術要件（全プラン共通・必須遵守）】
+- Next.js (App Router), React, Tailwind CSS
+- セクション単位でコンポーネントを作成すること（1セクション=1コンポーネントを原則）
+- CSSの@import（Google Fonts等）は、CSSファイルまたは<style>の最上部に配置。:root・セレクタ・プロパティ等の他ルールより前。守らないとビルドエラー
+- 図解・表は画像ではなく、マークアップ＋Tailwindでコーディング生成
+- アイコン: 基本は Lucide React（https://lucide.dev/icons で実在する名前のみ import）。`Pipe` 等の存在しない名前は使わない（配管イメージは `Droplets` / `Wrench` / `Cable` 等）。SNSは Simple Icons。アイコンを画像プレースホルダにしない
+- Unsplash禁止。実画像は設置しない。画像プレースホルダー枠＋詳細説明で意図を示す。画像上に載せるテキストはオーバーレイとして表示
+- 所在地: Google Maps 埋め込み。マップエリアに画像・プレースホルダ禁止。対応エリア用の画像・イラストは禁止。所在地が明確ならピン表示
+
+【スタイリング要件（全プラン共通）】
+- Tailwind中心の実装。CSS変数使用時も要素ごとに明示的に色指定
+- bodyの継承に頼らずテキスト要素ごとに色指定
+- ボタンは hover / active / disabled 等、状態ごとに色を明示
+"""
+
+
+# 出力ディレクトリを作成
+OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+TEMPLATE_DIR.mkdir(parents=True, exist_ok=True)
