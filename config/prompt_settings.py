@@ -1,7 +1,8 @@
-"""プロンプト YAML（`config/prompts/<工程名>/*.yaml`）の読み込みとプレースホルダ差し込み。
+"""共通プロンプト YAML（`config/prompts/common/*.yaml`）のみ読み込む。
 
-- 各 **サブディレクトリ名** がマージ後のトップレベルキー（例: `common/technical_spec.yaml` → `common.technical_spec_prompt_block`）。
-- 同一工程フォルダ内の複数 YAML は **深いマージ**（後ろのファイルがキーを上書き）。
+- **生成パイプライン（Gemini マニュアル等）には混ぜない。** 参照されるのは
+  `get_technical_spec_prompt_block()`（サイト土台への技術要件テキスト）のみ。
+- `common` 内の複数 YAML は **深いマージ**（後ろのファイルがキーを上書き）。
 
 プレースホルダーは `{name}`。差し込み値に `{` を含めないこと（誤置換防止）。
 """
@@ -33,42 +34,28 @@ def _load_raw() -> dict[str, Any]:
         raise FileNotFoundError(
             f"プロンプトディレクトリが見つかりません: {_PROMPTS_DIR}"
         )
-    merged: dict[str, Any] = {}
-    stage_dirs = sorted(
-        p for p in _PROMPTS_DIR.iterdir() if p.is_dir() and not p.name.startswith(".")
-    )
-    if not stage_dirs:
+    common_dir = _PROMPTS_DIR / "common"
+    if not common_dir.is_dir():
         raise FileNotFoundError(
-            f"工程フォルダがありません（config/prompts/<工程名>/ を作成してください）: {_PROMPTS_DIR}"
+            f"config/prompts/common/ が必要です（技術要件 YAML のみここを読みます）: {common_dir}"
         )
-    for stage_dir in stage_dirs:
-        name = stage_dir.name
-        if name == "__pycache__":
-            continue
-        stage_blob: dict[str, Any] = {}
-        yaml_paths = sorted(stage_dir.glob("*.yaml"))
-        if not yaml_paths:
-            # CP/LP マニュアルなど *.txt のみのフォルダは別経路で読み込む（工程 YAML とは独立）
-            continue
-        for path in yaml_paths:
-            with open(path, encoding="utf-8") as f:
-                data = yaml.safe_load(f)
-            if data is None:
-                data = {}
-            if not isinstance(data, dict):
-                raise ValueError(
-                    f"プロンプトファイルのルートはマッピングである必要があります: {path}"
-                )
-            stage_blob = _deep_merge(stage_blob, data)
-        if name in merged:
-            raise ValueError(f"プロンプト工程名の重複: {name!r}")
-        merged[name] = stage_blob
-    if not merged:
+    stage_blob: dict[str, Any] = {}
+    yaml_paths = sorted(common_dir.glob("*.yaml"))
+    if not yaml_paths:
         raise FileNotFoundError(
-            f"*.yaml を含む工程フォルダがありません（{_PROMPTS_DIR}）。"
-            "少なくとも common/technical_spec.yaml 等が必要です。"
+            f"config/prompts/common/ に *.yaml がありません: {common_dir}"
         )
-    return merged
+    for path in yaml_paths:
+        with open(path, encoding="utf-8") as f:
+            data = yaml.safe_load(f)
+        if data is None:
+            data = {}
+        if not isinstance(data, dict):
+            raise ValueError(
+                f"プロンプトファイルのルートはマッピングである必要があります: {path}"
+            )
+        stage_blob = _deep_merge(stage_blob, data)
+    return {"common": stage_blob}
 
 
 def clear_prompt_cache() -> None:

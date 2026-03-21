@@ -211,3 +211,42 @@ def verify_site_build(site_dir: Path, skip_install: bool = False) -> tuple[bool,
 
     logger.error("npm run build 失敗:\n%s", last_log[-8000:])
     return False, last_log
+
+
+def verify_site_build_with_cursor_pass(
+    site_dir: Path,
+    *,
+    skip_install_first: bool = False,
+) -> tuple[bool, str]:
+    """
+    通常の install→build（stub 再試行込み）のあと、有効なら必ず Cursor CLI でチェック・修正し、再ビルドする。
+    無効時は従来どおり 1 回の verify_site_build のみ。
+    """
+    from config import config as cfg
+    from modules.cursor_site_build_fix import (
+        cursor_site_build_fix_configured,
+        run_cursor_site_build_fix,
+    )
+
+    ok, log = verify_site_build(site_dir, skip_install=skip_install_first)
+    if not cfg.CURSOR_SITE_BUILD_FIX_ENABLED:
+        return ok, log
+    if not cursor_site_build_fix_configured():
+        logger.warning(
+            "CURSOR_SITE_BUILD_FIX_ENABLED ですが agent またはスクリプトが無いため Cursor パスをスキップします"
+        )
+        return ok, log
+
+    logger.info("Cursor チェック・修正フェーズ（CLI）を実行します…")
+    inv_ok, fix_out = run_cursor_site_build_fix(
+        site_dir,
+        log,
+        timeout_sec=cfg.CURSOR_SITE_BUILD_FIX_TIMEOUT_SEC,
+    )
+    if fix_out:
+        logger.debug("Cursor 出力末尾:\n%s", fix_out[-2500:])
+    if not inv_ok:
+        logger.warning("Cursor CLI が非ゼロ終了しました。続けて npm run build のみ再試行します。")
+
+    ok2, log2 = verify_site_build(site_dir, skip_install=True)
+    return ok2, log2

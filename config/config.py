@@ -200,6 +200,18 @@ SITE_KEEP_TEMPLATE_APP_ROUTES = os.getenv(
     "SITE_KEEP_TEMPLATE_APP_ROUTES", "false"
 ).strip().lower() in ("1", "true", "yes")
 
+# npm run build 失敗後に Cursor CLI（agent）でサイトディレクトリ内を修正し、再ビルドする（オプトイン）
+CURSOR_SITE_BUILD_FIX_ENABLED = os.getenv(
+    "CURSOR_SITE_BUILD_FIX_ENABLED", "false"
+).strip().lower() in ("1", "true", "yes")
+CURSOR_SITE_BUILD_FIX_TIMEOUT_SEC = _parse_float_env(
+    "CURSOR_SITE_BUILD_FIX_TIMEOUT_SEC", 900.0, minimum=120.0, maximum=3600.0
+)
+CURSOR_SITE_BUILD_FIX_SCRIPT = os.getenv(
+    "CURSOR_SITE_BUILD_FIX_SCRIPT",
+    str(PROJECT_ROOT / "scripts" / "cursor_agent_stdio.sh"),
+).strip()
+
 # GitHub設定
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN", "")
 GITHUB_USERNAME = os.getenv("GITHUB_USERNAME", "")

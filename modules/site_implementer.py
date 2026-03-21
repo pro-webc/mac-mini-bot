@@ -8,7 +8,10 @@ from pathlib import Path
 from config.config import OUTPUT_DIR, SITE_BUILD_ENABLED, SITE_IMPLEMENTATION_ENABLED
 
 from modules.contract_workflow import ContractWorkBranch
-from modules.site_build import _ensure_package_json, verify_site_build
+from modules.site_build import (
+    _ensure_package_json,
+    verify_site_build_with_cursor_pass,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -107,7 +110,9 @@ class SiteImplementer:
             logger.info("SITE_BUILD_ENABLED=false のためビルド検証をスキップ")
             return True, "build_skipped"
 
-        ok, blog = verify_site_build(site_dir, skip_install=False)
+        ok, blog = verify_site_build_with_cursor_pass(
+            site_dir, skip_install_first=False
+        )
         if ok:
             logger.info("サイト実装（モック）+ ビルド成功")
             return True, blog or ""

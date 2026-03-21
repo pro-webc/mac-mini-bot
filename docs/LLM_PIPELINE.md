@@ -14,7 +14,7 @@
 | 4 | `llm_raw_output/` 保存 | **LLM なし**（書き出しのみ） | `modules.llm_raw_output` | 手順 2 の結果をファイル化 |
 | 5 | フェンス → `app/` 反映 | **LLM なし**（パーサ） | `modules.basic_lp_generated_apply` | 常に実行（該当プランで Gemini マニュアルが有効なとき、適用 0 件なら失敗） |
 | 6 | サイト用画像生成 | **Gemini（画像 API・REST）** | `modules.gemini_site_images` | `GEMINI_API_KEY` があるとき常に試行（プレースホルダが無ければ 0 件） |
-| 7 | `npm build` 検証 | **LLM なし** | `modules.site_implementer` / `modules.site_build` | |
+| 7 | `npm build` 検証 | **LLM なし**（任意で **Cursor CLI**） | `modules.site_implementer` / `modules.site_build` | `CURSOR_SITE_BUILD_FIX_ENABLED=true` かつ `agent` 利用可能時、初回ビルド後に必ず Cursor で修正→再ビルド |
 | 8 | `git push` | **LLM なし** | `modules.github_client` | |
 | 9 | Vercel デプロイ | **LLM なし** | `modules.vercel_client` | 常に実行（公開 URL をスプレッドシートに記録） |
 
