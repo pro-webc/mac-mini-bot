@@ -24,7 +24,12 @@ jobs:
           pip install -r requirements.txt -r requirements-dev.txt
 
       - name: Ruff check
-        run: ruff check main.py config/ modules/llm_output_files.py modules/site_implementer.py modules/site_build.py modules/spreadsheet.py modules/spreadsheet_schema.py modules/vercel_client.py tests/
+        run: >-
+          ruff check main.py config/
+          modules/case_extraction.py modules/text_llm_stage.py modules/llm_mock.py
+          modules/llm_output_files.py modules/site_implementer.py modules/site_build.py
+          modules/spreadsheet.py modules/spreadsheet_schema.py modules/vercel_client.py
+          tests/
 
       - name: Pytest
         run: pytest

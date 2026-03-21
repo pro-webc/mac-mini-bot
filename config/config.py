@@ -77,24 +77,17 @@ try:
 except ValueError:
     SPREADSHEET_AI_STATUS_ERROR_MAX_LEN = 200
 
-# API キー（画像生成など。テキストの要望・仕様・サイト実装は CLI のみ modules.text_llm）
+# API キー（互換のため残置。画像パイプラインは PIL のみで参照しない）
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 
-# テキスト LLM: cursor_agent_cli | claude_code_cli（未設定時は CURSOR_AGENT_COMMAND 優先で cursor とみなす）
-TEXT_LLM_PROVIDER = os.getenv("TEXT_LLM_PROVIDER", "").strip().lower()
-# Claude Code / Cursor を CLI で呼ぶ（標準入力にプロンプト、標準出力を返答として読む）
-CLAUDE_CODE_COMMAND = os.getenv("CLAUDE_CODE_COMMAND", "")
-CURSOR_AGENT_COMMAND = os.getenv("CURSOR_AGENT_COMMAND", "")
-
-# 画像生成パイプライン（仕様書/サイト実装 LLM とは完全に分離したコンテキスト・キー推奨）
+# 画像生成パイプライン（PIL プレースホルダのみ。IMAGE_GEN_PROVIDER はログ用に保持）
 IMAGE_GEN_ENABLED = os.getenv("IMAGE_GEN_ENABLED", "false").strip().lower() in (
     "1",
     "true",
     "yes",
 )
-# openai | gemini | pillow | cursor_agent_cli
-# cursor_agent_cli: TEXT_LLM と同じ CURSOR_AGENT_COMMAND。応答 JSON の png_base64 を PNG として保存
+# openai | gemini | pillow | cursor_agent_cli（いずれも実装は PIL プレースホルダのみ）
 _raw_igp = os.getenv("IMAGE_GEN_PROVIDER", "pillow").strip().lower()
 IMAGE_GEN_PROVIDER = (
     _raw_igp
@@ -196,30 +189,29 @@ SPREADSHEET_COLUMNS = {
     "contract_plan": "D",  # plan_type
     # SPREADSHEET_TARGET_AI_STATUS と照合する列（例: overall_status）
     "phase_status": "M",
-    # Bot 専用（列名 mac-mini）: 処理中 / 完了 / エラー（業務フェーズ列とは別）
+    # Bot 専用: 処理中 / 完了 / エラー（業務フェーズ列とは別）。1行目の見出しは不要・検証しない
     "ai_status": "AV",
     "phase_deadline": "T",  # phase_deadline
     "appo_memo": "AD",     # ap_recording_memo
     "sales_notes": "AE",   # sales_note_pre_demo
     "hearing_sheet_url": "AH",  # hearing_sheet_url
     "test_site_url": "AJ",      # test_url
-    "deploy_url": "AW",         # デプロイURL（書き込み）
+    "deploy_url": "AW",         # 書き込みのみ。1行目の見出しは不要・検証しない
 }
 
-# 1行目に期待する列名（SPREADSHEET_COLUMNS の各列と整合させること）
+# 1行目に期待する列名（SPREADSHEET_COLUMNS のキーで検証する列のみ）
+# ※ AV（ai_status）・AW（deploy_url）は Bot 書き込み専用のため見出し検証の対象外
 # ※実シートの英語ヘッダーに合わせる（日本語シートの場合は .env で別途調整）
 SPREADSHEET_HEADER_LABELS: dict[str, str] = {
     "record_number": "record_id",
     "partner_name": "client_name",
     "contract_plan": "plan_type",
     "phase_status": "overall_status",
-    "ai_status": "mac-mini",
     "phase_deadline": "phase_deadline",
     "appo_memo": "ap_recording_memo",
     "sales_notes": "sales_note_pre_demo",
     "hearing_sheet_url": "hearing_sheet_url",
     "test_site_url": "test_url",
-    "deploy_url": "デプロイURL",
 }
 
 # いずれかが空の行は対象フェーズでも処理しない（カンマ区切り・SPREADSHEET_COLUMNS のキーのみ）

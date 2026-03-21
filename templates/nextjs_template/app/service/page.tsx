@@ -1,9 +1,5 @@
-import ServicePageContent from "@/components/ServicePageContent";
+import ServicePage from "@/components/unsung/ServicePage";
 
-export default function ServicePage() {
-  return (
-    <div className="w-full">
-      <ServicePageContent />
-    </div>
-  );
+export default function Page() {
+  return <ServicePage />;
 }

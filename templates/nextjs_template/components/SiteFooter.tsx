@@ -1,58 +1,53 @@
 import Link from "next/link";
 
-const footerNav = [
+const links = [
   { href: "/", label: "ホーム" },
-  { href: "/service", label: "サービス・強み" },
-  { href: "/program", label: "講習プログラム" },
-  { href: "/column", label: "お役立ちコラム" },
-  { href: "/about", label: "講師・事業について" },
-  { href: "/contact", label: "お問い合わせ・相談予約" },
-];
+  { href: "/service", label: "サービス" },
+  { href: "/program", label: "プログラム" },
+  { href: "/works", label: "実績" },
+  { href: "/pricing", label: "料金" },
+  { href: "/contact", label: "お問い合わせ" },
+  { href: "/contact#privacy", label: "プライバシー" },
+] as const;
 
 export default function SiteFooter() {
-  const year = new Date().getFullYear();
-
   return (
-    <footer className="border-t border-[#e7e5e4] bg-[#fafaf9]">
-      <div className="mx-auto max-w-6xl px-4 py-16 md:px-6">
-        <div className="grid gap-10 md:grid-cols-2">
+    <footer className="border-t border-[#334155] bg-[#111827]">
+      <div className="mx-auto max-w-6xl px-4 py-14 md:px-6">
+        <div className="flex flex-col gap-10 md:flex-row md:justify-between">
           <div>
-            <Link
-              href="/"
-              className="text-left text-base font-bold text-[#0f172a] hover:text-[#0f766e] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0f766e]"
-            >
-              法人向け交通安全教育
-            </Link>
-            <p className="mt-3 max-w-prose text-left text-sm leading-[1.7] text-[#57534e]">
-              白ナンバーで車両を複数台お持ちの事業者さま向けに、講習・伴走型の安全運転意識づけを提供しています。
+            <p className="text-lg font-semibold tracking-wide text-[#eceff4]">
+              unsung hero株式会社
             </p>
-            <p className="mt-4 max-w-prose text-left text-sm leading-[1.7] text-[#57534e]">
-              鹿児島市エリアを中心に、企業向けの交通安全教育を提供しています。
+            <p className="mt-3 max-w-prose text-sm leading-[1.7] text-[#94a3b8]">
+              〒130-0022 東京都墨田区江東橋4-27-14 楽天地ビル3F
+            </p>
+            <p className="mt-2 text-sm text-[#94a3b8]">
+              <a
+                href="mailto:yoji.shida@us-hero.com"
+                className="text-[#eceff4] underline-offset-4 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#eceff4]"
+              >
+                yoji.shida@us-hero.com
+              </a>
             </p>
           </div>
-          <nav aria-label="フッターナビゲーション">
-            <p className="text-left text-xs font-semibold uppercase tracking-wide text-[#57534e]">
-              サイトマップ
-            </p>
-            <ul className="mt-3 flex flex-col gap-2">
-              {footerNav.map((item) => (
-                <li key={item.href}>
-                  <Link
-                    href={item.href}
-                    className="inline-flex min-h-[44px] items-center text-sm font-medium text-[#0f766e] hover:text-[#115e59] active:text-[#134e4a] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0f766e]"
-                  >
-                    {item.label}
-                  </Link>
-                </li>
-              ))}
-            </ul>
+          <nav aria-label="フッター" className="flex flex-col gap-2">
+            {links.map((l) => (
+              <Link
+                key={l.href}
+                href={l.href}
+                className="min-h-[44px] whitespace-nowrap py-2 text-sm font-medium tracking-wide text-[#eceff4] hover:text-[#ffffff] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#eceff4]"
+              >
+                {l.label}
+              </Link>
+            ))}
           </nav>
         </div>
-        <p className="mt-10 max-w-prose text-left text-sm leading-[1.7] text-[#57534e]">
-          お問い合わせフォームで取得する情報は、ご相談内容の確認・連絡、および講習の準備のために利用し、目的の範囲を超えて第三者に提供することはありません。
+        <p className="mt-10 border-t border-[#334155] pt-8 text-center text-xs text-[#94a3b8] md:text-left">
+          © unsung hero株式会社
         </p>
-        <p className="mt-6 text-center text-sm text-[#57534e]">
-          © {year} 交通安全教育サービス運営
+        <p className="mt-4 text-center text-xs text-[#94a3b8] md:text-left">
+          本サイトの内容は予告なく変更される場合があります。
         </p>
       </div>
     </footer>

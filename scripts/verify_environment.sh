@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 実運用マシン向け: Python / Node / Cursor CLI など前提条件の確認
+# 実運用マシン向け: Python / Node など前提条件の確認（Cursor CLI は任意）
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
@@ -59,21 +59,18 @@ fi
 check_cmd "Node.js（npm / Next ビルド用）" "node" "https://nodejs.org/"
 check_cmd "npm" "npm" "Node に同梱"
 
-# Cursor CLI: PATH に無くても ~/.local/bin にある場合
+# Cursor CLI（任意・本 bot は LLM モックのため不要）
 if command -v agent >/dev/null 2>&1; then
   echo "[OK] Cursor CLI (agent): $(command -v agent)"
   agent --version 2>/dev/null || true
   echo "     --- agent whoami ---"
   agent whoami 2>/dev/null | sed 's/^/     /' || echo "     (whoami 失敗)"
-  echo "     注: agent -p（本 bot の TEXT_LLM）は IDE とは別枠の利用上限になることがあります"
 elif [ -x "$HOME/.local/bin/agent" ]; then
   echo "[WARN] agent は ~/.local/bin にありますが PATH に通っていません"
   echo "       export PATH=\"\$HOME/.local/bin:\$PATH\""
   warn=1
 else
-  echo "[NG] Cursor CLI (agent): TEXT_LLM_PROVIDER=cursor_agent_cli のとき必須"
-  echo "     bash scripts/install_cursor_cli.sh"
-  ok=1
+  echo "[INFO] Cursor CLI (agent) は未検出（本パイプラインはモックのため不要）"
 fi
 
 if [ -d "$ROOT/.venv" ]; then

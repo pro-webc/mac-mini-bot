@@ -1,5 +1,5 @@
 # Python 3.10+ 推奨。別PCでは venv を作り、このファイルと requirements-dev.txt をインストールすること。
-# システム依存: Node 18+ / npm（サイトビルド）, Cursor CLI agent（TEXT_LLM_PROVIDER=cursor_agent_cli 時）は DEPLOYMENT.md 参照。
+# システム依存: Node 18+ / npm（サイトビルド）。LLM はモックのため Cursor CLI 不要。
 google-api-python-client==2.108.0
 google-auth-httplib2==0.1.1
 google-auth-oauthlib==1.1.0

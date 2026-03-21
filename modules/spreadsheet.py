@@ -14,8 +14,8 @@ from config.config import (
     SPREADSHEET_BOT_REQUIRE_EMPTY_TEST_SITE_URL,
     SPREADSHEET_COLUMNS,
     SPREADSHEET_HEADER_LABELS,
-    SPREADSHEET_REQUIRED_CASE_FIELDS,
     SPREADSHEET_REQUIRE_HEARING_BODY_NOT_URL,
+    SPREADSHEET_REQUIRED_CASE_FIELDS,
     SPREADSHEET_TARGET_AI_STATUS,
 )
 from google.auth import default as google_auth_default
@@ -186,6 +186,8 @@ class SpreadsheetClient:
     def validate_header_labels(self) -> list[str]:
         """
         1行目の列見出しが config の SPREADSHEET_HEADER_LABELS と一致するか検証する。
+
+        AV・AW（ai_status / deploy_url）は Bot 専用列のためラベル検証の対象外（1行目は空でもよい）。
 
         Returns:
             不一致メッセージのリスト（空なら OK）

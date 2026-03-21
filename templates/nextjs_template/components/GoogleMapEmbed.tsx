@@ -15,7 +15,7 @@ export default function GoogleMapEmbed({
 }: GoogleMapEmbedProps) {
   return (
     <div
-      className={`aspect-video w-full max-h-[min(52vw,280px)] overflow-hidden bg-neutral-100 md:max-h-none ${wrapperClassName}`.trim()}
+      className={`aspect-video w-full max-h-[min(52vw,280px)] overflow-hidden bg-[#1f2937] md:max-h-none ${wrapperClassName}`.trim()}
     >
       <iframe
         title={title}

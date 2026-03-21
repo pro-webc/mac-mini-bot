@@ -1,9 +1,10 @@
 """第1段プレーンテキスト応答の正規化"""
 import pytest
-
-from modules.requirement_extractor import (
-    _finalize_plain_prompt,
-    _unwrap_plaintext_llm_output,
+from modules.llm_mock import (
+    finalize_plain_prompt as _finalize_plain_prompt,
+)
+from modules.llm_mock import (
+    unwrap_plaintext_llm_output as _unwrap_plaintext_llm_output,
 )
 
 

@@ -1,6 +1,5 @@
-import { notFound } from "next/navigation";
+import PricingPage from "@/components/unsung/PricingPage";
 
-/** 契約6ページ外のため404 */
-export default function PricingRemovedPage() {
-  notFound();
+export default function Page() {
+  return <PricingPage />;
 }

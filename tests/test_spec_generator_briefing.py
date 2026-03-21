@@ -1,4 +1,4 @@
-"""第2段・ブリーフテキスト組み立て"""
+"""仕様入力ブリーフ（compose_spec_input_briefing）の組み立て"""
 from modules.spec_generator import compose_spec_input_briefing
 
 
@@ -22,9 +22,9 @@ def test_compose_spec_input_briefing_has_core_sections() -> None:
     assert "テスト社" in text
     assert "【ヒアリング原文】" in text
     assert "ヒアリング本文" in text
-    assert "【第1段・サイト制作マスタープロンプト（最優先）】" in text
-    assert "【第1段・内部メモ（サイト非掲載・参照のみ）】" in text
+    assert "【サイト制作マスタープロンプト（最優先）】" in text
+    assert "【内部メモ（サイト非掲載・参照のみ）】" in text
     assert "メモ1" in text
     assert "【要確認事項】" in text
     assert "Q1" in text
-    assert "【第1段・補足ファクト（テキスト化）】" in text
+    assert "【補足ファクト（テキスト化）】" in text

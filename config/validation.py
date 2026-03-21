@@ -6,8 +6,6 @@ import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from modules.text_llm import is_text_llm_configured
-
 from config import config as cfg
 
 
@@ -33,21 +31,6 @@ def validate_startup_config(*, require_full_pipeline: bool = True) -> StartupVal
     """
     r = StartupValidationResult()
 
-    # --- テキスト LLM（要望抽出・仕様書・サイト実装）---
-    if not is_text_llm_configured():
-        r.errors.append(
-            "テキスト LLM: TEXT_LLM_PROVIDER=cursor_agent_cli（既定）または claude_code_cli と、"
-            "CURSOR_AGENT_COMMAND または CLAUDE_CODE_COMMAND を設定してください。"
-            "（`agent login` または CURSOR_API_KEY が必要な場合があります）"
-        )
-
-    _tlp = (os.getenv("TEXT_LLM_PROVIDER") or "").strip().lower()
-    if _tlp and _tlp not in ("claude_code_cli", "cursor_agent_cli"):
-        r.errors.append(
-            f"TEXT_LLM_PROVIDER={_tlp!r} は未対応です。"
-            "cursor_agent_cli または claude_code_cli のみ指定できます。"
-        )
-
     # --- ローカルビルド ---
     if cfg.SITE_BUILD_ENABLED and not shutil.which("npm"):
         r.warnings.append(
@@ -56,20 +39,6 @@ def validate_startup_config(*, require_full_pipeline: bool = True) -> StartupVal
 
     # --- 画像パイプライン ---
     if cfg.IMAGE_GEN_ENABLED and not cfg.IMAGE_GEN_SKIP_RUN:
-        if cfg.IMAGE_GEN_PROVIDER == "cursor_agent_cli":
-            if not is_text_llm_configured():
-                r.warnings.append(
-                    "IMAGE_GEN_PROVIDER=cursor_agent_cli ですがテキスト LLM（CURSOR_AGENT_COMMAND 等）が未設定です。"
-                    "画像は PIL プレースホルダのみになります。"
-                )
-        elif cfg.IMAGE_GEN_PROVIDER in ("openai", "gemini"):
-            key = cfg.resolve_image_gen_api_key(cfg.IMAGE_GEN_PROVIDER)
-            if not key:
-                r.warnings.append(
-                    f"IMAGE_GEN_ENABLED=true かつ IMAGE_GEN_PROVIDER={cfg.IMAGE_GEN_PROVIDER} ですが、"
-                    "IMAGE_GEN_API_KEY が空で、IMAGE_GEN_ALLOW_FALLBACK_TO_MAIN_KEYS も false のため "
-                    "API 画像生成はスキップされ PIL にフォールバックします。"
-                )
         _igm_raw = os.getenv("IMAGE_GEN_MODE", "").strip().lower()
         if _igm_raw and _igm_raw not in ("from_placeholder_source", "standalone_spec"):
             r.warnings.append(

@@ -1,4 +1,5 @@
 # pytest / ruff のみ（パッケージ配布用メタデータは置かない）
+# 開発: pytest / ruff check（パスは README「品質・Lint」または CI 参照）
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
@@ -10,7 +11,7 @@ filterwarnings = [
 [tool.ruff]
 line-length = 100
 target-version = "py39"
-src = ["config", "modules", "skills", "tests"]
+src = ["config", "modules", "tests"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]

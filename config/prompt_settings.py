@@ -1,6 +1,6 @@
-"""LLM 用プロンプト（`config/prompts/<工程名>/*.yaml`）の読み込みとプレースホルダ差し込み。
+"""プロンプト YAML（`config/prompts/<工程名>/*.yaml`）の読み込みとプレースホルダ差し込み。
 
-- 各 **サブディレクトリ名** がマージ後のトップレベルキー（例: `text_llm/default.yaml` → `text_llm.default_system`）。
+- 各 **サブディレクトリ名** がマージ後のトップレベルキー（例: `common/technical_spec.yaml` → `common.technical_spec_prompt_block`）。
 - 同一工程フォルダ内の複数 YAML は **深いマージ**（後ろのファイルがキーを上書き）。
 
 プレースホルダーは `{name}`。差し込み値に `{` を含めないこと（誤置換防止）。
@@ -100,10 +100,6 @@ def apply_prompt_template(template: str, **kwargs: Any) -> str:
 def format_prompt(template_key_path: str, **kwargs: Any) -> str:
     tpl = get_prompt_str(template_key_path)
     return apply_prompt_template(tpl, **kwargs)
-
-
-def get_text_llm_default_system() -> str:
-    return get_prompt_str("text_llm.default_system")
 
 
 def get_technical_spec_prompt_block() -> str:

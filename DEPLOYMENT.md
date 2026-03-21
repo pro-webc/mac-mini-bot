@@ -20,12 +20,12 @@ pip install --upgrade pip
 pip install -r requirements.txt -r requirements-dev.txt
 ```
 
-`requirements.txt` … 本番実行に必要な PyPI パッケージ（Sheets / LLM API / GitHub / Vercel / 画像 等）。  
-`requirements-dev.txt` … テスト・Lint（任意だが CI では両方入れる想定）。
+`requirements.txt` … 本番実行に必要な PyPI パッケージ（Sheets / GitHub / Vercel / 画像 等）。  
+`requirements-dev.txt` … テスト・Lint（CI では両方インストール）。
 
-## 3. Cursor CLI（`TEXT_LLM_PROVIDER=cursor_agent_cli` のとき）
+## 3. Cursor CLI（任意・将来用）
 
-テキスト LLM を Cursor の `agent` に任せる構成の場合:
+現行パイプラインの **TEXT_LLM はモック**のため必須ではありません。エージェント CLI を使う拡張をする場合:
 
 ```bash
 bash scripts/install_cursor_cli.sh
@@ -35,7 +35,7 @@ source ~/.zshrc
 agent --version
 ```
 
-手動でも可: [Cursor CLI 概要](https://cursor.com/docs/cli/overview) の `curl https://cursor.com/install | bash` と同じ内容です。
+手動: [Cursor CLI 概要](https://cursor.com/docs/cli/overview)。
 
 ## 4. 設定ファイル
 
@@ -52,4 +52,4 @@ BOT_CONFIG_CHECK=1 python main.py
 
 ## 6. 定期実行（例: launchd）
 
-`SETUP.md` の「定期実行の設定」を参照。実行ユーザーは **PATH に `~/.local/bin`（agent）と `node` / `npm`** が通るようにしてください。
+`SETUP.md` の「定期実行の設定」を参照。実行ユーザーは **PATH に `node` / `npm`** が通るようにしてください（Cursor CLI を使う場合は `~/.local/bin` も）。

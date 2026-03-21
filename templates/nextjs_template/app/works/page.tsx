@@ -1,6 +1,5 @@
-import { notFound } from "next/navigation";
+import WorksPage from "@/components/unsung/WorksPage";
 
-/** 契約6ページ外のため404 */
-export default function WorksRemovedPage() {
-  notFound();
+export default function Page() {
+  return <WorksPage />;
 }

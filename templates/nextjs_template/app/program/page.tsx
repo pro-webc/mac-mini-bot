@@ -1,9 +1,5 @@
-import ProgramPageContent from "@/components/ProgramPageContent";
+import ProgramPage from "@/components/unsung/ProgramPage";
 
-export default function ProgramPage() {
-  return (
-    <div className="w-full">
-      <ProgramPageContent />
-    </div>
-  );
+export default function Page() {
+  return <ProgramPage />;
 }

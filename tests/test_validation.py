@@ -3,20 +3,15 @@ import config.config as cfg
 from config.validation import validate_startup_config
 
 
-def test_validation_fails_without_any_llm_key(monkeypatch) -> None:
-    monkeypatch.setenv("TEXT_LLM_PROVIDER", "cursor_agent_cli")
+def test_validation_does_not_require_text_llm(monkeypatch) -> None:
     monkeypatch.setattr(cfg, "OPENAI_API_KEY", "")
     monkeypatch.setattr(cfg, "GEMINI_API_KEY", "")
-    monkeypatch.setattr(cfg, "CLAUDE_CODE_COMMAND", "")
-    monkeypatch.setattr(cfg, "CURSOR_AGENT_COMMAND", "")
     r = validate_startup_config(require_full_pipeline=False)
-    assert not r.ok
-    assert any("テキスト LLM" in e for e in r.errors)
+    assert r.ok
+    assert not any("テキスト LLM" in e for e in r.errors)
 
 
 def test_validation_full_pipeline_requires_sheet_and_tokens(monkeypatch) -> None:
-    monkeypatch.setenv("TEXT_LLM_PROVIDER", "cursor_agent_cli")
-    monkeypatch.setattr(cfg, "CURSOR_AGENT_COMMAND", "echo")
     monkeypatch.setattr(cfg, "GOOGLE_SHEETS_SPREADSHEET_ID", "")
     monkeypatch.setattr(cfg, "GOOGLE_SHEETS_AUTH_MODE", "service_account")
     monkeypatch.setattr(cfg, "GOOGLE_SHEETS_CREDENTIALS_PATH", "/nonexistent/creds.json")
@@ -31,8 +26,6 @@ def test_validation_full_pipeline_requires_sheet_and_tokens(monkeypatch) -> None
 
 def test_validation_application_default_skips_credential_file(monkeypatch) -> None:
     """JSON パスが無くても application_default + GOOGLE_CLOUD_PROJECT なら起動検証は通る"""
-    monkeypatch.setenv("TEXT_LLM_PROVIDER", "cursor_agent_cli")
-    monkeypatch.setattr(cfg, "CURSOR_AGENT_COMMAND", "echo")
     monkeypatch.setattr(cfg, "GOOGLE_SHEETS_SPREADSHEET_ID", "sheet_id_ok")
     monkeypatch.setattr(cfg, "GOOGLE_SHEETS_AUTH_MODE", "application_default")
     monkeypatch.setattr(cfg, "GOOGLE_CLOUD_PROJECT", "test-gcp-project")

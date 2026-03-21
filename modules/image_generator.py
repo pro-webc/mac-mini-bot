@@ -1,134 +1,31 @@
-"""画像生成（第4工程相当・サイト実装 LLM とは別 API / 別コンテキスト）。
+"""画像パイプライン（モック: PIL プレースホルダ PNG のみ）。
 
 既定モード **from_placeholder_source** は、実装済み TSX 内の `<ImagePlaceholder />` を走査し、
-`docs/visual_style_brief.json` と `docs/image_pipeline_context.json`（site_implementer が書く）をマージし、
-画風を揃えて生成後に `next/image` へ差し替える。`generate_after_site(site_dir)` のみでも動作する。
+`docs/visual_style_brief.json` と `docs/image_pipeline_context.json` をマージしたうえで
+プレースホルダ画像を `public/images/generated/` に書き、`next/image` へ差し替える。
 
-- IMAGE_GEN_PROVIDER=gemini | openai | cursor_agent_cli | pillow（詳細は README / config）
-
-当該実行だけ画像を飛ばすときは **main.py** の `IMAGE_GEN_SKIP_RUN` または `--skip-images`。
-
-テキスト台本・コード生成は modules.text_llm。第2段の `image_placeholder_slots` は
-`visual_style_brief.reference_slot_descriptions` とスタンドアロン生成のフォールバックに使う。
+外部画像 API / LLM は使用しない。当該実行だけ画像を飛ばすときは **main.py** の
+`IMAGE_GEN_SKIP_RUN` または `--skip-images`。
 """
 from __future__ import annotations
 
-import base64
-import binascii
 import hashlib
 import json
 import logging
-import os
 import re
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-import google.generativeai as genai
-import requests
 from config.config import (
     IMAGE_GEN_AFTER_SITE,
-    IMAGE_GEN_DALLE_SIZE,
     IMAGE_GEN_ENABLED,
     IMAGE_GEN_MODE,
-    IMAGE_GEN_OPENAI_MODEL,
     IMAGE_GEN_PROVIDER,
     OUTPUT_DIR,
-    resolve_image_gen_api_key,
 )
-from config.prompt_settings import format_prompt, get_prompt_str
-from modules.text_llm import is_text_llm_configured, text_llm_complete
+from config.prompt_settings import format_prompt
 
 logger = logging.getLogger(__name__)
-
-_PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
-
-
-def _image_cursor_cli_timeout_sec() -> int:
-    """
-    cursor_agent_cli 画像1枚あたりの subprocess タイムアウト（秒）。
-
-    未設定時は **3600**（1時間）。PNG の base64 を 1 応答に載せるため TEXT_LLM より遅くなりがちで、
-    既定 1200 秒だとタイムアウトしやすい。
-    IMAGE_GEN_CLI_TIMEOUT_SEC で上書き。TEXT_LLM と揃えたい場合は IMAGE_GEN_CLI_TIMEOUT_SEC=1200 等。
-    """
-    raw = (os.getenv("IMAGE_GEN_CLI_TIMEOUT_SEC") or "").strip()
-    if raw:
-        return max(60, int(raw))
-    return 3600
-
-
-def _is_png(data: bytes) -> bool:
-    return len(data) >= 8 and data[:8] == _PNG_MAGIC
-
-
-def _extract_png_bytes_from_cursor_response(text: str) -> Optional[bytes]:
-    """
-    Cursor / Claude CLI のテキスト応答から PNG バイナリを取り出す。
-    想定: data:image/png;base64,... または JSON の png_base64 / image_base64。
-    """
-    raw = (text or "").strip()
-    if not raw:
-        return None
-
-    m = re.search(
-        r"data:image/png;base64,([A-Za-z0-9+/=\s]+)", raw, re.IGNORECASE | re.DOTALL
-    )
-    if m:
-        b64 = re.sub(r"\s+", "", m.group(1))
-        try:
-            out = base64.b64decode(b64, validate=False)
-            if _is_png(out):
-                return out
-        except (binascii.Error, ValueError):
-            pass
-
-    def _try_json_obj(j: Any) -> Optional[bytes]:
-        if not isinstance(j, dict):
-            return None
-        for key in ("png_base64", "image_base64", "base64"):
-            val = j.get(key)
-            if not isinstance(val, str) or not val.strip():
-                continue
-            b64 = re.sub(r"\s+", "", val.strip())
-            try:
-                out = base64.b64decode(b64, validate=False)
-                if _is_png(out):
-                    return out
-            except (binascii.Error, ValueError):
-                continue
-        return None
-
-    try:
-        j = json.loads(raw)
-        got = _try_json_obj(j)
-        if got:
-            return got
-    except json.JSONDecodeError:
-        pass
-
-    fm = re.search(r"```(?:json)?\s*([\s\S]*?)\s*```", raw)
-    if fm:
-        inner = fm.group(1).strip()
-        try:
-            j = json.loads(inner)
-            got = _try_json_obj(j)
-            if got:
-                return got
-        except json.JSONDecodeError:
-            pass
-
-    lb = raw.find("{")
-    rb = raw.rfind("}")
-    if lb != -1 and rb > lb:
-        try:
-            j = json.loads(raw[lb : rb + 1])
-            got = _try_json_obj(j)
-            if got:
-                return got
-        except json.JSONDecodeError:
-            pass
-
-    return None
 
 
 def _slug(s: str, max_len: int = 48) -> str:
@@ -342,63 +239,21 @@ def _scan_placeholder_slots(site_dir: Path) -> List[Dict[str, str]]:
 
 
 class ImageGenerator:
-    """
-    画像専用パイプライン。メインの仕様書/コード生成 LLM とは別キー・別クライアントを推奨。
-    - IMAGE_GEN_API_KEY: 専用キー（未設定時は IMAGE_GEN_ALLOW_FALLBACK_TO_MAIN_KEYS でメインキーにフォールバック）
-    """
+    """画像パイプライン（PIL プレースホルダのみ。外部画像 API は使用しない）。"""
 
     def __init__(self) -> None:
         self.enabled = IMAGE_GEN_ENABLED
         self.provider = IMAGE_GEN_PROVIDER
         self.mode = IMAGE_GEN_MODE
-        self._openai_image_client = None
-        self._gemini_model = None
 
         if not self.enabled:
             logger.info("IMAGE_GEN_ENABLED=false — 画像パイプラインは無効です")
-            return
-
-        key = resolve_image_gen_api_key(self.provider)
-        if self.provider == "openai":
-            if key:
-                from openai import OpenAI
-
-                self._openai_image_client = OpenAI(api_key=key)
-            else:
-                logger.warning("画像生成 openai: IMAGE_GEN_API_KEY 未設定（フォールバックも無効）")
-        elif self.provider == "gemini":
-            if key:
-                genai.configure(api_key=key)
-                # テキスト用と同様、利用可能なモデル名を使用（exp 系は廃止されやすい）
-                _img_model = os.getenv(
-                    "IMAGE_GEN_GEMINI_MODEL", "gemini-2.5-flash"
-                ).strip()
-                self._gemini_model = genai.GenerativeModel(_img_model)
-            else:
-                logger.warning("画像生成 gemini: IMAGE_GEN_API_KEY 未設定（フォールバックも無効）")
-        elif self.provider == "cursor_agent_cli":
-            if not is_text_llm_configured():
-                logger.warning(
-                    "画像生成 cursor_agent_cli: テキスト LLM（CURSOR_AGENT_COMMAND 等）が未設定です"
-                )
-        elif self.provider == "pillow":
-            pass
-        else:
-            logger.warning("未知の IMAGE_GEN_PROVIDER=%s — pillow にフォールバック扱い", self.provider)
 
     def is_enabled(self) -> bool:
         return bool(self.enabled)
 
     def is_provider_ready(self) -> bool:
-        if not self.enabled:
-            return False
-        if self.provider == "cursor_agent_cli":
-            return is_text_llm_configured()
-        if self.provider == "openai":
-            return self._openai_image_client is not None
-        if self.provider == "gemini":
-            return self._gemini_model is not None
-        return True  # pillow
+        return bool(self.enabled)
 
     def generate_after_site(
         self,
@@ -465,7 +320,7 @@ class ImageGenerator:
             desc = slot["description"]
             overlay = slot.get("overlayText") or ""
             logger.info(
-                "ImagePlaceholder 画像 %d/%d（%s）— 次の行まで Cursor CLI が無言で走ることがあります",
+                "ImagePlaceholder 画像 %d/%d（%s）— PIL プレースホルダを生成します",
                 i + 1,
                 n_slots,
                 slot.get("source_file", "?"),
@@ -547,106 +402,10 @@ class ImageGenerator:
 
         return entries, self._write_manifest(site_dir, entries)
 
-    def _cursor_agent_image_attempt(self, prompt: str, output_path: Path) -> bool:
-        """TEXT_LLM と同じ Cursor CLI。応答 JSON の png_base64 を PNG として保存。"""
-        if not is_text_llm_configured():
-            return False
-        user = get_prompt_str("image_generation.cursor_agent_user_prefix") + prompt
-        system_main = get_prompt_str("image_generation.cursor_agent_system").strip()
-        system_fb = get_prompt_str("image_generation.cursor_agent_system_fallback").strip()
-        tout = _image_cursor_cli_timeout_sec()
-
-        def _call(system: str, temp: float) -> str:
-            return text_llm_complete(
-                user=user,
-                system=system,
-                temperature=temp,
-                cli_timeout_sec=tout,
-            )
-
-        logger.info(
-            "Cursor 画像: CLI 起動（この呼び出し最大約 %d 秒・終わるまでログが増えないのは正常）",
-            tout,
-        )
-        try:
-            raw = _call(system_main, 0.4)
-        except Exception as e:
-            logger.error("Cursor 画像生成（CLI）失敗: %s", e)
-            return False
-        if not (raw or "").strip():
-            return False
-        stripped = raw.strip()
-        if '"error"' in stripped.lower() and "png_base64" not in stripped:
-            logger.warning(
-                "Cursor が png_base64 を含まない応答を返しました（先頭 300 文字）: %s",
-                stripped[:300],
-            )
-            return False
-        data = _extract_png_bytes_from_cursor_response(raw)
-        if not data:
-            logger.info(
-                "Cursor 画像: 初回から PNG を解釈できなかったためフォールバック system で再試行します（最大約 %d 秒）",
-                tout,
-            )
-            try:
-                raw2 = _call(system_fb, 0.2)
-            except Exception as e2:
-                logger.error("Cursor 画像生成（フォールバック）失敗: %s", e2)
-                return False
-            data = _extract_png_bytes_from_cursor_response(raw2 or "")
-        if not data:
-            logger.warning(
-                "Cursor 応答から有効な PNG base64 を解釈できませんでした（先頭 400 文字）: %s",
-                raw[:400],
-            )
-            return False
-        output_path.write_bytes(data)
-        logger.info("Cursor CLI 経由の PNG を保存: %s", output_path)
-        return True
-
     def _generate_one_file(self, prompt: str, output_path: Path) -> bool:
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        try:
-            if self.provider == "cursor_agent_cli":
-                if self._cursor_agent_image_attempt(prompt, output_path):
-                    return True
-            if self.provider == "openai" and self._openai_image_client:
-                if self._openai_dalle(prompt, output_path):
-                    return True
-            if self.provider == "gemini" and self._gemini_model:
-                if self._gemini_image_attempt(prompt, output_path):
-                    return True
-        except Exception as e:
-            logger.error("画像生成エラー: %s", e, exc_info=True)
         self._generate_placeholder_image(output_path, prompt, 1024, 1024)
         return True
-
-    def _openai_dalle(self, prompt: str, output_path: Path) -> bool:
-        r = self._openai_image_client.images.generate(
-            model=IMAGE_GEN_OPENAI_MODEL,
-            prompt=prompt[:4000],
-            size=IMAGE_GEN_DALLE_SIZE,
-            quality="standard",
-            n=1,
-        )
-        url = r.data[0].url
-        if not url:
-            return False
-        resp = requests.get(url, timeout=120)
-        resp.raise_for_status()
-        output_path.write_bytes(resp.content)
-        logger.info("OpenAI 画像を保存: %s", output_path)
-        return True
-
-    def _gemini_image_attempt(self, prompt: str, output_path: Path) -> bool:
-        enhanced = get_prompt_str("image_generation.gemini_user_prefix") + prompt
-        response = self._gemini_model.generate_content(enhanced)
-        if hasattr(response, "images") and response.images:
-            with open(output_path, "wb") as f:
-                f.write(response.images[0])
-            return True
-        logger.warning("Gemini が画像バイナリを返さなかったため PIL にフォールバック")
-        return False
 
     def _generate_placeholder_image(
         self,

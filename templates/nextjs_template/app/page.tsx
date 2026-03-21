@@ -1,9 +1,5 @@
-import HomePageContent from "@/components/HomePageContent";
+import HomePage from "@/components/unsung/HomePage";
 
-export default function HomePage() {
-  return (
-    <div className="w-full">
-      <HomePageContent />
-    </div>
-  );
+export default function Page() {
+  return <HomePage />;
 }

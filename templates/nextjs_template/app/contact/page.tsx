@@ -1,9 +1,5 @@
-import ContactPageContent from "@/components/ContactPageContent";
+import ContactPage from "@/components/unsung/ContactPage";
 
-export default function ContactPage() {
-  return (
-    <div className="w-full">
-      <ContactPageContent />
-    </div>
-  );
+export default function Page() {
+  return <ContactPage />;
 }

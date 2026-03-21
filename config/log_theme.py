@@ -4,6 +4,7 @@ from __future__ import annotations
 import os
 from typing import Any
 
+
 # https://no-color.org/
 def stream_supports_color(stream: Any) -> bool:
     if os.getenv("NO_COLOR", "").strip():
@@ -34,7 +35,7 @@ class C:
 def abbrev_logger_name(name: str) -> str:
     if name == "__main__":
         return "bot"
-    for prefix in ("modules.", "skills.", "config."):
+    for prefix in ("modules.", "config."):
         if name.startswith(prefix):
             return name[len(prefix) :]
     return name
@@ -45,11 +46,10 @@ def case_start_banner(
     row: Any,
     record: Any,
     partner: Any,
-    preflight: bool,
     use_color: bool,
 ) -> str:
     """案件処理開始時の複数行バナー（logger.info に1本で渡す）"""
-    mode = "プレフライト（GitHub 手前まで）" if preflight else "本番パイプライン"
+    mode = "抽出 → TEXT_LLM → ソース push"
     partner_s = str(partner or "").strip() or "（未設定）"
     rec_s = str(record or "").strip() or "—"
     row_s = str(row if row is not None else "—")
