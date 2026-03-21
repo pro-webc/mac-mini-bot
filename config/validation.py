@@ -62,32 +62,12 @@ def validate_startup_config(*, require_full_pipeline: bool = True) -> StartupVal
         if not cfg.GITHUB_USERNAME.strip():
             r.warnings.append("GITHUB_USERNAME が空です。GitHub 連携で問題になる場合があります。")
 
-        if cfg.BOT_DEPLOY_URL_SOURCE == "vercel" and not cfg.VERCEL_TOKEN.strip():
-            r.errors.append("VERCEL_TOKEN が空です（BOT_DEPLOY_URL_SOURCE=vercel 時は必須）。")
-        if cfg.BOT_DEPLOY_URL_SOURCE == "github":
-            r.warnings.append(
-                "BOT_DEPLOY_URL_SOURCE=github — スプレッドシートには GitHub リポジトリ URL のみ記録され、"
-                "Vercel デプロイは行いません。"
-            )
+        if not cfg.VERCEL_TOKEN.strip():
+            r.errors.append("VERCEL_TOKEN が空です。")
 
-        if cfg.BASIC_LP_USE_GEMINI_MANUAL and not cfg.GEMINI_API_KEY.strip():
+        if not cfg.GEMINI_API_KEY.strip():
             r.errors.append(
-                "BASIC_LP_USE_GEMINI_MANUAL=true のとき GEMINI_API_KEY が必須です。"
-            )
-
-        if cfg.BASIC_CP_USE_GEMINI_MANUAL and not cfg.GEMINI_API_KEY.strip():
-            r.errors.append(
-                "BASIC_CP_USE_GEMINI_MANUAL=true のとき GEMINI_API_KEY が必須です。"
-            )
-
-        if cfg.STANDARD_CP_USE_GEMINI_MANUAL and not cfg.GEMINI_API_KEY.strip():
-            r.errors.append(
-                "STANDARD_CP_USE_GEMINI_MANUAL=true のとき GEMINI_API_KEY が必須です。"
-            )
-
-        if cfg.ADVANCE_CP_USE_GEMINI_MANUAL and not cfg.GEMINI_API_KEY.strip():
-            r.errors.append(
-                "ADVANCE_CP_USE_GEMINI_MANUAL=true のとき GEMINI_API_KEY が必須です。"
+                "GEMINI_API_KEY が空です。本番パイプラインではテキスト LLM・サイト画像生成に必要です。"
             )
 
         if cfg.BASIC_LP_REFACTOR_AFTER_MANUAL and not cfg.BASIC_LP_USE_GEMINI_MANUAL:

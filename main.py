@@ -1,9 +1,16 @@
 """メインオーケストレーション
 
+完成サイトを GitHub に push し Vercel で公開するまでを一本化する。
+
 パイプライン概略:
   1. ヒアリングシート類の抽出（`modules.case_extraction`）
-  2. TEXT_LLM（要望・仕様。`modules.text_llm_stage` — プラン別に Gemini マニュアルまたは `llm_mock`）
-  3. サイト生成・検証・GitHub へソース push・（任意）Vercel
+  2. TEXT_LLM（`modules.text_llm_stage` — プラン別 Gemini マニュアルまたは `llm_mock`）
+  3. サイト土台生成 → `llm_raw_output/` に LLM 生出力を保存
+  4. フェンス解析で `app/` 等へ反映（失敗時は例外）
+  5. `GEMINI_API_KEY` 利用時: Gemini 画像 API で `ImagePlaceholder` を実ファイル化
+  6. ビルド検証 → GitHub push → Vercel デプロイ → スプレッドシートに公開 URL
+
+各段の LLM 割当は ``docs/LLM_PIPELINE.md`` を参照。
 """
 from __future__ import annotations
 
@@ -18,8 +25,11 @@ from config.logging_setup import configure_logging
 configure_logging()
 
 from config.config import (
-    BOT_DEPLOY_URL_SOURCE,
     BOT_MAX_CASES,
+    GEMINI_API_KEY,
+    GEMINI_SITE_IMAGE_DELAY_SEC,
+    GEMINI_SITE_IMAGE_MAX_SLOTS,
+    GEMINI_SITE_IMAGE_MODEL,
     SITE_BUILD_ENABLED,
     SITE_IMPLEMENTATION_ENABLED,
     SPREADSHEET_AI_STATUS_ERROR_MAX_LEN,
@@ -38,8 +48,13 @@ from config.types import CaseRecord
 from config.validation import validate_startup_config
 from modules.basic_lp_generated_apply import apply_contract_outputs_to_site_dir
 from modules.case_extraction import extract_hearing_bundle
-from modules.contract_workflow import ContractWorkBranch, resolve_contract_work_branch
+from modules.contract_workflow import (
+    ContractWorkBranch,
+    gemini_manual_enabled_for_branch,
+    resolve_contract_work_branch,
+)
 from modules.github_client import GitHubClient, sanitize_github_repo_name
+from modules.llm_raw_output import write_llm_raw_artifacts
 from modules.site_build import verify_site_build
 from modules.site_generator import SiteGenerator
 from modules.site_implementer import SiteImplementer
@@ -104,12 +119,7 @@ class WebsiteBot:
         self.site_implementer = SiteImplementer()
         self.site_generator = SiteGenerator()
         self._github_client: GitHubClient | None = None
-        # Vercel は BOT_DEPLOY_URL_SOURCE=vercel のときのみ必須
-        self.vercel_client: VercelClient | None
-        if BOT_DEPLOY_URL_SOURCE == "vercel":
-            self.vercel_client = VercelClient()
-        else:
-            self.vercel_client = None
+        self.vercel_client = VercelClient()
 
     @property
     def github_client(self) -> GitHubClient:
@@ -226,21 +236,63 @@ class WebsiteBot:
             )
 
             logger.info(
-                "【フェーズ3】サイト生成・ビルド検証・ソースコード push / デプロイ…"
+                "【フェーズ3】土台生成・LLM 正本の保存・検証・Git push / デプロイ…"
             )
             logger.info("› Next.js の技術土台を生成…")
             site_name = f"{case['partner_name']}-{case['record_number']}"
             site_dir = self.site_generator.generate_site(spec, [], site_name)
+
+            raw_n = write_llm_raw_artifacts(
+                site_dir,
+                spec=spec,
+                requirements_result=requirements_result,
+                work_branch=work_branch,
+            )
+            logger.info(
+                "› LLM 正本: llm_raw_output/ に %s ファイル（形式を強制せずそのまま保存・必ず push）",
+                raw_n,
+            )
 
             n_gen = apply_contract_outputs_to_site_dir(
                 spec, site_dir, work_branch=work_branch
             )
             if n_gen:
                 logger.info(
-                    "› 契約分岐 %s: 生成マークダウンをサイトに %s ファイル反映…",
-                    work_branch.value,
+                    "› フェンス解析でサイトに %s ファイル反映（分岐 %s）",
                     n_gen,
+                    work_branch.value,
                 )
+            if (
+                work_branch
+                in (
+                    ContractWorkBranch.BASIC_LP,
+                    ContractWorkBranch.BASIC,
+                    ContractWorkBranch.STANDARD,
+                    ContractWorkBranch.ADVANCE,
+                )
+                and n_gen == 0
+                and gemini_manual_enabled_for_branch(work_branch)
+            ):
+                raise RuntimeError(
+                    "生成マークダウンからサイトファイルを1件も適用できませんでした。"
+                    " 該当プランの Gemini マニュアルとリファクタ出力が spec に入っているか確認してください。"
+                )
+
+            if (GEMINI_API_KEY or "").strip():
+                from modules.gemini_site_images import materialize_site_images
+
+                n_img = materialize_site_images(
+                    site_dir,
+                    api_key=GEMINI_API_KEY.strip(),
+                    model=GEMINI_SITE_IMAGE_MODEL,
+                    max_slots=GEMINI_SITE_IMAGE_MAX_SLOTS,
+                    delay_sec_between_calls=GEMINI_SITE_IMAGE_DELAY_SEC,
+                )
+                if n_img:
+                    logger.info(
+                        "› Gemini 画像 API: %s 箇所を public/images/generated/ に保存し next/image に置換",
+                        n_img,
+                    )
 
             if SITE_IMPLEMENTATION_ENABLED:
                 logger.info("› サイト実装を実行（モック: テンプレ土台のビルド検証）…")
@@ -274,27 +326,17 @@ class WebsiteBot:
                 "test",
             )
 
-            if BOT_DEPLOY_URL_SOURCE == "github":
-                deploy_url = github_url.rstrip("/").removesuffix(".git")
-                logger.warning(
-                    "BOT_DEPLOY_URL_SOURCE=github のため Vercel をスキップし、"
-                    "GitHub リポジトリ URL をデプロイ列に記録します: %s",
-                    deploy_url,
-                )
-            else:
-                if self.vercel_client is None:
-                    raise RuntimeError(
-                        "VercelClient が未初期化です（BOT_DEPLOY_URL_SOURCE=vercel を確認）"
-                    )
-                logger.info("› Vercel にデプロイ…")
-                deployment = self.vercel_client.deploy_from_github(
-                    github_url, repo_name
-                )
-                deploy_url = deployment["url"]
+            repo_https = github_url.rstrip("/").removesuffix(".git")
 
-                logger.info("› デプロイ URL が開けるか確認…")
-                if not self.vercel_client.verify_deployment_url(deploy_url):
-                    logger.warning("デプロイURLが閲覧できません: %s", deploy_url)
+            logger.info("› Vercel にデプロイ…")
+            deployment = self.vercel_client.deploy_from_github(
+                github_url, repo_name
+            )
+            deploy_url = deployment["url"]
+
+            logger.info("› デプロイ URL が開けるか確認…")
+            if not self.vercel_client.verify_deployment_url(deploy_url):
+                logger.warning("デプロイURLが閲覧できません: %s", deploy_url)
 
             logger.info("› スプレッドシートを更新…")
             self.spreadsheet.update_deploy_url(case["row_number"], deploy_url)
@@ -415,10 +457,6 @@ def main() -> None:
         sys.exit(1)
 
     try:
-        if BOT_DEPLOY_URL_SOURCE == "github":
-            logger.warning(
-                "BOT_DEPLOY_URL_SOURCE=github — 本番の公開 URL は Vercel ではなく GitHub のみ記録されます"
-            )
         bot = WebsiteBot()
         header_issues = bot.spreadsheet.validate_header_labels()
         for msg in header_issues:

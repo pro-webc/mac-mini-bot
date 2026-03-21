@@ -1,6 +1,9 @@
 """TEXT_LLM 工程（要望抽出・仕様生成）。
 
-現状は `llm_mock` に委譲。**実 LLM（API / CLI 等）を追加するときは主にこのモジュールを拡張する。**
+パイプラインの中心はここで得る LLM 出力である。`main` はそれを `llm_raw_output/` に正本として保存し、
+続けてフェンス解析で `app/` へ反映する。
+
+プラン別に `llm_mock` または Gemini マニュアルチェーンを実行する。
 """
 from __future__ import annotations
 

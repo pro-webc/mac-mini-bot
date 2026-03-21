@@ -37,3 +37,18 @@ def resolve_contract_work_branch(contract_plan: str) -> ContractWorkBranch:
     if name == "STANDARD":
         return ContractWorkBranch.STANDARD
     return ContractWorkBranch.STANDARD
+
+
+def gemini_manual_enabled_for_branch(work_branch: ContractWorkBranch) -> bool:
+    """該当プランで Gemini マニュアルチェーンが有効か（フェンス必須判定などに使用）。"""
+    from config import config as cfg
+
+    if work_branch == ContractWorkBranch.BASIC_LP:
+        return cfg.BASIC_LP_USE_GEMINI_MANUAL
+    if work_branch == ContractWorkBranch.BASIC:
+        return cfg.BASIC_CP_USE_GEMINI_MANUAL
+    if work_branch == ContractWorkBranch.STANDARD:
+        return cfg.STANDARD_CP_USE_GEMINI_MANUAL
+    if work_branch == ContractWorkBranch.ADVANCE:
+        return cfg.ADVANCE_CP_USE_GEMINI_MANUAL
+    return False

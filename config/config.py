@@ -113,9 +113,9 @@ GEMINI_RPC_DEADLINE_RETRIES = _parse_positive_int(
     "GEMINI_RPC_DEADLINE_RETRIES", 2, minimum=0, maximum=10
 )
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
-# BASIC LP: 社内マニュアルどおりの Gemini 多段プロンプト（true のとき GEMINI_API_KEY 必須）
+# BASIC LP: 社内マニュアルどおりの Gemini 多段プロンプト（既定 true・本番パイプライン向け）
 BASIC_LP_USE_GEMINI_MANUAL = os.getenv(
-    "BASIC_LP_USE_GEMINI_MANUAL", "false"
+    "BASIC_LP_USE_GEMINI_MANUAL", "true"
 ).strip().lower() in ("1", "true", "yes")
 # サイト制作は品質優先: 未設定時は Gemini 2.5 Pro（GEMINI_BASIC_LP_MODEL で上書き可）
 _DEFAULT_GEMINI_SITE_MODEL = "gemini-2.5-pro"
@@ -128,9 +128,9 @@ BASIC_LP_REFACTOR_AFTER_MANUAL = os.getenv(
     "BASIC_LP_REFACTOR_AFTER_MANUAL", "true"
 ).strip().lower() in ("1", "true", "yes")
 
-# BASIC（コーポレート1ページ）: BASIC-CP 制作マニュアルどおりの Gemini 多段プロンプト
+# BASIC（コーポレート1ページ）: BASIC-CP 制作マニュアルどおりの Gemini 多段プロンプト（既定 true）
 BASIC_CP_USE_GEMINI_MANUAL = os.getenv(
-    "BASIC_CP_USE_GEMINI_MANUAL", "false"
+    "BASIC_CP_USE_GEMINI_MANUAL", "true"
 ).strip().lower() in ("1", "true", "yes")
 _raw_gemini_basic_cp = (os.getenv("GEMINI_BASIC_CP_MODEL") or "").strip()
 GEMINI_BASIC_CP_MODEL = _raw_gemini_basic_cp or GEMINI_BASIC_LP_MODEL
@@ -139,9 +139,9 @@ BASIC_CP_REFACTOR_AFTER_MANUAL = os.getenv(
     "BASIC_CP_REFACTOR_AFTER_MANUAL", "true"
 ).strip().lower() in ("1", "true", "yes")
 
-# STANDARD（コーポレート・6ページ想定）: STANDARD-CP 制作マニュアルどおりの Gemini 多段プロンプト
+# STANDARD（コーポレート・6ページ想定）: STANDARD-CP 制作マニュアルどおりの Gemini 多段プロンプト（既定 true）
 STANDARD_CP_USE_GEMINI_MANUAL = os.getenv(
-    "STANDARD_CP_USE_GEMINI_MANUAL", "false"
+    "STANDARD_CP_USE_GEMINI_MANUAL", "true"
 ).strip().lower() in ("1", "true", "yes")
 _raw_gemini_standard_cp = (os.getenv("GEMINI_STANDARD_CP_MODEL") or "").strip()
 GEMINI_STANDARD_CP_MODEL = _raw_gemini_standard_cp or GEMINI_BASIC_LP_MODEL
@@ -153,9 +153,9 @@ STANDARD_CP_INCLUDE_BLOG_PAGE = os.getenv(
     "STANDARD_CP_INCLUDE_BLOG_PAGE", "true"
 ).strip().lower() in ("1", "true", "yes")
 
-# ADVANCE（コーポレート・12ページ想定）: ADVANCE-CP 制作マニュアルどおりの Gemini 多段プロンプト
+# ADVANCE（コーポレート・12ページ想定）: ADVANCE-CP 制作マニュアルどおりの Gemini 多段プロンプト（既定 true）
 ADVANCE_CP_USE_GEMINI_MANUAL = os.getenv(
-    "ADVANCE_CP_USE_GEMINI_MANUAL", "false"
+    "ADVANCE_CP_USE_GEMINI_MANUAL", "true"
 ).strip().lower() in ("1", "true", "yes")
 _raw_gemini_advance_cp = (os.getenv("GEMINI_ADVANCE_CP_MODEL") or "").strip()
 GEMINI_ADVANCE_CP_MODEL = _raw_gemini_advance_cp or GEMINI_BASIC_LP_MODEL
@@ -165,6 +165,21 @@ ADVANCE_CP_REFACTOR_AFTER_MANUAL = os.getenv(
 ADVANCE_CP_INCLUDE_BLOG_PAGE = os.getenv(
     "ADVANCE_CP_INCLUDE_BLOG_PAGE", "true"
 ).strip().lower() in ("1", "true", "yes")
+
+# サイト TSX の ImagePlaceholder を Gemini 画像 API で実ファイル化（GEMINI_API_KEY があるとき常に実行）
+GEMINI_SITE_IMAGE_MODEL = (
+    os.getenv(
+        "GEMINI_SITE_IMAGE_MODEL",
+        "gemini-2.0-flash-preview-image-generation",
+    )
+    or "gemini-2.0-flash-preview-image-generation"
+).strip()
+GEMINI_SITE_IMAGE_MAX_SLOTS = _parse_positive_int(
+    "GEMINI_SITE_IMAGE_MAX_SLOTS", 12, minimum=1, maximum=32
+)
+GEMINI_SITE_IMAGE_DELAY_SEC = _parse_float_env(
+    "GEMINI_SITE_IMAGE_DELAY_SEC", 1.0, minimum=0.0, maximum=30.0
+)
 
 # npm ビルド検証
 SITE_BUILD_ENABLED = os.getenv("SITE_BUILD_ENABLED", "true").strip().lower() in (
@@ -199,11 +214,6 @@ VERCEL_GIT_REF = (os.getenv("VERCEL_GIT_REF", "main") or "main").strip()
 VERCEL_DEPLOY_USE_GIT_SOURCE = os.getenv(
     "VERCEL_DEPLOY_USE_GIT_SOURCE", "true"
 ).strip().lower() in ("1", "true", "yes")
-# デプロイ先 URL をスプレッドシートに書く方法: vercel（既定）| github（Vercel をスキップし GitHub URL のみ記録）
-_raw_deploy_url_src = os.getenv("BOT_DEPLOY_URL_SOURCE", "vercel").strip().lower()
-BOT_DEPLOY_URL_SOURCE = (
-    _raw_deploy_url_src if _raw_deploy_url_src in ("vercel", "github") else "vercel"
-)
 # デプロイURLをログイン不要で閲覧できるよう、プロジェクトのデプロイ保護を API で解除する
 VERCEL_FORCE_PUBLIC_DEPLOYMENTS = os.getenv(
     "VERCEL_FORCE_PUBLIC_DEPLOYMENTS", "true"
