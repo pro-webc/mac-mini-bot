@@ -10,6 +10,7 @@ from __future__ import annotations
 import hashlib
 import io
 import logging
+import re
 import time
 import zipfile
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -80,6 +81,25 @@ def github_owner_repo_from_clone_url(github_url: str) -> tuple[str, str]:
     Manus が push したリポジトリ URL をパースし、Vercel のプロジェクト名を GitHub 側の repo 名と揃えるために使う。
     """
     return _github_owner_repo_from_url(github_url)
+
+
+def sanitize_vercel_project_name(repo_name: str) -> str:
+    """
+    Vercel のプロジェクト名制約に合わせる（小文字・許可文字のみ・`---` を含まない・最大100文字）。
+
+    GitHub のリポジトリ名（大文字・連続ハイフン・記号など）をそのまま渡すと
+    ``invalid_project_name`` (HTTP 400) になることがあるため、gitSource の repo とは別に
+    Vercel 側の名前だけ正規化する。
+    """
+    s = (repo_name or "").strip().lower()
+    s = re.sub(r"[^a-z0-9._-]+", "-", s)
+    s = re.sub(r"-{3,}", "-", s)
+    s = re.sub(r"-+", "-", s).strip(".-")
+    if not s:
+        s = "project"
+    if len(s) > 100:
+        s = s[:100].strip(".-") or "p"
+    return s
 
 
 def _extract_github_zip_to_files(zip_bytes: bytes) -> dict[str, bytes]:
@@ -161,8 +181,10 @@ class VercelClient:
         """
         try:
             org, repo = _github_owner_repo_from_url(github_url)
-            if not project_name:
-                project_name = repo
+            pn = (project_name or "").strip()
+            if not pn:
+                pn = repo
+            project_name = sanitize_vercel_project_name(pn)
 
             ref = (git_ref or VERCEL_GIT_REF or "main").strip()
 

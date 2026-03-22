@@ -59,7 +59,11 @@ from modules.site_generator import SiteGenerator
 from modules.site_implementer import SiteImplementer
 from modules.spec_generator import SpecGenerator
 from modules.spreadsheet import SpreadsheetClient, missing_required_case_fields
-from modules.vercel_client import VercelClient, github_owner_repo_from_clone_url
+from modules.vercel_client import (
+    VercelClient,
+    github_owner_repo_from_clone_url,
+    sanitize_vercel_project_name,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -335,10 +339,11 @@ class WebsiteBot:
                 )
                 vercel_project_name = fallback_repo_name
 
+            vercel_name_for_api = sanitize_vercel_project_name(vercel_project_name)
             logger.info(
                 "› Vercel にデプロイ…（git=%s project=%s）",
                 github_url,
-                vercel_project_name,
+                vercel_name_for_api,
             )
             deployment = self.vercel_client.deploy_from_github(
                 github_url, vercel_project_name
