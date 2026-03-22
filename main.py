@@ -59,7 +59,7 @@ from modules.site_generator import SiteGenerator
 from modules.site_implementer import SiteImplementer
 from modules.spec_generator import SpecGenerator
 from modules.spreadsheet import SpreadsheetClient, missing_required_case_fields
-from modules.vercel_client import VercelClient
+from modules.vercel_client import VercelClient, github_owner_repo_from_clone_url
 
 logger = logging.getLogger(__name__)
 
@@ -223,6 +223,7 @@ class WebsiteBot:
                 hearing_bundle,
                 contract_plan=case["contract_plan"],
                 partner_name=case["partner_name"],
+                record_number=str(case.get("record_number") or ""),
                 work_branch=work_branch,
             )
 
@@ -304,8 +305,8 @@ class WebsiteBot:
                         "npm build に失敗: " + (blog[-2000:] if blog else "")
                     )
 
-            # --- GitHub: Manus が URL を返した場合はローカル push をスキップ（.env オプション） ---
-            repo_name = sanitize_github_repo_name(
+            # --- GitHub: Manus が URL を返した場合はローカル push をスキップし、その URL で Vercel デプロイ ---
+            fallback_repo_name = sanitize_github_repo_name(
                 case["partner_name"], str(case["record_number"])
             )
             manus_git = (spec.get("manus_deploy_github_url") or "").strip()
@@ -316,17 +317,31 @@ class WebsiteBot:
                 github_url = manus_git.rstrip("/")
                 if not github_url.lower().endswith(".git"):
                     github_url = f"{github_url}.git"
+                try:
+                    _, vercel_project_name = github_owner_repo_from_clone_url(github_url)
+                except ValueError:
+                    logger.warning(
+                        "Manus の GitHub URL から owner/repo を解釈できません。"
+                        " Vercel プロジェクト名に従来の sanitize 名を使います: %s",
+                        manus_git,
+                    )
+                    vercel_project_name = fallback_repo_name
             else:
                 logger.info("› GitHub にソースコードを push…")
                 github_url = self.github_client.push_to_github(
                     site_dir,
-                    repo_name,
+                    fallback_repo_name,
                     "test",
                 )
+                vercel_project_name = fallback_repo_name
 
-            logger.info("› Vercel にデプロイ…")
+            logger.info(
+                "› Vercel にデプロイ…（git=%s project=%s）",
+                github_url,
+                vercel_project_name,
+            )
             deployment = self.vercel_client.deploy_from_github(
-                github_url, repo_name
+                github_url, vercel_project_name
             )
             deploy_url = deployment["url"]
 

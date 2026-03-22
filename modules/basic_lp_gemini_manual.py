@@ -196,6 +196,7 @@ def run_basic_lp_gemini_manual_pipeline(
     sales_notes: str,
     contract_plan: str,
     partner_name: str,
+    record_number: str = "",
     existing_site_url: str = "",
 ) -> tuple[dict[str, Any], dict[str, Any], BasicLpManualGeminiOutputs]:
     """
@@ -332,6 +333,7 @@ def run_basic_lp_gemini_manual_pipeline(
         md, manus_deploy_github_url = run_basic_lp_refactor_stage(
             canvas_source_code=outs.step_8_3,
             partner_name=partner_name,
+            record_number=record_number,
         )
         outs.step_refactor = md
         outs.raw["step_refactor"] = md

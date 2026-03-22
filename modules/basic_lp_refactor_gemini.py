@@ -31,6 +31,28 @@ ADVANCE_CP_REFACTOR_PREFACE_DIR = (
 BASIC_LP_REFACTOR_MANUS_TASKS = 1
 
 
+def manus_repo_name_for_prompt(
+    record_number: str | None,
+    partner_name: str | None,
+) -> str:
+    """Manus 手順1: リポジトリ名 ``demo-{レコード番号}-{先方名}``（プレースホルダ展開後のそのまま）。
+
+    先方名は制作スプレッドシートの「パートナー名」列（コード上 ``partner_name``）と同一。
+    """
+    rec = str(record_number or "").strip() or "0"
+    pn = (partner_name or "").strip() or "先方名未設定"
+    return f"demo-{rec}-{pn}"
+
+
+def manus_repo_description_for_prompt(partner_name: str | None) -> str:
+    """Manus 手順1: ディスクリプションは常に ``test`` + 先方名（工程テスト・本番共通）。
+
+    先方名は制作スプレッドシートの「パートナー名」列（``partner_name``）と同一。
+    """
+    pn = (partner_name or "").strip() or "先方名未設定"
+    return f"test{pn}"
+
+
 def _read(path: Path) -> str:
     if not path.is_file():
         raise RuntimeError(
@@ -63,6 +85,7 @@ def build_basic_lp_refactor_user_prompt(
     *,
     preface_dir: Path | None = None,
     partner_name: str | None = None,
+    record_number: str | None = None,
 ) -> str:
     """
     手作業 Manus マニュアルと同じオーケストレーション + リファクタ指示書 + Canvas。
@@ -70,7 +93,8 @@ def build_basic_lp_refactor_user_prompt(
     Args:
         canvas_source_code: Gemini Canvas 単一ファイル相当。
         preface_dir: 未使用（シグネチャ互換）。
-        partner_name: 制作シートの先方名（オーケストレーション手順1の Description 用）。
+        partner_name: 制作スプレッドシートの「パートナー名」列（プロンプト上の先方名と同一）。
+        record_number: 制作スプレッドシートのレコード番号（リポジトリ名 ``demo-{番号}-{先方名}`` 用）。
     """
     del preface_dir  # Manus 手作業フローではプラン別 preface を使わない
     src = (canvas_source_code or "").strip()
@@ -78,8 +102,12 @@ def build_basic_lp_refactor_user_prompt(
         raise RuntimeError(
             "modules.basic_lp_refactor_gemini: リファクタリング元ソースが空です。"
         )
-    pn = (partner_name or "").strip() or "先方名未設定"
-    orch = _read(_MANUS_DIR / "orchestration_prompt.txt").replace("{{PARTNER_NAME}}", pn)
+    repo_name = manus_repo_name_for_prompt(record_number, partner_name)
+    repo_desc = manus_repo_description_for_prompt(partner_name)
+    orch = _read(_MANUS_DIR / "orchestration_prompt.txt")
+    orch = orch.replace("{{MANUS_REPO_NAME}}", repo_name).replace(
+        "{{MANUS_REPO_DESCRIPTION}}", repo_desc
+    )
     refactor = _read(_MANUS_DIR / "refactoring_instruction_handwork.txt")
 
     base = (
@@ -118,6 +146,7 @@ def run_basic_lp_refactor_stage(
     canvas_source_code: str,
     preface_dir: Path | None = None,
     partner_name: str | None = None,
+    record_number: str | None = None,
 ) -> tuple[str, str | None]:
     """
     Manus にリファクタ用プロンプトを送り、完了まで待つ。
@@ -135,6 +164,7 @@ def run_basic_lp_refactor_stage(
         canvas_source_code=canvas_source_code,
         preface_dir=preface_dir,
         partner_name=partner_name,
+        record_number=record_number,
     )
     if not MANUS_PROVIDES_DEPLOY_GITHUB_URL:
         return raw, None

@@ -1,4 +1,5 @@
 """Manus リファクタ用プロンプト（手作業マニュアル同様の manus/*.txt）"""
+import modules.basic_lp_refactor_gemini as refactor_mod
 import pytest
 from modules.basic_lp_refactor_gemini import (
     ADVANCE_CP_REFACTOR_PREFACE_DIR,
@@ -8,7 +9,8 @@ from modules.basic_lp_refactor_gemini import (
 )
 
 
-def test_refactor_prompt_contains_markers() -> None:
+def test_refactor_prompt_contains_markers(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(refactor_mod, "MANUS_PROVIDES_DEPLOY_GITHUB_URL", True)
     p = build_basic_lp_refactor_user_prompt("export default function X() { return null }")
     assert "===== BEGIN_CANVAS_SOURCE =====" in p
     assert "===== END_CANVAS_SOURCE =====" in p
@@ -19,15 +21,37 @@ def test_refactor_prompt_contains_markers() -> None:
     assert "nanobanana" in p.lower()
     assert "public/images" in p.lower()
     assert "next/image" in p.lower()
+    assert "BOT_DEPLOY_GITHUB_URL:" in p
 
 
-def test_refactor_prompt_partner_name_in_orchestration() -> None:
+def test_refactor_prompt_without_deploy_url_block_when_disabled(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(refactor_mod, "MANUS_PROVIDES_DEPLOY_GITHUB_URL", False)
+    p = build_basic_lp_refactor_user_prompt("const x = 1")
+    assert "BOT_DEPLOY_GITHUB_URL:" not in p
+
+
+def test_refactor_prompt_repo_name_and_description_in_orchestration() -> None:
     p = build_basic_lp_refactor_user_prompt(
         "export default function X() { return null }",
         partner_name="テスト商事",
+        record_number="",
     )
-    assert "テスト商事" in p
-    assert "{{PARTNER_NAME}}" not in p
+    assert "demo-0-テスト商事" in p
+    assert "testテスト商事" in p
+    assert "{{MANUS_REPO_NAME}}" not in p
+    assert "{{MANUS_REPO_DESCRIPTION}}" not in p
+
+
+def test_refactor_prompt_record_number_in_repo_name() -> None:
+    p = build_basic_lp_refactor_user_prompt(
+        "const x = 1",
+        partner_name="ACME株式会社",
+        record_number="12345",
+    )
+    assert "demo-12345-ACME株式会社" in p
+    assert "testACME株式会社" in p
 
 
 def test_refactor_prompt_empty_raises() -> None:
@@ -35,8 +59,9 @@ def test_refactor_prompt_empty_raises() -> None:
         build_basic_lp_refactor_user_prompt("  \n  ")
 
 
-def test_cp_preface_dir_ignored_same_as_handwork() -> None:
+def test_cp_preface_dir_ignored_same_as_handwork(monkeypatch: pytest.MonkeyPatch) -> None:
     """preface_dir は Manus 手作業プロンプトでは使わない（どの分岐も同一本文）。"""
+    monkeypatch.setattr(refactor_mod, "MANUS_PROVIDES_DEPLOY_GITHUB_URL", False)
     base = build_basic_lp_refactor_user_prompt("const x = 1")
     p_cp = build_basic_lp_refactor_user_prompt(
         "const x = 1",

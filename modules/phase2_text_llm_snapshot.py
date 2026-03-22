@@ -175,6 +175,7 @@ def snapshot_phase2_text_llm_from_phase1_dir(
     meta = load_phase1_case_meta(phase1_dir)
     plan = str(meta.get("contract_plan") or "")
     partner_name = str(meta.get("partner_name") or "")
+    record_number = str(meta.get("record_number") or "")
 
     wb_path = work_branches_json
     if wb_path is None:
@@ -206,6 +207,7 @@ def snapshot_phase2_text_llm_from_phase1_dir(
         bundle,
         contract_plan=plan,
         partner_name=partner_name,
+        record_number=record_number,
         work_branch=branch,
     )
 

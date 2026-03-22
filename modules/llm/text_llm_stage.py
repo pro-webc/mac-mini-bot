@@ -22,6 +22,7 @@ def run_text_llm_stage(
     *,
     contract_plan: str,
     partner_name: str,
+    record_number: str = "",
     work_branch: ContractWorkBranch | None = None,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """
@@ -36,6 +37,7 @@ def run_text_llm_stage(
         sales_notes=bundle.sales_notes,
         contract_plan=contract_plan,
         partner_name=partner_name,
+        record_number=record_number,
     )
 
     if branch == ContractWorkBranch.BASIC_LP:

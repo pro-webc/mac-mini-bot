@@ -47,19 +47,19 @@
 
 ### 手作業フローに合わせる（Manus が GitHub push → Vercel に Git URL）
 
-`.env` で `MANUS_PROVIDES_DEPLOY_GITHUB_URL=true` にすると、リファクタ用プロンプトに **GitHub へ push したうえで** 返答最終行を `BOT_DEPLOY_GITHUB_URL: https://github.com/...` とする指示が付く。ボットはその URL をパースして **ローカルからの `git push` をスキップ**し、`VercelClient.deploy_from_github` にその URL を渡す（人がダッシュボードに貼っていた Git URL と同じ役割）。push 先のヒントは任意で `MANUS_DEPLOY_GITHUB_REPO_HINT=owner/repo`。URL 行が無い場合は警告のうえ従来どおりボットが push。
+`MANUS_PROVIDES_DEPLOY_GITHUB_URL` は **既定で true**。リファクタ用プロンプトに **GitHub へ push したうえで** 返答最終行を `BOT_DEPLOY_GITHUB_URL: https://github.com/...` とする指示が付く。ボットはその URL をパースして **ローカルからの `git push` をスキップ**し、`main.process_case` が `VercelClient.deploy_from_github` にその URL と、URL から解釈した **GitHub 上の repo 名**（`demo-…` など）をプロジェクト名として渡して Vercel デプロイする。`false` にすると従来どおりボットがローカルから push してから同 API でデプロイ。push 先のヒントは任意で `MANUS_DEPLOY_GITHUB_REPO_HINT=owner/repo`。URL 行が無い場合は警告のうえ従来どおりボットが push（Vercel プロジェクト名は `sanitize_github_repo_name`）。
 
 ### Manus API プロンプト（手作業マニュアルと同一構成）
 
 `modules.basic_lp_refactor_gemini.build_basic_lp_refactor_user_prompt` は次をこの順で連結する（プラン別の `preface_intro` は **使わない**）。手作業マニュアル本文以外のボット専用追記は付けない。
 
-1. `config/prompts/manus/orchestration_prompt.txt` — 手作業のオーケストレーション（Repo 作成・リファクタ・nanobanana・build・push）。`{{PARTNER_NAME}}` にスプレッドシートの先方名を代入。
+1. `config/prompts/manus/orchestration_prompt.txt` — 手作業のオーケストレーション（Repo 作成・リファクタ・nanobanana・build・push）。`{{MANUS_REPO_NAME}}` を `demo-レコード番号-先方名`、`{{MANUS_REPO_DESCRIPTION}}` を `test`+先方名（工程テスト・本番共通）に展開。レコード番号・先方名（＝スプレッドシートのパートナー名列 `partner_name`）は `main` の案件メタから `run_text_llm_stage` 経由で各 Gemini マニュアルに渡る。
 2. `config/prompts/manus/refactoring_instruction_handwork.txt` — 手作業のリファクタリング指示書本文。
 3. `===== BEGIN_CANVAS_SOURCE =====` … Gemini Canvas 単一ファイル … `END_CANVAS_SOURCE`
 
 `config/prompts/basic_lp_refactor/refactoring_instruction.txt` は Manus 工程では参照しない。
 
-`MANUS_PROVIDES_DEPLOY_GITHUB_URL=true` のときはさらに末尾に `BOT_DEPLOY_GITHUB_URL:` 行の指示を付与（前述・手作業には無い任意オプション）。
+`MANUS_PROVIDES_DEPLOY_GITHUB_URL=true`（既定）のときはさらに末尾に `BOT_DEPLOY_GITHUB_URL:` 行の指示を付与（手作業マニュアルには無いボット用追記。`false` で無効化可）。
 
 ---
 

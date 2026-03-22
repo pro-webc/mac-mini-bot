@@ -191,6 +191,7 @@ def run_advance_cp_gemini_manual_pipeline(
     sales_notes: str,
     contract_plan: str,
     partner_name: str,
+    record_number: str = "",
     existing_site_url: str = "",
 ) -> tuple[dict[str, Any], dict[str, Any], AdvanceCpManualGeminiOutputs]:
     if not ADVANCE_CP_USE_GEMINI_MANUAL:
@@ -354,6 +355,7 @@ def run_advance_cp_gemini_manual_pipeline(
             canvas_source_code=canvas_final,
             preface_dir=ADVANCE_CP_REFACTOR_PREFACE_DIR,
             partner_name=partner_name,
+            record_number=record_number,
         )
         outs.step_refactor = md
         outs.raw["step_refactor"] = md

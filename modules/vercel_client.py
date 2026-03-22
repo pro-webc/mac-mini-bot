@@ -73,6 +73,15 @@ def _github_owner_repo_from_url(github_url: str) -> tuple[str, str]:
     raise ValueError(f"GitHub URL から owner/repo を解釈できません: {github_url!r}")
 
 
+def github_owner_repo_from_clone_url(github_url: str) -> tuple[str, str]:
+    """
+    Git clone URL（https://github.com/owner/repo.git 等）から (owner, repo) を返す。
+
+    Manus が push したリポジトリ URL をパースし、Vercel のプロジェクト名を GitHub 側の repo 名と揃えるために使う。
+    """
+    return _github_owner_repo_from_url(github_url)
+
+
 def _extract_github_zip_to_files(zip_bytes: bytes) -> dict[str, bytes]:
     """
     GitHub の zipball（単一ルートフォルダ付き）を {相対パス: バイナリ} に展開する。

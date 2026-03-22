@@ -76,7 +76,7 @@ output/pipeline_test_runs/<run_UTC>/
 | `02_summary.yaml` | キー一覧・文字数などの要約 |
 | `README.txt` | 説明 |
 
-### `gemini_step_tests/<UTC>/`（STANDARD-CP・タブ①〜④ / タブ⑤手順4）
+### `gemini_step_tests/<UTC>/`（STANDARD-CP・タブ①〜④ / タブ⑤ / タブ⑥）
 
 実行のたびに **新しい `<UTC>` フォルダ**が増えます。**1回目〜各回**を別フォルダに保存します。
 
@@ -93,7 +93,8 @@ output/pipeline_test_runs/<run_UTC>/
 | `01_prompt_step_3_5.txt` / `02_response_step_3_5.txt` | API 8/15（手順3-5・残りページ・**4往復 `history` 復元**・タブ④終了） |
 | `01_prompt_step_4.txt` / `02_response_step_4.txt` | API 9/15（手順4・配色・**新規チャット**・`gemini_standard_cp_step9_from_phase1.py`） |
 | `01_prompt_step_5.txt` / `02_response_step_5.txt` | API 10/15（手順5・**9回目の手順4で `history` 復元**・2・3回目の応答で置換・`gemini_standard_cp_step10_from_phase1.py`） |
-| `meta.json` | 文字数・`step`・`gemini_call_index_1based`（1〜10） |
+| `01_prompt_step_7_1.txt` 〜 `02_response_step_7_4.txt` 等 | API **11〜15/15**（タブ⑥・手順7-1〜7-4・`gemini_standard_cp_step11`〜**`step15`**）。**工程テストの最終応答**は **`02_response_step_7_4.txt`**（15/15） |
+| `meta.json` | 文字数・`step`・`gemini_call_index_1based`（1〜15） |
 | `README.txt` | 説明 |
 
 本番の **BASIC-CP / STANDARD-CP / ADVANCE-CP / BASIC LP** でも、タブ②はいずれも **手順1-2と1-3を連結した1送信**です（API 総数はプランごとに異なる）。詳細は **`docs/LLM_PIPELINE.md`**。
@@ -117,6 +118,9 @@ output/pipeline_test_runs/<run_UTC>/
 | STANDARD-CP Gemini **8/15**（手順3-5・タブ④5通目＝タブ④終了） | `python3 scripts/gemini_standard_cp_step8_from_phase1.py --phase1-dir 同上 --prev-gemini-dir .../gemini_step_tests/<7回目UTC>/`（7→6→5→4 のチェーンで3-1〜3-3を解決。欠けるときは `--step3-3-*` 等） |
 | STANDARD-CP Gemini **9/15**（手順4・タブ⑤1通目） | `python3 scripts/gemini_standard_cp_step9_from_phase1.py --phase1-dir .../phase1_snapshots/<UTC>/`（タブ④の成果物は不要。ヒアリング本文のみ） |
 | STANDARD-CP Gemini **10/15**（手順5・タブ⑤2通目） | `python3 scripts/gemini_standard_cp_step10_from_phase1.py --phase1-dir 同上 --prev-gemini-dir .../gemini_step_tests/<9回目UTC>/ --step1-3-dir .../<2回目UTC>/ --step2-dir .../<3回目UTC>/`（9回目で手順4を履歴復元。2・3回目は応答ファイルのディレクトリ） |
+| STANDARD-CP Gemini **11〜15/15**（タブ⑥・手順7-1〜7-4） | `gemini_standard_cp_step11_from_phase1.py` 〜 **`step15_from_phase1.py`**（**最終 15/15** は手順7-4。成果物 **`02_response_step_7_4.txt`**） |
+
+**Manus 工程テストに渡す Gemini 最終出力（STANDARD-CP）**: 段階テストを最後まで進めた **15 回目**のフォルダ `gemini_step_tests/<UTC>/` 内の **`02_response_step_7_4.txt`** が、いわゆる「工程テストの最後の応答」（Canvas 単一ファイル相当の本文）。案件メタは同じ run の `phase1_snapshots/.../01_case_meta.json` と揃える。詳細は **`config/prompts/manus/README.md`**（工程テストの観点）。
 
 `.env` の **`PIPELINE_TEST_RUN_DIR`** を親に合わせると、各スクリプトの既定出力先がその配下になります（`config.config.pipeline_run_root_for_resolve`）。**同じ親に後から足す**ときは、上表のスクリプトを同じ順で実行すればよい（`phase1` が `.../phase1_snapshots/...` にある場合、一部スクリプトは `--run-dir` を省略できる）。
 
@@ -130,7 +134,7 @@ output/pipeline_test_runs/<run_UTC>/
 | フェーズ1 ヒアリング抽出 | `phase1_snapshots` |
 | 作業分岐解決 | `work_branch_snapshots` |
 | フェーズ2 TEXT_LLM | `phase2_snapshots`（単体）／本番は続けて `output/sites/...` |
-| STANDARD-CP の Gemini 多段のうち 1〜10 回目（合計 API は **15 回**） | `gemini_step_tests`（段階テスト用スクリプト） |
+| STANDARD-CP の Gemini 多段（合計 API **15 回**・段階テストは step1〜**step15**） | `gemini_step_tests`（**最終応答**は多くの場合 **`02_response_step_7_4.txt`**） |
 
 本番の LLM 回数・モジュール対応は **`docs/LLM_PIPELINE.md`** の表を正とします。
 
