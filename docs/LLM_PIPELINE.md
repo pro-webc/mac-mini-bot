@@ -13,7 +13,7 @@
 | 3 | 出力先ディレクトリ準備 | **LLM なし** | `modules.site_generator` | テンプレコピーなし。`TECH_REQUIREMENTS.md` のみ |
 | 4 | `llm_raw_output/` 保存 | **LLM なし**（書き出しのみ） | `modules.llm.llm_raw_output` | 手順 2 の結果をファイル化 |
 | 5 | フェンス → `app/` 反映 | **LLM なし**（パーサ） | `modules.basic_lp_generated_apply` | 該当プランで Gemini マニュアルが有効なとき、適用 0 件なら失敗 |
-| 6 | `npm build` 検証 | **LLM なし**（失敗時のみ **Cursor CLI** がソース修正可） | `modules.site_implementer` / `modules.site_build` | **stub 自動生成・自動パッチ・画像 TSX 置換は行わない**。`CURSOR_SITE_BUILD_FIX_ENABLED=true` かつ `agent` 利用可能時、初回ビルド失敗後に Cursor→再ビルド |
+| 6 | `npm build` 検証 | **LLM なし** | `modules.site_implementer` / `modules.site_build` | **stub 自動生成・自動パッチ・画像 TSX 置換は行わない**。ビルド失敗時もソースの自動修正はしない |
 | 7 | `git push` | **LLM なし** | `modules.github_client` | |
 | 8 | Vercel デプロイ | **LLM なし** | `modules.vercel_client` | 常に実行（公開 URL をスプレッドシートに記録） |
 
@@ -38,10 +38,10 @@
 各 `*_cp_gemini_manual` / `basic_lp_gemini_manual` の末尾付近で、設定が有効なとき **Manus API でタスクを 1 件**作成し、ポーリングして完了まで待つ。
 
 - **モジュール**: `modules.basic_lp_refactor_gemini.run_basic_lp_refactor_stage` → 内部で `modules.manus_refactor.run_manus_refactor_stage`
-- **API**: `POST {MANUS_API_BASE}/v1/tasks`、ヘッダ `API_KEY`（`.env` の `MANUS_API_KEY`）。`MANUS_AGENT_PROFILE`（既定 `manus-1.6`）などは `config.config` を参照
+- **API**: `POST {MANUS_API_BASE}/v1/tasks`、ヘッダ `API_KEY`（`.env` の `MANUS_API_KEY`）。`MANUS_AGENT_PROFILE`（既定 `manus-1.6`）などは `config.config` を参照。GitHub 操作のため **`connectors` に公式の GitHub コネクタ UUID を付与**する（既定: 1 件。`MANUS_TASK_CONNECTORS` でカンマ区切り上書き、**空文字で `connectors` 省略**）。コネクタの OAuth は [Manus ドキュメント](https://open.manus.im/docs/connectors) のとおり **manus.im 上で事前連携**が必須。
 - **マニュアル本編**: 引き続き Gemini（`GenerativeModel`、プラン別 `GEMINI_BASIC_LP_MODEL` / …）
 - **ON/OFF**: `BASIC_LP_REFACTOR_AFTER_MANUAL` / `BASIC_CP_REFACTOR_AFTER_MANUAL` / `STANDARD_CP_REFACTOR_AFTER_MANUAL` / `ADVANCE_CP_REFACTOR_AFTER_MANUAL`（プランごと）
-- **画像**: プロンプト（`config/prompts/basic_lp_refactor/`）により、**リファクタ成果で** `ImagePlaceholder` をやめ **`next/image` + `public/images/`（主に SVG フェンス）** に置き換える。`main` からの一括画像 API は呼ばない。
+- **画像**: Manus 向けプロンプト（`config/prompts/manus/` のオーケストレーション＋リファクタ指示）により、**リファクタ成果で** `ImagePlaceholder` をやめ **`next/image` + `public/images/`（主に SVG フェンス）** に置き換える。`main` からの一括画像 API は呼ばない。
 
 → **テキストの多段生成は Gemini。最終リファクタは Manus（別 API キー）**。
 
@@ -51,15 +51,14 @@
 
 ### Manus API プロンプト（手作業マニュアルと同一構成）
 
-`modules.basic_lp_refactor_gemini.build_basic_lp_refactor_user_prompt` は次をこの順で連結する（プラン別の `preface_intro` は **使わない**）。手作業マニュアル本文以外のボット専用追記は付けない。
+`modules.basic_lp_refactor_gemini.build_basic_lp_refactor_user_prompt` は次をこの順で連結する（プラン別の `preface_intro` は **使わない**）。本文は手作業用 `manus/*.txt` のみ（プレースホルダ展開）に揃える。
 
 1. `config/prompts/manus/orchestration_prompt.txt` — 手作業のオーケストレーション（Repo 作成・リファクタ・nanobanana・build・push）。`{{MANUS_REPO_NAME}}` を `demo-レコード番号-先方名`、`{{MANUS_REPO_DESCRIPTION}}` を `test`+先方名（工程テスト・本番共通）に展開。レコード番号・先方名（＝スプレッドシートのパートナー名列 `partner_name`）は `main` の案件メタから `run_text_llm_stage` 経由で各 Gemini マニュアルに渡る。
-2. `config/prompts/manus/refactoring_instruction_handwork.txt` — 手作業のリファクタリング指示書本文。
-3. `===== BEGIN_CANVAS_SOURCE =====` … Gemini Canvas 単一ファイル … `END_CANVAS_SOURCE`
+2. 区切り `---`
+3. `config/prompts/manus/refactoring_instruction_handwork.txt` — 手作業のリファクタリング指示書本文。
+4. `===== BEGIN_CANVAS_SOURCE =====` … Gemini Canvas 単一ファイル … `END_CANVAS_SOURCE`
 
-`config/prompts/basic_lp_refactor/refactoring_instruction.txt` は Manus 工程では参照しない。
-
-`MANUS_PROVIDES_DEPLOY_GITHUB_URL=true`（既定）のときはさらに末尾に `BOT_DEPLOY_GITHUB_URL:` 行の指示を付与（手作業マニュアルには無いボット用追記。`false` で無効化可）。
+`MANUS_PROVIDES_DEPLOY_GITHUB_URL=true`（既定）のときはさらに末尾へ `config/prompts/manus/bot_deploy_instruction.txt`（＋任意で `bot_deploy_repo_hint_line.txt` と `MANUS_DEPLOY_GITHUB_REPO_HINT`）を連結する（手作業マニュアルには無い API 用。`false` で無効化可）。**GitHub トークンやパスワードは Manus に渡さない**（認証は Manus の GitHub コネクタ側）。
 
 ---
 

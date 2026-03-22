@@ -5,8 +5,7 @@
 - Python 3.10 以上推奨。**venv の利用を推奨**（`README.md` の最短手順参照）
 - Node.js 18 以上と **npm**（生成サイトの `npm run build`）
 - Google Cloud Platform（Sheets API）・GitHub・Vercel（本番パイプライン実行時）
-- **TEXT_LLM は現状モック**（外部 LLM / Cursor CLI は不要）。実 LLM を接続するときは `modules/llm/text_llm_stage.py` を拡張
-- （任意）**Cursor CLI**: `bash scripts/install_cursor_cli.sh` または `INSTALL_CURSOR_CLI=1 ./setup.sh`。将来エージェント連携で使う場合に PATH に `~/.local/bin` を含める
+- **TEXT_LLM**: Gemini（マニュアル多段）およびプランに応じた Manus API（`docs/LLM_PIPELINE.md`）
 
 ## セットアップ手順
 
@@ -18,9 +17,6 @@ python3 -m venv .venv
 source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -r requirements.txt -r requirements-dev.txt
 chmod +x setup.sh scripts/*.sh
-# Cursor CLI も入れる（テキスト LLM を agent にする場合）
-INSTALL_CURSOR_CLI=1 ./setup.sh
-# または ./setup.sh のあと: bash scripts/install_cursor_cli.sh
 bash scripts/verify_environment.sh
 ```
 
@@ -188,13 +184,9 @@ python main.py
 
 | 変数 | 説明 |
 |------|------|
-| `SITE_IMPLEMENTATION_ENABLED` | `true`（既定）で仕様書から LLM が TSX を生成。`false` なら土台スタブのまま |
+| `SITE_IMPLEMENTATION_ENABLED` | `true`（既定）で仕様書に基づきサイトディレクトリを用意し `npm build` を検証 |
 | `SITE_BUILD_ENABLED` | `true`（既定）で `npm install` + `npm run build` をローカル検証 |
-| `SITE_BUILD_MAX_FIX_ATTEMPTS` | ビルド失敗時の LLM 修正リトライ回数（既定 3） |
-| `TEXT_LLM_PROVIDER` | `cursor_agent_cli`（既定）または `claude_code_cli`。空なら `CURSOR_AGENT_COMMAND` 優先で cursor |
-| `CLAUDE_CODE_COMMAND` / `CURSOR_AGENT_COMMAND` | プロンプトを標準入力で渡すコマンド（例: `bash scripts/cursor_agent_stdio.sh`） |
-| `CURSOR_API_KEY` | Cursor CLI 用（任意。`agent login` の代わり） |
-| `CURSOR_AGENT_MODEL` | 任意。指定時のみ `agent --model` に渡す。**未指定ならアカウント既定**（有料プランで Named モデルを使う場合は未指定か `gpt-5.2` 等を明示） |
+| テキスト LLM・モデル名 | `GEMINI_*` / `MANUS_*` 等は `config/config.py` と `docs/LLM_PIPELINE.md` を参照 |
 
 ## 定期実行の設定（macOS）
 
@@ -242,24 +234,6 @@ launchctl unload ~/Library/LaunchAgents/com.websitebot.plist
 ```
 
 ## トラブルシューティング
-
-### Cursor CLI が「usage limit」「Get Cursor Pro」になる（無料プランに落ちた？）
-
-**必ずしも無料プランではありません。** stderr に Pro と出ても、**有料（Ultra 等）でもエージェント／モデル別の枠や月次リセット前の上限**で同種のメッセージが出る報告があります（例: [フォーラム: Cursor-Agent CLI Limit Hit](https://forum.cursor.com/t/cursor-agent-cli-limit-hit/128577)）。IDE のチャットが使えても **`agent -p`（本 bot の TEXT_LLM）は別の消費として数えられる**ことがあります。
-
-**CLI 側で「プラン名」はほぼ見えません。** `agent about` は **メールと CLI バージョン**程度です（`User Email` が IDE のアカウントと一致するかの確認用）。
-
-1. **ログインしているアカウントを確認**  
-   `PATH` に `~/.local/bin` を通したうえで `agent whoami`。表示メールが **Cursor エディター（Settings → Account）と同じか**確認する。
-2. **別 OS ユーザーで bot を動かしている**（launchd など）場合、そのユーザー用に **`agent login`** していないと、別セッション／未契約扱いになることがある。`sudo -u そのユーザー agent whoami` で確認。
-3. **セッションの取り直し**  
-   `agent logout` のあと `agent login`（ブラウザ認証）。古いトークンが残っているときに効くことがある。
-4. **ダッシュボードで枠と請求サイクル**  
-   [cursor.com](https://cursor.com) にログインし **Usage / Billing（設定タブ）** でエージェント利用量・リセット日を確認。メッセージに **「Auto に切り替え」「Spend Limit」** と出る場合は、フォーラムでも Pro 利用中に同様の表示があった事例がある（上記リンク参照）。
-5. **API キー運用**  
-   組織で CLI 用キーを配っている場合は `agent --api-key` または環境変数 **`CURSOR_API_KEY`**（`.env`）。`agent --help` の `--api-key` を参照。
-6. **それでも bot を回したい**  
-   `.env` で **`TEXT_LLM_PROVIDER=claude_code_cli`** と **`CLAUDE_CODE_COMMAND`** に切り替え、または（実装されている場合）OpenAI 等の API 経路を使う。
 
 ### Google Sheets API認証エラー
 

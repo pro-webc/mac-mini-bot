@@ -109,7 +109,7 @@ def run_npm_lint(site_dir: Path, timeout_sec: int = 300) -> tuple[bool, str]:
 def verify_site_build(site_dir: Path, skip_install: bool = False) -> tuple[bool, str]:
     """install → build を連続実行（skip_install=True で node_modules 既存時の再ビルドのみ）。
 
-    ソースは変更しない。ビルド失敗時の修正は ``CURSOR_SITE_BUILD_FIX_ENABLED`` 時の Cursor のみ。
+    ソースは変更しない（ビルド失敗時も自動パッチは行わない）。
     """
     _ensure_package_json(site_dir)
     if not skip_install:
@@ -125,42 +125,3 @@ def verify_site_build(site_dir: Path, skip_install: bool = False) -> tuple[bool,
 
     logger.error("npm run build 失敗:\n%s", last_log[-8000:])
     return False, last_log
-
-
-def verify_site_build_with_cursor_pass(
-    site_dir: Path,
-    *,
-    skip_install_first: bool = False,
-) -> tuple[bool, str]:
-    """
-    install→build のあと、有効なら Cursor CLI のみがソースを修正し、再ビルドする。
-    stub 自動生成やその他のソース改変は行わない。
-    """
-    from config import config as cfg
-    from modules.cursor_site_build_fix import (
-        cursor_site_build_fix_configured,
-        run_cursor_site_build_fix,
-    )
-
-    ok, log = verify_site_build(site_dir, skip_install=skip_install_first)
-    if not cfg.CURSOR_SITE_BUILD_FIX_ENABLED:
-        return ok, log
-    if not cursor_site_build_fix_configured():
-        logger.warning(
-            "CURSOR_SITE_BUILD_FIX_ENABLED ですが agent またはスクリプトが無いため Cursor パスをスキップします"
-        )
-        return ok, log
-
-    logger.info("Cursor チェック・修正フェーズ（CLI）を実行します…")
-    inv_ok, fix_out = run_cursor_site_build_fix(
-        site_dir,
-        log,
-        timeout_sec=cfg.CURSOR_SITE_BUILD_FIX_TIMEOUT_SEC,
-    )
-    if fix_out:
-        logger.debug("Cursor 出力末尾:\n%s", fix_out[-2500:])
-    if not inv_ok:
-        logger.warning("Cursor CLI が非ゼロ終了しました。続けて npm run build のみ再試行します。")
-
-    ok2, log2 = verify_site_build(site_dir, skip_install=True)
-    return ok2, log2

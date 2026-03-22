@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+from datetime import date, datetime
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -87,6 +88,22 @@ SPREADSHEET_BOT_REQUIRE_EMPTY_TEST_SITE_URL = os.getenv(
 SPREADSHEET_REQUIRE_HEARING_BODY_NOT_URL = os.getenv(
     "SPREADSHEET_REQUIRE_HEARING_BODY_NOT_URL", "true"
 ).strip().lower() in ("1", "true", "yes")
+
+# フェーズ期限日（T 列）がこの日付「以降」の行のみ着手。未設定時は 2026-03-27。
+# false / off / 0 で無効（他条件のみでキュー化）
+_raw_min_phase = (os.getenv("SPREADSHEET_MIN_PHASE_DEADLINE") or "2026-03-27").strip()
+if _raw_min_phase.lower() in ("false", "off", "0"):
+    SPREADSHEET_MIN_PHASE_DEADLINE: date | None = None
+else:
+    try:
+        SPREADSHEET_MIN_PHASE_DEADLINE = datetime.strptime(
+            _raw_min_phase, "%Y-%m-%d"
+        ).date()
+    except ValueError as e:
+        raise ValueError(
+            "SPREADSHEET_MIN_PHASE_DEADLINE は YYYY-MM-DD で指定してください（例: 2026-03-27）。"
+            f" 現在の値: {_raw_min_phase!r}"
+        ) from e
 
 # 1回の起動で処理する案件の最大件数（0 または未設定で無制限・上から順）
 _raw_max_cases = os.getenv("BOT_MAX_CASES", "").strip()
@@ -186,6 +203,20 @@ MANUS_AGENT_PROFILE = (
     os.getenv("MANUS_AGENT_PROFILE", "manus-1.6") or "manus-1.6"
 ).strip()
 MANUS_TASK_MODE = (os.getenv("MANUS_TASK_MODE", "agent") or "agent").strip()
+# POST /v1/tasks の connectors（公式: https://open.manus.im/docs/connectors ）。OAuth は manus.im で事前連携必須。
+# 未設定時は GitHub のみ（UUID は公式ドキュメント記載値）。空文字で指定すると connectors を送らない。
+_MANUS_CONNECTOR_UUID_GITHUB = "bbb0df76-66bd-4a24-ae4f-2aac4750d90b"
+
+
+def _parse_manus_task_connector_ids() -> list[str]:
+    if "MANUS_TASK_CONNECTORS" in os.environ:
+        raw = os.getenv("MANUS_TASK_CONNECTORS", "") or ""
+    else:
+        raw = _MANUS_CONNECTOR_UUID_GITHUB
+    return [x.strip() for x in raw.split(",") if x.strip()]
+
+
+MANUS_TASK_CONNECTOR_IDS = _parse_manus_task_connector_ids()
 MANUS_REFACTOR_POLL_INTERVAL_SEC = _parse_float_env(
     "MANUS_REFACTOR_POLL_INTERVAL_SEC", 5.0, minimum=1.0, maximum=120.0
 )
@@ -198,12 +229,6 @@ MANUS_PROVIDES_DEPLOY_GITHUB_URL = os.getenv(
 ).strip().lower() in ("1", "true", "yes")
 # 任意: Manus プロンプトに「push 先の推奨」を1行で渡す（例: your-org/123-test-acme）
 MANUS_DEPLOY_GITHUB_REPO_HINT = (os.getenv("MANUS_DEPLOY_GITHUB_REPO_HINT", "") or "").strip()
-# 以下3つは旧オプション用。Manus 本文は config/prompts/manus/*.txt に統合済み（.env 互換のため定義のみ残す）
-MANUS_MANUAL_WORKFLOW_PROMPT = os.getenv(
-    "MANUS_MANUAL_WORKFLOW_PROMPT", ""
-).strip().lower() in ("1", "true", "yes")
-MANUS_GITHUB_ORG = (os.getenv("MANUS_GITHUB_ORG", "") or "").strip()
-MANUS_GITHUB_TEMPLATE_REPO = (os.getenv("MANUS_GITHUB_TEMPLATE_REPO", "") or "").strip()
 
 # サイト TSX の ImagePlaceholder を Gemini 画像 API で実ファイル化（GEMINI_API_KEY があるとき常に実行）
 GEMINI_SITE_IMAGE_MODEL = (
@@ -226,25 +251,11 @@ SITE_BUILD_ENABLED = os.getenv("SITE_BUILD_ENABLED", "true").strip().lower() in 
     "true",
     "yes",
 )
-SITE_BUILD_MAX_FIX_ATTEMPTS = _parse_positive_int(
-    "SITE_BUILD_MAX_FIX_ATTEMPTS", 3, minimum=1, maximum=20
-)
 SITE_IMPLEMENTATION_ENABLED = os.getenv("SITE_IMPLEMENTATION_ENABLED", "true").strip().lower() in (
     "1",
     "true",
     "yes",
 )
-# npm run build 失敗後に Cursor CLI（agent）でサイトディレクトリ内を修正し、再ビルドする（オプトイン）
-CURSOR_SITE_BUILD_FIX_ENABLED = os.getenv(
-    "CURSOR_SITE_BUILD_FIX_ENABLED", "false"
-).strip().lower() in ("1", "true", "yes")
-CURSOR_SITE_BUILD_FIX_TIMEOUT_SEC = _parse_float_env(
-    "CURSOR_SITE_BUILD_FIX_TIMEOUT_SEC", 900.0, minimum=120.0, maximum=3600.0
-)
-CURSOR_SITE_BUILD_FIX_SCRIPT = os.getenv(
-    "CURSOR_SITE_BUILD_FIX_SCRIPT",
-    str(PROJECT_ROOT / "scripts" / "cursor_agent_stdio.sh"),
-).strip()
 
 # GitHub設定
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN", "")

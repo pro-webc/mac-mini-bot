@@ -32,6 +32,14 @@ def test_refactor_prompt_without_deploy_url_block_when_disabled(
     assert "BOT_DEPLOY_GITHUB_URL:" not in p
 
 
+def test_refactor_prompt_deploy_hint_from_file(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(refactor_mod, "MANUS_PROVIDES_DEPLOY_GITHUB_URL", True)
+    monkeypatch.setattr(refactor_mod, "MANUS_DEPLOY_GITHUB_REPO_HINT", "org/demo-99-acme")
+    p = build_basic_lp_refactor_user_prompt("const x = 1")
+    assert "org/demo-99-acme" in p
+    assert "https://github.com/org/demo-99-acme.git" in p
+
+
 def test_refactor_prompt_repo_name_and_description_in_orchestration() -> None:
     p = build_basic_lp_refactor_user_prompt(
         "export default function X() { return null }",

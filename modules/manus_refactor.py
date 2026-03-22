@@ -17,6 +17,7 @@ from config.config import (
     MANUS_API_KEY,
     MANUS_REFACTOR_POLL_INTERVAL_SEC,
     MANUS_REFACTOR_TIMEOUT_SEC,
+    MANUS_TASK_CONNECTOR_IDS,
     MANUS_TASK_MODE,
 )
 
@@ -116,12 +117,15 @@ def run_manus_refactor_stage(
     }
     if MANUS_TASK_MODE:
         body["taskMode"] = MANUS_TASK_MODE
+    if MANUS_TASK_CONNECTOR_IDS:
+        body["connectors"] = list(MANUS_TASK_CONNECTOR_IDS)
 
     logger.info(
-        "%s Manus: 最終リファクタ タスク作成… agentProfile=%s taskMode=%s",
+        "%s Manus: 最終リファクタ タスク作成… agentProfile=%s taskMode=%s connectors=%s",
         _branch,
         MANUS_AGENT_PROFILE,
         MANUS_TASK_MODE or "(default)",
+        len(MANUS_TASK_CONNECTOR_IDS) if MANUS_TASK_CONNECTOR_IDS else 0,
     )
     r = requests.post(
         url_create,

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import logging
 import os
+from datetime import date, datetime, timedelta
 from typing import Any
 
 from config.config import (
@@ -17,6 +18,7 @@ from config.config import (
     SPREADSHEET_BOT_REQUIRE_EMPTY_TEST_SITE_URL,
     SPREADSHEET_COLUMNS,
     SPREADSHEET_HEADER_LABELS,
+    SPREADSHEET_MIN_PHASE_DEADLINE,
     SPREADSHEET_REQUIRE_HEARING_BODY_NOT_URL,
     SPREADSHEET_REQUIRED_CASE_FIELDS,
     SPREADSHEET_TARGET_AI_STATUS,
@@ -36,6 +38,37 @@ from modules.spreadsheet_schema import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def parse_spreadsheet_phase_deadline_cell(raw: str) -> date | None:
+    """
+    スプレッドシート T 列（フェーズ期限）の表示値を ``datetime.date`` に正規化する。
+
+    対応例: ``2026-03-27``, ``2026/3/27``, ``3/27/2026``, Google 表示のシリアル値（概ね 40000〜55000）。
+    解釈不能・空は ``None``。
+    """
+    s = (raw or "").strip()
+    if not s:
+        return None
+    token = (
+        s.replace("年", "/")
+        .replace("月", "/")
+        .replace("日", "")
+        .split()[0]
+        .strip()
+    )
+    for fmt in ("%Y-%m-%d", "%Y/%m/%d", "%m/%d/%Y", "%d/%m/%Y", "%Y.%m.%d"):
+        try:
+            return datetime.strptime(token, fmt).date()
+        except ValueError:
+            continue
+    try:
+        n = float(s.replace(",", ""))
+    except ValueError:
+        return None
+    if 40000 <= n <= 55000:
+        return date(1899, 12, 30) + timedelta(days=int(n))
+    return None
 
 
 def _normalize_site_type_lookup_key(s: str) -> str:
@@ -370,6 +403,7 @@ class SpreadsheetClient:
         - mac-mini 列（AV）が未処理（完了/処理中/エラー/スキップで始まる値でない）
         - SPREADSHEET_REQUIRE_HEARING_BODY_NOT_URL のとき: ヒアリング列が URL のみの行はスキップ（本文が1文字でもあれば着手）
         - かつ（既定）テストサイトURL列が空
+        - かつ SPREADSHEET_MIN_PHASE_DEADLINE 設定時: フェーズ期限日（T 列）がその日付以降で解釈可能であること
 
         Args:
             sheet_name: 省略時は GOOGLE_SHEETS_SHEET_NAME
@@ -450,6 +484,25 @@ class SpreadsheetClient:
                 if test_site:
                     continue
 
+            if SPREADSHEET_MIN_PHASE_DEADLINE is not None:
+                pd_raw = self._cell(row, SPREADSHEET_COLUMNS["phase_deadline"])
+                pd_date = parse_spreadsheet_phase_deadline_cell(pd_raw)
+                if pd_date is None:
+                    logger.debug(
+                        "行%s: フェーズ期限日が空または解釈不能のためスキップ（T列=%r）",
+                        row_index,
+                        pd_raw[:80] if pd_raw else "",
+                    )
+                    continue
+                if pd_date < SPREADSHEET_MIN_PHASE_DEADLINE:
+                    logger.debug(
+                        "行%s: フェーズ期限日 %s が最小着手日 %s より前のためスキップ",
+                        row_index,
+                        pd_date.isoformat(),
+                        SPREADSHEET_MIN_PHASE_DEADLINE.isoformat(),
+                    )
+                    continue
+
             case = self._parse_row(row, row_index)
             missing = missing_required_case_fields(case)
             if missing:
@@ -464,10 +517,13 @@ class SpreadsheetClient:
         cases.sort(key=lambda c: int(c["row_number"]))
         logger.info(
             "処理対象案件を %s 件取得（上から順・行番号昇順）target_ai_status=%r "
-            "require_empty_test_site_url=%s 行一覧=%s",
+            "require_empty_test_site_url=%s min_phase_deadline=%s 行一覧=%s",
             len(cases),
             SPREADSHEET_TARGET_AI_STATUS,
             SPREADSHEET_BOT_REQUIRE_EMPTY_TEST_SITE_URL,
+            SPREADSHEET_MIN_PHASE_DEADLINE.isoformat()
+            if SPREADSHEET_MIN_PHASE_DEADLINE
+            else "(なし)",
             [c["row_number"] for c in cases],
         )
         return cases

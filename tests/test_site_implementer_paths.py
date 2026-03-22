@@ -96,7 +96,7 @@ export function X() { return null }
 
 
 def test_parse_llm_file_blocks_normalizes_templates_nextjs_prefix() -> None:
-    """Cursor が templates/nextjs_template/ 付きで返す場合でも app/ に正規化して受理する"""
+    """LLM が templates/nextjs_template/ 付きパスで返す場合でも app/ に正規化して受理する"""
     text = """
 <<<FILE templates/nextjs_template/app/page.tsx>>>
 export default function Page() { return null }

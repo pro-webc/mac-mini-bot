@@ -23,7 +23,7 @@
 **リファクタ段階（任意・既定オン）**
 
 環境変数 ``BASIC_LP_REFACTOR_AFTER_MANUAL=true``（既定）のとき、手順8の出力のあと **Manus API（タスク1件）**で
-``config/prompts/basic_lp_refactor/`` の指示に従い **複数ファイルのリファクタ後ソース**をテキストで生成する（Gemini マニュアル本体とは別サービス）。
+``config/prompts/manus/`` のオーケストレーション＋リファクタ指示に従い **複数ファイルのリファクタ後ソース**をテキストで生成する（Gemini マニュアル本体とは別サービス）。
 
 プロンプト本文は ``config/prompts/basic_lp_manual/*.txt`` にマニュアル準拠で格納する。
 """

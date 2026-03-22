@@ -1,0 +1,1 @@
+- push 先の推奨リポジトリ（可能ならこの名前で作成・更新）: `{{MANUS_DEPLOY_GITHUB_REPO_HINT}}`（GitHub 上は `https://github.com/{{MANUS_DEPLOY_GITHUB_REPO_HINT}}.git` 形式）

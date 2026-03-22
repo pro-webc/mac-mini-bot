@@ -21,7 +21,7 @@
 **リファクタ段階（任意・既定オン）**
 
 ``BASIC_CP_REFACTOR_AFTER_MANUAL=true``（既定）のとき、手順7-3 のあと **Manus API（タスク1件）**で
-``basic_lp_refactor/refactoring_instruction.txt``（LP と共通）と ``basic_cp_refactor/preface_intro.txt`` + 共通 ``preface_shared.txt`` に従いリファクタする。
+``config/prompts/manus/orchestration_prompt.txt`` と ``refactoring_instruction_handwork.txt`` に従いリファクタする（LP・他 CP プランと同一プロンプト）。
 
 プロンプト本文は ``config/prompts/basic_cp_manual/*.txt`` に格納する。
 """

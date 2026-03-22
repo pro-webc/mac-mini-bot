@@ -68,23 +68,6 @@ def test_validation_full_pipeline_requires_manus_when_refactor_enabled(monkeypat
     assert any("MANUS_API_KEY" in e for e in r.errors)
 
 
-def test_validation_warns_when_cursor_build_fix_enabled_but_not_configured(
-    monkeypatch,
-) -> None:
-    monkeypatch.setattr(cfg, "GOOGLE_SHEETS_SPREADSHEET_ID", "sheet_ok")
-    monkeypatch.setattr(cfg, "GOOGLE_SHEETS_AUTH_MODE", "application_default")
-    monkeypatch.setattr(cfg, "GOOGLE_CLOUD_PROJECT", "test-gcp-project")
-    monkeypatch.setattr(cfg, "GITHUB_TOKEN", "tok")
-    monkeypatch.setattr(cfg, "VERCEL_TOKEN", "vtok")
-    monkeypatch.setattr(cfg, "GEMINI_API_KEY", "g")
-    monkeypatch.setattr(cfg, "MANUS_API_KEY", "m")
-    monkeypatch.setattr(cfg, "CURSOR_SITE_BUILD_FIX_ENABLED", True)
-    monkeypatch.setattr(cfg, "CURSOR_SITE_BUILD_FIX_SCRIPT", "/nonexistent/cursor_stdio.sh")
-    r = validate_startup_config(require_full_pipeline=True)
-    assert r.ok
-    assert any("CURSOR_SITE_BUILD_FIX" in w for w in r.warnings)
-
-
 def test_validation_application_default_skips_credential_file(monkeypatch) -> None:
     """JSON パスが無くても application_default + GOOGLE_CLOUD_PROJECT なら起動検証は通る"""
     monkeypatch.setattr(cfg, "GOOGLE_SHEETS_SPREADSHEET_ID", "sheet_id_ok")

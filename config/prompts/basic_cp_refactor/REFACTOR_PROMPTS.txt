@@ -1,4 +1,0 @@
-BASIC-CP マニュアル完了後の「リファクタ段階」
-
-【Manus API】
-全プラン共通で ../manus/*.txt を結合（preface_intro は未使用）。詳細は ../basic_lp_refactor/REFACTOR_PROMPTS.txt と docs/LLM_PIPELINE.md。

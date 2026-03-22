@@ -1,4 +1,4 @@
-"""サイトディレクトリのビルド検証（ソースは変更しない。修正は Cursor パスのみ）。"""
+"""サイトディレクトリのビルド検証（ソースは変更しない）。"""
 from __future__ import annotations
 
 import logging
@@ -8,7 +8,7 @@ from pathlib import Path
 from config.config import OUTPUT_DIR, SITE_BUILD_ENABLED, SITE_IMPLEMENTATION_ENABLED
 
 from modules.contract_workflow import ContractWorkBranch
-from modules.site_build import _ensure_package_json, verify_site_build_with_cursor_pass
+from modules.site_build import _ensure_package_json, verify_site_build
 
 logger = logging.getLogger(__name__)
 
@@ -73,9 +73,7 @@ class SiteImplementer:
             logger.info("SITE_BUILD_ENABLED=false のためビルド検証をスキップ")
             return True, "build_skipped"
 
-        ok, blog = verify_site_build_with_cursor_pass(
-            site_dir, skip_install_first=False
-        )
+        ok, blog = verify_site_build(site_dir, skip_install=False)
         if ok:
             logger.info("ビルド検証成功")
             return True, blog or ""

@@ -7,7 +7,7 @@
 
 - YAML やフロントマターは使わない。**編集はそのまま貼り付け・追記できる純テキスト**。
 - プレースホルダー `{name}` を本文に書く場合の差し込みは `config/prompt_settings.py` の `format_prompt` を参照。
-ARTICLE_LLM_MULTI_STAGE_MAX_OUTPUT_TOKENS.mdARTICLE_LLM_MULTI_STAGE_MAX_OUTPUT_TOKENS.mdARTICLE_LLM_MULTI_STAGE_MAX_OUTPUT_TOKENS.
+
 ## ディレクトリ一覧（ざっくり）
 
 | ディレクトリ | 内容 |
@@ -17,9 +17,7 @@ ARTICLE_LLM_MULTI_STAGE_MAX_OUTPUT_TOKENS.mdARTICLE_LLM_MULTI_STAGE_MAX_OUTPUT_T
 | `basic_cp_manual/` | BASIC（CP 1P）マニュアル |
 | `standard_cp_manual/` | STANDARD マニュアル |
 | `advance_cp_manual/` | ADVANCE マニュアル |
-| `basic_lp_refactor/` | リファクタ用（preface・旧 `refactoring_instruction.txt`）。**Manus API 本文は `manus/`** |
-| `basic_cp_refactor/` 等 | プラン別 preface のみ（Manus では未使用） |
+| `basic_lp_refactor/` 等 | プラン別ログ用パスのみ（中身の .txt は読まない）。**Manus リファクタ本文は `manus/`** |
 | `manus/` | **Manus** 手作業相当プロンプト（`README.md` あり） |
-| `cursor_site_build_fix/` | Cursor 修復用プロンプト |
 
 契約プラン別の `*_manual/*.txt` は **各 `*_gemini_manual.py` が直接読みます**（`common/` のテキストとは自動結合されません）。

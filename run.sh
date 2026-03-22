@@ -3,9 +3,6 @@
 
 cd "$(dirname "$0")"
 
-# Cursor CLI（公式インストーラは ~/.local/bin/agent に配置）
-export PATH="$HOME/.local/bin:$PATH"
-
 # 仮想環境をアクティベート（存在する場合）
 if [ -d ".venv" ]; then
     source .venv/bin/activate

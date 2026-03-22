@@ -36,15 +36,6 @@ def validate_startup_config(*, require_full_pipeline: bool = True) -> StartupVal
             "SITE_BUILD_ENABLED=true ですが npm が PATH にありません。ビルド検証は失敗します。"
         )
 
-    if cfg.CURSOR_SITE_BUILD_FIX_ENABLED:
-        from modules.cursor_site_build_fix import cursor_site_build_fix_configured
-
-        if not cursor_site_build_fix_configured():
-            r.warnings.append(
-                "CURSOR_SITE_BUILD_FIX_ENABLED=true ですが Cursor CLI（agent）または "
-                "CURSOR_SITE_BUILD_FIX_SCRIPT が見つかりません。ビルド失敗時の自動修復は実行されません。"
-            )
-
     # --- デプロイ系 ---
     if require_full_pipeline:
         if not cfg.GOOGLE_SHEETS_SPREADSHEET_ID.strip():

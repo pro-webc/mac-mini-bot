@@ -119,8 +119,10 @@ output/pipeline_test_runs/<run_UTC>/
 | STANDARD-CP Gemini **9/15**（手順4・タブ⑤1通目） | `python3 scripts/gemini_standard_cp_step9_from_phase1.py --phase1-dir .../phase1_snapshots/<UTC>/`（タブ④の成果物は不要。ヒアリング本文のみ） |
 | STANDARD-CP Gemini **10/15**（手順5・タブ⑤2通目） | `python3 scripts/gemini_standard_cp_step10_from_phase1.py --phase1-dir 同上 --prev-gemini-dir .../gemini_step_tests/<9回目UTC>/ --step1-3-dir .../<2回目UTC>/ --step2-dir .../<3回目UTC>/`（9回目で手順4を履歴復元。2・3回目は応答ファイルのディレクトリ） |
 | STANDARD-CP Gemini **11〜15/15**（タブ⑥・手順7-1〜7-4） | `gemini_standard_cp_step11_from_phase1.py` 〜 **`step15_from_phase1.py`**（**最終 15/15** は手順7-4。成果物 **`02_response_step_7_4.txt`**） |
+| **Manus 工程テストのみ**（Vercel / ローカル push はしない） | `python3 scripts/pipeline_test_manus_only.py --gemini-dir .../gemini_step_tests/<15回目UTC>/ --phase1-dir .../phase1_snapshots/<UTC>/`（`02_response_step_7_4.txt` を自動選択。出力は同じ run 配下 **`manus_only_tests/<UTC>/`**） |
+| **Vercel デプロイ工程テストのみ**（Manus しない） | `python3 scripts/pipeline_test_deploy_only.py --url-file .../manus_only_tests/<UTC>/03_deploy_github_url.txt` または `--github-url https://github.com/owner/repo.git` |
 
-**Manus 工程テストに渡す Gemini 最終出力（STANDARD-CP）**: 段階テストを最後まで進めた **15 回目**のフォルダ `gemini_step_tests/<UTC>/` 内の **`02_response_step_7_4.txt`** が、いわゆる「工程テストの最後の応答」（Canvas 単一ファイル相当の本文）。案件メタは同じ run の `phase1_snapshots/.../01_case_meta.json` と揃える。詳細は **`config/prompts/manus/README.md`**（工程テストの観点）。
+**Manus 工程テストに渡す Gemini 最終出力（STANDARD-CP）**: 段階テストを最後まで進めた **15 回目**のフォルダ `gemini_step_tests/<UTC>/` 内の **`02_response_step_7_4.txt`** が、いわゆる「工程テストの最後の応答」（Canvas 単一ファイル相当の本文）。案件メタは同じ run の `phase1_snapshots/.../01_case_meta.json` と揃える。詳細は **`config/prompts/manus/README.md`**（工程テストの観点）。**BASIC LP** などは `--canvas-file` で最終 `02_response_*.txt` を直接指定可能。
 
 `.env` の **`PIPELINE_TEST_RUN_DIR`** を親に合わせると、各スクリプトの既定出力先がその配下になります（`config.config.pipeline_run_root_for_resolve`）。**同じ親に後から足す**ときは、上表のスクリプトを同じ順で実行すればよい（`phase1` が `.../phase1_snapshots/...` にある場合、一部スクリプトは `--run-dir` を省略できる）。
 

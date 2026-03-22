@@ -1,7 +1,0 @@
-BASIC LP マニュアル完了後の「リファクタ段階」
-
-【Manus API（modules.basic_lp_refactor_gemini.build_basic_lp_refactor_user_prompt）】
-手作業マニュアルと同一: ../manus/orchestration_prompt.txt → ../manus/refactoring_instruction_handwork.txt → BEGIN_CANVAS_SOURCE …（＋任意 .env の BOT_DEPLOY 追記のみ）。
-
-【Gemini 向け preface（本ディレクトリの *.txt）】
-Manus では使わない。preface_intro / preface_shared / refactoring_instruction.txt は従来どおりリポジトリに残す（参照用・将来用）。

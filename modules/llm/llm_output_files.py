@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 # lib/: 色・CTA クラスなどテンプレ由来の .ts ユーティリティを、案件ごとに LLM が上書き可能にする（柔軟性）
 _ALLOWED_PATH_PREFIXES = ("app/", "components/", "lib/")
 
-# Cursor 等がリポジトリ内の「テンプレ絶対パス」で <<<FILE>>> を返すことがある。
+# LLM がリポジトリ内の「テンプレ絶対パス」で <<<FILE>>> を返すことがある。
 # 出力先は常に output/sites/<案件>/ 直下なので、テンプレ接頭辞は剥がして app|components|lib に寄せる。
 _TEMPLATE_PATH_PREFIXES = (
     "templates/nextjs_template/",

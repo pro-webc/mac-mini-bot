@@ -30,7 +30,6 @@
 | `site_generator.py` | `output/sites/<案件>/` 用意 |
 | `basic_lp_generated_apply.py` | フェンス解析・ファイル書き込み |
 | `site_implementer.py` / `site_build.py` | 実装・ビルド検証 |
-| `cursor_site_build_fix.py` | 任意: Cursor によるビルド修復 |
 
 ## デプロイ・その他
 

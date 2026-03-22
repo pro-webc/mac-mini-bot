@@ -25,6 +25,7 @@ def _manus_fast_poll(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_run_manus_refactor_stage_polls_until_completed(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(cfg, "MANUS_API_KEY", "test-key")
+    captured: dict[str, Any] = {}
 
     def fake_post(
         url: str,
@@ -34,6 +35,7 @@ def test_run_manus_refactor_stage_polls_until_completed(monkeypatch: pytest.Monk
     ) -> _OkJson:
         assert "API_KEY" in headers
         assert json and "prompt" in json
+        captured["json"] = json
         return _OkJson({"task_id": "t-1", "task_url": "https://example/manus/t-1"})
 
     get_n = {"i": 0}
@@ -62,11 +64,63 @@ def test_run_manus_refactor_stage_polls_until_completed(monkeypatch: pytest.Monk
     monkeypatch.setattr("modules.manus_refactor.requests.post", fake_post)
     monkeypatch.setattr("modules.manus_refactor.requests.get", fake_get)
 
-    from modules.manus_refactor import run_manus_refactor_stage
+    import modules.manus_refactor as mr
 
-    out = run_manus_refactor_stage(canvas_source_code="export default function Page() { return null }")
+    monkeypatch.setattr(
+        mr,
+        "MANUS_TASK_CONNECTOR_IDS",
+        ["bbb0df76-66bd-4a24-ae4f-2aac4750d90b"],
+    )
+    out = mr.run_manus_refactor_stage(
+        canvas_source_code="export default function Page() { return null }"
+    )
     assert "app/page.tsx" in out
     assert get_n["i"] >= 2
+    assert captured["json"].get("connectors") == [
+        "bbb0df76-66bd-4a24-ae4f-2aac4750d90b"
+    ]
+
+
+def test_run_manus_refactor_stage_omits_connectors_when_empty(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(cfg, "MANUS_API_KEY", "test-key")
+    captured: dict[str, Any] = {}
+
+    def fake_post(
+        url: str,
+        headers: dict[str, str],
+        json: dict[str, Any] | None = None,
+        timeout: float | None = None,
+    ) -> _OkJson:
+        captured["json"] = json
+        return _OkJson({"task_id": "t-2", "task_url": "https://example/manus/t-2"})
+
+    def fake_get(
+        url: str,
+        headers: dict[str, str],
+        timeout: float | None = None,
+    ) -> _OkJson:
+        return _OkJson(
+            {
+                "status": "completed",
+                "output": [
+                    {
+                        "role": "assistant",
+                        "content": [{"type": "output_text", "text": "ok"}],
+                    }
+                ],
+            }
+        )
+
+    monkeypatch.setattr("modules.manus_refactor.requests.post", fake_post)
+    monkeypatch.setattr("modules.manus_refactor.requests.get", fake_get)
+
+    import modules.manus_refactor as mr
+
+    monkeypatch.setattr(mr, "MANUS_TASK_CONNECTOR_IDS", [])
+    mr.run_manus_refactor_stage(canvas_source_code="x")
+    assert "connectors" not in (captured.get("json") or {})
 
 
 def test_split_manus_response_deploy_url() -> None:

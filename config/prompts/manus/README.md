@@ -31,20 +31,22 @@
 
 | ファイル | 内容 |
 |----------|------|
-| `orchestration_prompt.txt` | 上記 1〜4 のオーケストレーション（Repo・リファクタ・画像・build/push）。`{{PARTNER_NAME}}` は `build_basic_lp_refactor_user_prompt` で制作シート由来の文字列に置換。末尾に Manus 1.6 指定あり。 |
+| `orchestration_prompt.txt` | 上記 1〜4 のオーケストレーション（Repo・リファクタ・画像・build/push）。`{{MANUS_REPO_NAME}}` / `{{MANUS_REPO_DESCRIPTION}}` を `build_basic_lp_refactor_user_prompt` が展開。末尾に Manus 1.6 指定あり。 |
 | `refactoring_instruction_handwork.txt` | 手作業で「リファクタリング指示書」として貼る本文と同一系統。 |
+| `bot_deploy_instruction.txt` | （API 時のみ）`BOT_DEPLOY_GITHUB_URL:` 行の出し方。`{{MANUS_DEPLOY_GITHUB_REPO_HINT_LINE}}` は環境変数 `MANUS_DEPLOY_GITHUB_REPO_HINT` があるとき `bot_deploy_repo_hint_line.txt` から生成。 |
+| `bot_deploy_repo_hint_line.txt` | 上記プレースホルダ用の1行（`{{MANUS_DEPLOY_GITHUB_REPO_HINT}}` を2箇所）。 |
 
 **結合**（手作業の「3 ブロック」を 1 本文にしたもの）:
 
-`modules/basic_lp_refactor_gemini.py` の `build_basic_lp_refactor_user_prompt`:
+`modules.basic_lp_refactor_gemini.build_basic_lp_refactor_user_prompt` は次を**この順**で連結する（手作業と同じ本文＋プレースホルダ展開のみ。GitHub 垢の注意などは `orchestration_prompt.txt` に書く）。
 
 1. `orchestration_prompt.txt`（`{{MANUS_REPO_NAME}}`・`{{MANUS_REPO_DESCRIPTION}}` を `record_number`・`partner_name`（パートナー名列）から展開済み）
 2. 区切り `---`
 3. `refactoring_instruction_handwork.txt` 全文
 4. `===== BEGIN_CANVAS_SOURCE =====` … Gemini 出力 … `===== END_CANVAS_SOURCE =====`
-5. （既定）`MANUS_PROVIDES_DEPLOY_GITHUB_URL=true` のとき、`BOT_DEPLOY_GITHUB_URL:` 行の指示を末尾に追加（手作業マニュアルには無いボット用追記。`false` で無効化可）
+5. （既定）`MANUS_PROVIDES_DEPLOY_GITHUB_URL=true` のとき、`bot_deploy_instruction.txt`（＋任意で `bot_deploy_repo_hint_line.txt`）を末尾に追加（手作業マニュアルには無い API 用。`false` で無効化可）
 
-**API 送信**: `modules/manus_refactor.py` が `POST {MANUS_API_BASE}/v1/tasks` に上記を `prompt` として渡す。エージェントは `config.config` の `MANUS_AGENT_PROFILE`（既定で Manus 1.6 系）と `MANUS_TASK_MODE`。
+**API 送信**: `modules/manus_refactor.py` が `POST {MANUS_API_BASE}/v1/tasks` に上記を `prompt` として渡す。`MANUS_TASK_CONNECTORS`（未設定時は公式の GitHub コネクタ UUID 1 件）を `connectors` に付与。OAuth は [Connectors](https://open.manus.im/docs/connectors) のとおり manus.im で事前連携。`MANUS_AGENT_PROFILE`・`MANUS_TASK_MODE` は `config.config`。
 
 ---
 

@@ -1,6 +1,5 @@
 #!/bin/bash
 # セットアップスクリプト
-# Cursor CLI も同時に入れる場合: INSTALL_CURSOR_CLI=1 ./setup.sh
 
 cd "$(dirname "$0")"
 
@@ -42,16 +41,6 @@ if [ ! -f ".env" ]; then
 fi
 
 echo "セットアップが完了しました！"
-echo ""
-
-# Cursor CLI（オプション）— テキスト LLM を cursor_agent_cli にする場合
-if [ "${INSTALL_CURSOR_CLI:-0}" = "1" ]; then
-  echo "INSTALL_CURSOR_CLI=1: Cursor CLI をインストールします..."
-  bash scripts/install_cursor_cli.sh || echo "（Cursor CLI インストールに失敗しました。後で bash scripts/install_cursor_cli.sh を実行してください）"
-else
-  echo "（テキスト LLM に Cursor CLI を使う場合は次を実行: INSTALL_CURSOR_CLI=1 ./setup.sh または bash scripts/install_cursor_cli.sh）"
-fi
-
 echo ""
 echo "環境確認: bash scripts/verify_environment.sh"
 echo ""

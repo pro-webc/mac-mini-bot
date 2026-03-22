@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
-# 実運用マシン向け: Python / Node など前提条件の確認（Cursor CLI は任意）
+# 実運用マシン向け: Python / Node など前提条件の確認
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT"
-export PATH="$HOME/.local/bin:$PATH"
 
 ok=0
 warn=0
@@ -58,20 +57,6 @@ else
 fi
 check_cmd "Node.js（npm / Next ビルド用）" "node" "https://nodejs.org/"
 check_cmd "npm" "npm" "Node に同梱"
-
-# Cursor CLI（任意・本 bot は LLM モックのため不要）
-if command -v agent >/dev/null 2>&1; then
-  echo "[OK] Cursor CLI (agent): $(command -v agent)"
-  agent --version 2>/dev/null || true
-  echo "     --- agent whoami ---"
-  agent whoami 2>/dev/null | sed 's/^/     /' || echo "     (whoami 失敗)"
-elif [ -x "$HOME/.local/bin/agent" ]; then
-  echo "[WARN] agent は ~/.local/bin にありますが PATH に通っていません"
-  echo "       export PATH=\"\$HOME/.local/bin:\$PATH\""
-  warn=1
-else
-  echo "[INFO] Cursor CLI (agent) は未検出（本パイプラインはモックのため不要）"
-fi
 
 if [ -d "$ROOT/.venv" ]; then
   echo "[OK] 仮想環境 .venv が存在します"

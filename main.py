@@ -7,7 +7,7 @@
   2. TEXT_LLM（`modules.llm.text_llm_stage` — プランは ``if/elif`` で分岐。各 ``*_USE_GEMINI_MANUAL`` と ``GEMINI_API_KEY`` が必須）
   3. 出力先ディレクトリ準備（テンプレコピーなし）→ `llm_raw_output/` に LLM 生出力を保存
   4. フェンス解析で Gemini 出力のみ `app/` 等へ反映（失敗時は例外）
-  5. ビルド検証（失敗時は ``CURSOR_SITE_BUILD_FIX_ENABLED`` 時のみ Cursor がソースを修正し再ビルド。それ以外は成果物に触れない）
+  5. ビルド検証（失敗時も成果物の自動修正は行わない）
   6. GitHub push → Vercel デプロイ → スプレッドシートに公開 URL
 
 各段の LLM 割当は ``docs/LLM_PIPELINE.md`` を参照。
@@ -54,7 +54,7 @@ from modules.contract_workflow import (
 from modules.github_client import GitHubClient, sanitize_github_repo_name
 from modules.llm.llm_raw_output import write_llm_raw_artifacts
 from modules.llm.text_llm_stage import run_text_llm_stage
-from modules.site_build import verify_site_build_with_cursor_pass
+from modules.site_build import verify_site_build
 from modules.site_generator import SiteGenerator
 from modules.site_implementer import SiteImplementer
 from modules.spec_generator import SpecGenerator
@@ -298,7 +298,7 @@ class WebsiteBot:
                     )
             elif SITE_BUILD_ENABLED:
                 logger.info("› 実装はスキップ — npm build で検証のみ…")
-                ok_b, blog = verify_site_build_with_cursor_pass(site_dir)
+                ok_b, blog = verify_site_build(site_dir)
                 blog = blog or ""
                 if not ok_b:
                     raise RuntimeError(

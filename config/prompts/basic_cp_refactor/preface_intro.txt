@@ -1,1 +1,0 @@
-**プラン: BASIC-CP（コーポレート・1 URL）** — ヘッダー/フッター/会社情報/ナビはコーポレートとして自然に。`HomePage` 等が `useState` で切替なら `/`, `/aesthetic`, `/implant` 等へルート分割。純粋 1 ページなら `app/page.tsx` + セクション分割。

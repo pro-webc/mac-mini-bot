@@ -19,7 +19,7 @@
 | 4 | 出力先ディレクトリ準備 | `modules/site_generator.py` → `output/sites/<案件名>/` |
 | 5 | LLM 正本の保存 | `modules/llm/llm_raw_output.py` → 同一案件の `llm_raw_output/` |
 | 6 | フェンス → サイトファイル反映 | `modules/basic_lp_generated_apply.py` |
-| 7 | npm build（＋任意 Cursor 修復） | `modules/site_implementer.py`, `modules/site_build.py` |
+| 7 | npm build | `modules/site_implementer.py`, `modules/site_build.py` |
 | 8 | GitHub push → Vercel | `modules/github_client.py`, `modules/vercel_client.py` |
 
 TEXT_LLM だけをフェーズ1成果物から再実行する場合は **`scripts/phase2_from_phase1_snapshot.py`**（`phase2_snapshots/` に保存）。
@@ -39,7 +39,7 @@ mac-mini-bot/
 ├── config/                 # 設定・列定義・プロンプト群
 ├── modules/                # パイプライン実装（一覧は modules/README.md）
 ├── docs/                   # 本ファイル・LLM_PIPELINE・TECH_REQUIREMENTS 等
-├── scripts/                # gcloud / Cursor / 検証用シェル
+├── scripts/                # gcloud / 工程テスト・検証用シェル
 ├── tests/                  # pytest
 └── output/                 # 実行時生成（既定・git 対象外）
 ```
@@ -53,7 +53,7 @@ mac-mini-bot/
 | `config/prompts/common/technical_spec_prompt_block.txt` | 技術要件（UTF-8 純テキスト・仕様文に注入） |
 | `config/prompts/*_manual/` | 契約プラン別 **Gemini マニュアル** ステップ（`step_*.txt`） |
 | `config/prompts/manus/` | **Manus** 用（手作業マニュアル相当のテキスト） |
-| `config/prompts/basic_lp_refactor/` 等 | リファクタ用 preface（Gemini 側。Manus は `manus/` を使用） |
+| `config/prompts/*_refactor/` | ログ用パス（中身の .txt は読まない）。Manus 本文は `manus/` |
 
 `config/prompts/README.md` に YAML / マニュアルの読み方があります。
 
