@@ -26,8 +26,10 @@ jobs:
       - name: Ruff check
         run: >-
           ruff check main.py config/
-          modules/case_extraction.py modules/text_llm_stage.py modules/llm_mock.py
-          modules/llm_output_files.py modules/site_implementer.py modules/site_build.py
+          modules/case_extraction.py modules/llm/text_llm_stage.py modules/llm/basic_cp_spec.py
+          modules/llm/basic_lp_spec.py modules/llm/llm_pipeline_common.py
+          modules/llm/llm_output_files.py modules/phase2_text_llm_snapshot.py modules/site_implementer.py
+          modules/site_build.py
           modules/spreadsheet.py modules/spreadsheet_schema.py modules/vercel_client.py
           tests/
 

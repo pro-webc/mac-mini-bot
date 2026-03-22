@@ -2,13 +2,13 @@
 
 **API 呼び出し回数（マニュアルの「新規チャット」「タブ」境界と一致）**
 
-- 合計 **11 回**（各回が ``generate_content`` または ``send_message`` の1回）
+- 合計 **10 回**（各回が ``generate_content`` または ``send_message`` の1回）
 - **新規チャット（コンテキスト断絶）** はマニュアルの **タブ①〜⑤** に対応し **5 回**
 
-内訳（1 + 2 + 2 + 3 + 3 = 11）:
+内訳（1 + 1 + 2 + 3 + 3 = 10）:
 
 - **タブ①**: 手順1-1 → 1回
-- **タブ②**: 手順1-2 → 1-3 → 2回
+- **タブ②**: 手順1-2 と 1-3 を **1メッセージに連結**して送信 → 1回（手作業マニュアルと同じ）
 - **タブ③**: 手順2 → 3 → 2回（構成プロンプトのみ。手順4はタブ④）
 - **タブ④**: 手順4 → 5 → 6 → 3回（雰囲気・配色 → デザイン指示書）
 - **タブ⑤**: 手順7-1 → 7-2 → 7-3 → 3回（コード生成。Canvas 想定）
@@ -20,15 +20,14 @@
 
 **リファクタ段階（任意・既定オン）**
 
-``BASIC_CP_REFACTOR_AFTER_MANUAL=true``（既定）のとき、手順7-3 のあと **新規チャット1回**で
-``basic_lp_refactor/refactoring_instruction.txt``（LP と共通）と ``basic_cp_refactor/preface_intro.txt`` + 共通 ``preface_shared.txt`` に従いリファクタする（**+1 回** API）。
+``BASIC_CP_REFACTOR_AFTER_MANUAL=true``（既定）のとき、手順7-3 のあと **Manus API（タスク1件）**で
+``basic_lp_refactor/refactoring_instruction.txt``（LP と共通）と ``basic_cp_refactor/preface_intro.txt`` + 共通 ``preface_shared.txt`` に従いリファクタする。
 
 プロンプト本文は ``config/prompts/basic_cp_manual/*.txt`` に格納する。
 """
 from __future__ import annotations
 
 import logging
-import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -39,22 +38,27 @@ from config.config import (
     BASIC_CP_USE_GEMINI_MANUAL,
     GEMINI_API_KEY,
     GEMINI_BASIC_CP_MODEL,
+    GEMINI_MANUAL_MAX_OUTPUT_TOKENS,
     get_contract_plan_info,
 )
 from google.generativeai.types import HarmBlockThreshold, HarmCategory
 
 from modules.basic_lp_refactor_gemini import (
     BASIC_CP_REFACTOR_PREFACE_DIR,
-    BASIC_LP_REFACTOR_GEMINI_API_CALLS,
+    BASIC_LP_REFACTOR_MANUS_TASKS,
     run_basic_lp_refactor_stage,
 )
-from modules.basic_text_llm import build_basic_spec_dict
 from modules.gemini_generative_timeout import ensure_gemini_rpc_patch_from_config
-from modules.llm_mock import MIN_SITE_BUILD_PROMPT_CHARS, finalize_plain_prompt
+from modules.hearing_url_utils import (
+    existing_site_url_guess_from_hearing,
+    reference_site_url_from_hearing,
+)
+from modules.llm.basic_cp_spec import build_basic_spec_dict
+from modules.llm.llm_pipeline_common import MIN_SITE_BUILD_PROMPT_CHARS, finalize_plain_prompt
 
 logger = logging.getLogger(__name__)
 
-BASIC_CP_MANUAL_GEMINI_API_CALLS_PER_CASE = 11
+BASIC_CP_MANUAL_GEMINI_API_CALLS_PER_CASE = 10
 BASIC_CP_MANUAL_GEMINI_NEW_CHAT_SESSIONS = 5
 
 _MANUAL_DIR = Path(__file__).resolve().parent.parent / "config" / "prompts" / "basic_cp_manual"
@@ -101,7 +105,7 @@ def _configure() -> None:
 
 def _gen_config() -> dict[str, Any]:
     return {
-        "max_output_tokens": 8192,
+        "max_output_tokens": GEMINI_MANUAL_MAX_OUTPUT_TOKENS,
         "temperature": 0.35,
     }
 
@@ -132,11 +136,6 @@ def _response_text(response: Any) -> str:
 # --- ヒアリング・参考URL（basic_lp_gemini_manual と同趣旨） ---
 
 
-def _first_http_url(text: str) -> str:
-    m = re.search(r"https?://[^\s\]\)\"'<>]+", text or "")
-    return m.group(0).rstrip(".,;") if m else ""
-
-
 def _hearing_block(hearing_sheet_content: str) -> str:
     h = (hearing_sheet_content or "").strip()
     if not h:
@@ -149,7 +148,7 @@ def _hearing_block(hearing_sheet_content: str) -> str:
 def _existing_site_url_block(hearing_sheet_content: str, explicit: str) -> str:
     u = (explicit or "").strip()
     if not u:
-        u = _first_http_url(hearing_sheet_content)
+        u = existing_site_url_guess_from_hearing(hearing_sheet_content)
     if u:
         return u
     return "（既存サイトURLの記載なし。ヒアリング本文に URL があればそちらを参照）"
@@ -163,7 +162,7 @@ def _client_hp_and_mood_placeholders() -> tuple[str, str]:
 
 
 def _reference_url_block(hearing_sheet_content: str) -> str:
-    u = _first_http_url(hearing_sheet_content or "")
+    u = reference_site_url_from_hearing(hearing_sheet_content or "")
     if u:
         return u
     return "（参考サイトURLの記載なし。手順1-3およびヒアリング本文を参照）"
@@ -207,20 +206,17 @@ def run_basic_cp_gemini_manual_pipeline(
         raise RuntimeError(
             "modules.basic_cp_gemini_manual: BASIC_CP_USE_GEMINI_MANUAL が無効です。"
         )
-    _ref_extra = (
-        BASIC_LP_REFACTOR_GEMINI_API_CALLS if BASIC_CP_REFACTOR_AFTER_MANUAL else 0
+    _manus_tasks = (
+        BASIC_LP_REFACTOR_MANUS_TASKS if BASIC_CP_REFACTOR_AFTER_MANUAL else 0
     )
-    _api_total = BASIC_CP_MANUAL_GEMINI_API_CALLS_PER_CASE + _ref_extra
-    _sessions = BASIC_CP_MANUAL_GEMINI_NEW_CHAT_SESSIONS + (
-        1 if BASIC_CP_REFACTOR_AFTER_MANUAL else 0
-    )
+    _gemini_calls = BASIC_CP_MANUAL_GEMINI_API_CALLS_PER_CASE
+    _sessions = BASIC_CP_MANUAL_GEMINI_NEW_CHAT_SESSIONS
     logger.info(
-        "BASIC-CP Gemini: API を合計 %s 回呼び出します（マニュアル %s 回 + リファクタ %s 回、"
-        "新規チャット境界 %s 回・手順7の複数タブによる追加案生成は含みません）",
-        _api_total,
-        BASIC_CP_MANUAL_GEMINI_API_CALLS_PER_CASE,
-        _ref_extra,
+        "BASIC-CP Gemini: Gemini API %s 回（新規チャット境界 %s）+ Manus リファクタ %s タスク。"
+        " 手順7の複数タブによる追加案生成は含みません。",
+        _gemini_calls,
         _sessions,
+        _manus_tasks,
     )
     _configure()
     model = genai.GenerativeModel(
@@ -250,15 +246,16 @@ def run_basic_cp_gemini_manual_pipeline(
         EXISTING_SITE_URL_BLOCK=_existing_site_url_block(hear, existing_site_url),
     )
     p13 = _load_step("step_1_3.txt")
+    p12_p13 = f"{p12.rstrip()}\n\n{p13.lstrip()}"
 
-    logger.info("BASIC-CP Gemini: 手順1-2 / 1-3（タブ②・同一チャット）…")
+    logger.info("BASIC-CP Gemini: 手順1-2+1-3 連結（タブ②・1回）…")
     chat2 = model.start_chat(history=[])
-    r12 = chat2.send_message(p12, generation_config=gcfg)
-    outs.step_1_2_assistant_ack = _response_text(r12)
-    outs.raw["step_1_2"] = outs.step_1_2_assistant_ack
-    r13 = chat2.send_message(p13, generation_config=gcfg)
-    outs.step_1_3 = _response_text(r13)
-    outs.raw["step_1_3"] = outs.step_1_3
+    r_tab2 = chat2.send_message(p12_p13, generation_config=gcfg)
+    tab2_text = _response_text(r_tab2)
+    outs.step_1_2_assistant_ack = ""
+    outs.raw["step_1_2"] = ""
+    outs.step_1_3 = tab2_text
+    outs.raw["step_1_3"] = tab2_text
 
     p2 = _subst(
         _load_step("step_2.txt"),
@@ -282,11 +279,6 @@ def run_basic_cp_gemini_manual_pipeline(
         MOOD_CLIENT=mood_c,
         REFERENCE_URL_BLOCK=_reference_url_block(hear),
     )
-    p5 = _subst(
-        _load_step("step_5.txt"),
-        HEARING_1_3_OUTPUT=outs.step_1_3,
-        STEP_2_OUTPUT=outs.step_2,
-    )
     p6 = _load_step("step_6.txt")
 
     logger.info("BASIC-CP Gemini: 手順4〜6（タブ④・同一チャット）…")
@@ -294,6 +286,12 @@ def run_basic_cp_gemini_manual_pipeline(
     r4 = chat4.send_message(p4, generation_config=gcfg)
     outs.step_4 = _response_text(r4)
     outs.raw["step_4"] = outs.step_4
+    p5 = _subst(
+        _load_step("step_5.txt"),
+        STEP_4_OUTPUT=outs.step_4,
+        HEARING_1_3_OUTPUT=outs.step_1_3,
+        STEP_2_OUTPUT=outs.step_2,
+    )
     r5 = chat4.send_message(p5, generation_config=gcfg)
     outs.step_5_assistant_ack = _response_text(r5)
     outs.raw["step_5"] = outs.step_5_assistant_ack
@@ -323,15 +321,16 @@ def run_basic_cp_gemini_manual_pipeline(
     outs.step_7_3 = _response_text(r73)
     outs.raw["step_7_3"] = outs.step_7_3
 
+    manus_deploy_github_url: str | None = None
     if BASIC_CP_REFACTOR_AFTER_MANUAL:
-        outs.step_refactor = run_basic_lp_refactor_stage(
+        md, manus_deploy_github_url = run_basic_lp_refactor_stage(
             canvas_source_code=outs.step_7_3,
-            model=model,
-            generation_config=gcfg,
-            response_text_fn=_response_text,
             preface_dir=BASIC_CP_REFACTOR_PREFACE_DIR,
+            partner_name=partner_name,
         )
-        outs.raw["step_refactor"] = outs.step_refactor
+        outs.step_refactor = md
+        outs.raw["step_refactor"] = md
+        outs.raw["step_refactor_deploy_github_url"] = manus_deploy_github_url or ""
 
     combined = _build_site_build_prompt_from_steps(outs, partner_name=partner_name)
     plan_info = get_contract_plan_info(contract_plan)
@@ -358,6 +357,8 @@ def run_basic_cp_gemini_manual_pipeline(
     )
     spec["basic_manual_gemini_final"] = outs.step_7_3
     spec["basic_refactored_source_markdown"] = outs.step_refactor or ""
+    if manus_deploy_github_url:
+        spec["manus_deploy_github_url"] = manus_deploy_github_url.strip()
     spec["basic_manual_gemini_step_2_structure"] = outs.step_2
     spec["basic_manual_gemini_step_6_design_doc"] = outs.step_6
 

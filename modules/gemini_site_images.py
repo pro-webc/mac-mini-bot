@@ -1,7 +1,8 @@
 """
-リファクタ適用後のサイトで ImagePlaceholder を Gemini 画像生成で実ファイルにし、next/image に置換する。
+（オプション・手動向け）ImagePlaceholder を Gemini 画像 API で実ファイルにし、next/image に置換する。
 
 - 画像は Gemini API（REST v1beta）の ``responseModalities: IMAGE`` を使用。
+- ``main.WebsiteBot`` からは呼ばない。標準は最終リファクタ（Gemini テキスト）で ``next/image`` + ``public/images/`` を実装。
 - Git の push は行わない（``main.WebsiteBot`` の GitHub クライアントが既存どおり実行）。
 """
 from __future__ import annotations
@@ -247,12 +248,19 @@ def ensure_next_image_import(content: str) -> str:
 def strip_unused_image_placeholder_import(content: str) -> str:
     if re.search(r"<ImagePlaceholder\b", content):
         return content
-    return re.sub(
+    content = re.sub(
         r"^import\s+ImagePlaceholder\s+from\s+[\"']@/components/ImagePlaceholder[\"'];?\s*\n",
         "",
         content,
         flags=re.MULTILINE,
     )
+    content = re.sub(
+        r"^import\s+\{\s*ImagePlaceholder\s*\}\s+from\s+[\"'][^\"']+[\"'];?\s*\n",
+        "",
+        content,
+        flags=re.MULTILINE,
+    )
+    return content
 
 
 def materialize_site_images(
@@ -274,6 +282,8 @@ def materialize_site_images(
     if not slots:
         logger.info("gemini_site_images: ImagePlaceholder がありません。スキップします。")
         return 0
+
+    slot_total = len(slots)
 
     out_dir = site_dir / _GEN_DIR
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -330,4 +340,11 @@ def materialize_site_images(
         n,
         _GEN_DIR,
     )
+    if slot_total > 0 and n == 0:
+        logger.error(
+            "gemini_site_images: ImagePlaceholder が %s 箇所あるのに 1 件も生成できませんでした。"
+            " GEMINI_SITE_IMAGE_MODEL=%r の利用可否・API キー権限を確認してください。",
+            slot_total,
+            model,
+        )
     return n

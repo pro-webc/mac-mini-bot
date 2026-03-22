@@ -1,4 +1,6 @@
 """設定管理モジュール"""
+from __future__ import annotations
+
 import os
 from pathlib import Path
 
@@ -117,13 +119,13 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 BASIC_LP_USE_GEMINI_MANUAL = os.getenv(
     "BASIC_LP_USE_GEMINI_MANUAL", "true"
 ).strip().lower() in ("1", "true", "yes")
-# サイト制作は品質優先: 未設定時は Gemini 2.5 Pro（GEMINI_BASIC_LP_MODEL で上書き可）
-_DEFAULT_GEMINI_SITE_MODEL = "gemini-2.5-pro"
+# サイト制作は品質優先: 未設定時は Gemini 3.1 Pro Preview（GEMINI_*_MODEL で上書き可）
+_DEFAULT_GEMINI_SITE_MODEL = "gemini-3.1-pro-preview"
 GEMINI_BASIC_LP_MODEL = (
     os.getenv("GEMINI_BASIC_LP_MODEL", _DEFAULT_GEMINI_SITE_MODEL)
     or _DEFAULT_GEMINI_SITE_MODEL
 ).strip()
-# 手順8の単一ファイル出力のあと、リファクタ指示どおりの複数ファイル出力へ変換（Gemini 新規チャット1回）
+# 手順8の単一ファイル出力のあと、リファクタ指示どおりの複数ファイル出力へ変換（Manus タスク1件）
 BASIC_LP_REFACTOR_AFTER_MANUAL = os.getenv(
     "BASIC_LP_REFACTOR_AFTER_MANUAL", "true"
 ).strip().lower() in ("1", "true", "yes")
@@ -134,7 +136,7 @@ BASIC_CP_USE_GEMINI_MANUAL = os.getenv(
 ).strip().lower() in ("1", "true", "yes")
 _raw_gemini_basic_cp = (os.getenv("GEMINI_BASIC_CP_MODEL") or "").strip()
 GEMINI_BASIC_CP_MODEL = _raw_gemini_basic_cp or GEMINI_BASIC_LP_MODEL
-# 手順7-3 のあと、リファクタ指示どおりの複数ファイル出力へ変換（Gemini 新規チャット1回）
+# 手順7-3 のあと、リファクタ指示どおりの複数ファイル出力へ変換（Manus タスク1件）
 BASIC_CP_REFACTOR_AFTER_MANUAL = os.getenv(
     "BASIC_CP_REFACTOR_AFTER_MANUAL", "true"
 ).strip().lower() in ("1", "true", "yes")
@@ -145,6 +147,13 @@ STANDARD_CP_USE_GEMINI_MANUAL = os.getenv(
 ).strip().lower() in ("1", "true", "yes")
 _raw_gemini_standard_cp = (os.getenv("GEMINI_STANDARD_CP_MODEL") or "").strip()
 GEMINI_STANDARD_CP_MODEL = _raw_gemini_standard_cp or GEMINI_BASIC_LP_MODEL
+# マニュアル多段 Gemini の max_output_tokens。8192 だと手順7系の長いコードが途中で切れやすい。
+GEMINI_MANUAL_MAX_OUTPUT_TOKENS = _parse_positive_int(
+    "GEMINI_MANUAL_MAX_OUTPUT_TOKENS",
+    65536,
+    minimum=2048,
+    maximum=131072,
+)
 STANDARD_CP_REFACTOR_AFTER_MANUAL = os.getenv(
     "STANDARD_CP_REFACTOR_AFTER_MANUAL", "true"
 ).strip().lower() in ("1", "true", "yes")
@@ -166,13 +175,43 @@ ADVANCE_CP_INCLUDE_BLOG_PAGE = os.getenv(
     "ADVANCE_CP_INCLUDE_BLOG_PAGE", "true"
 ).strip().lower() in ("1", "true", "yes")
 
+# 最終リファクタ（フェンス付きマルチファイル化・画像方針）は Manus API。マニュアル本編は Gemini のまま。
+MANUS_API_KEY = (os.getenv("MANUS_API_KEY", "") or "").strip()
+MANUS_API_BASE = (
+    (os.getenv("MANUS_API_BASE", "https://api.manus.ai") or "https://api.manus.ai")
+    .strip()
+    .rstrip("/")
+)
+MANUS_AGENT_PROFILE = (
+    os.getenv("MANUS_AGENT_PROFILE", "manus-1.6") or "manus-1.6"
+).strip()
+MANUS_TASK_MODE = (os.getenv("MANUS_TASK_MODE", "agent") or "agent").strip()
+MANUS_REFACTOR_POLL_INTERVAL_SEC = _parse_float_env(
+    "MANUS_REFACTOR_POLL_INTERVAL_SEC", 5.0, minimum=1.0, maximum=120.0
+)
+MANUS_REFACTOR_TIMEOUT_SEC = _parse_float_env(
+    "MANUS_REFACTOR_TIMEOUT_SEC", 2700.0, minimum=60.0, maximum=7200.0
+)
+# true: Manus に GitHub push まで任せ、返答末尾の `BOT_DEPLOY_GITHUB_URL:` 行を Vercel 用に使い、ローカルからの GitHub push をスキップ
+MANUS_PROVIDES_DEPLOY_GITHUB_URL = os.getenv(
+    "MANUS_PROVIDES_DEPLOY_GITHUB_URL", ""
+).strip().lower() in ("1", "true", "yes")
+# 任意: Manus プロンプトに「push 先の推奨」を1行で渡す（例: your-org/123-test-acme）
+MANUS_DEPLOY_GITHUB_REPO_HINT = (os.getenv("MANUS_DEPLOY_GITHUB_REPO_HINT", "") or "").strip()
+# 以下3つは旧オプション用。Manus 本文は config/prompts/manus/*.txt に統合済み（.env 互換のため定義のみ残す）
+MANUS_MANUAL_WORKFLOW_PROMPT = os.getenv(
+    "MANUS_MANUAL_WORKFLOW_PROMPT", ""
+).strip().lower() in ("1", "true", "yes")
+MANUS_GITHUB_ORG = (os.getenv("MANUS_GITHUB_ORG", "") or "").strip()
+MANUS_GITHUB_TEMPLATE_REPO = (os.getenv("MANUS_GITHUB_TEMPLATE_REPO", "") or "").strip()
+
 # サイト TSX の ImagePlaceholder を Gemini 画像 API で実ファイル化（GEMINI_API_KEY があるとき常に実行）
 GEMINI_SITE_IMAGE_MODEL = (
     os.getenv(
         "GEMINI_SITE_IMAGE_MODEL",
-        "gemini-2.0-flash-preview-image-generation",
+        "gemini-3-pro-image-preview",
     )
-    or "gemini-2.0-flash-preview-image-generation"
+    or "gemini-3-pro-image-preview"
 ).strip()
 GEMINI_SITE_IMAGE_MAX_SLOTS = _parse_positive_int(
     "GEMINI_SITE_IMAGE_MAX_SLOTS", 12, minimum=1, maximum=32
@@ -195,11 +234,6 @@ SITE_IMPLEMENTATION_ENABLED = os.getenv("SITE_IMPLEMENTATION_ENABLED", "true").s
     "true",
     "yes",
 )
-# true のとき、土台コピー後もテンプレ付属の app/about 等のデモルートを残す（既定 false: 契約ページ数とズレ防止のため削除）
-SITE_KEEP_TEMPLATE_APP_ROUTES = os.getenv(
-    "SITE_KEEP_TEMPLATE_APP_ROUTES", "false"
-).strip().lower() in ("1", "true", "yes")
-
 # npm run build 失敗後に Cursor CLI（agent）でサイトディレクトリ内を修正し、再ビルドする（オプトイン）
 CURSOR_SITE_BUILD_FIX_ENABLED = os.getenv(
     "CURSOR_SITE_BUILD_FIX_ENABLED", "false"
@@ -234,7 +268,93 @@ VERCEL_FORCE_PUBLIC_DEPLOYMENTS = os.getenv(
 # その他設定
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
 OUTPUT_DIR = Path(os.getenv("OUTPUT_DIR", str(PROJECT_ROOT / "output")))
-TEMPLATE_DIR = Path(os.getenv("TEMPLATE_DIR", str(PROJECT_ROOT / "templates")))
+
+# 工程テスト（プリフライト〜フェーズ1〜作業分岐）の成果物を 1 か所にまとめる（任意）
+# 例: PIPELINE_TEST_RUN_DIR=output/pipeline_test_runs/demo_run
+#     → <そのパス>/preflight_snapshots/<UTC>/ … ほか phase1_snapshots, work_branch_snapshots,
+#       phase2_snapshots, gemini_step_tests（任意）
+_PIPELINE_TEST_RUN_DIR_RAW = os.getenv("PIPELINE_TEST_RUN_DIR", "").strip()
+
+
+def pipeline_test_run_root_resolved() -> Path | None:
+    """環境変数 ``PIPELINE_TEST_RUN_DIR`` で指定されたラン用ディレクトリ（未設定なら None）。"""
+    if not _PIPELINE_TEST_RUN_DIR_RAW:
+        return None
+    p = Path(_PIPELINE_TEST_RUN_DIR_RAW)
+    if not p.is_absolute():
+        p = PROJECT_ROOT / p
+    return p.resolve()
+
+
+def pipeline_run_root_for_resolve(explicit_run_root: Path | None = None) -> Path:
+    """
+    プリフライト〜作業分岐の「親」ディレクトリ。
+    ``explicit_run_root`` があればそれを優先し、なければ環境変数、なければ ``OUTPUT_DIR``。
+    """
+    if explicit_run_root is not None:
+        return explicit_run_root.resolve()
+    r = pipeline_test_run_root_resolved()
+    return r if r else OUTPUT_DIR.resolve()
+
+
+def pipeline_preflight_snapshots_base(explicit_run_root: Path | None = None) -> Path:
+    return pipeline_run_root_for_resolve(explicit_run_root) / "preflight_snapshots"
+
+
+def pipeline_phase1_snapshots_base(explicit_run_root: Path | None = None) -> Path:
+    return pipeline_run_root_for_resolve(explicit_run_root) / "phase1_snapshots"
+
+
+def pipeline_work_branch_snapshots_base(explicit_run_root: Path | None = None) -> Path:
+    return pipeline_run_root_for_resolve(explicit_run_root) / "work_branch_snapshots"
+
+
+def pipeline_phase2_snapshots_base(explicit_run_root: Path | None = None) -> Path:
+    """TEXT_LLM（フェーズ2）単体実行の保存先（``phase2_snapshots/<UTC>/``）。"""
+    return pipeline_run_root_for_resolve(explicit_run_root) / "phase2_snapshots"
+
+
+def pipeline_gemini_step_tests_base(explicit_run_root: Path | None = None) -> Path:
+    """STANDARD-CP 段階 Gemini テストの保存先（``gemini_step_tests/<UTC>/``）。"""
+    return pipeline_run_root_for_resolve(explicit_run_root) / "gemini_step_tests"
+
+
+def pipeline_run_root_from_phase1_snapshot_dir(phase1_dir: Path) -> Path | None:
+    """
+    ``.../<run>/phase1_snapshots/<stamp>/`` なら ``<run>`` を返す。
+    レイアウトが合わなければ None。
+    """
+    p = phase1_dir.resolve()
+    if p.parent.name == "phase1_snapshots":
+        return p.parent.parent
+    return None
+
+
+def latest_preflight_cases_path(*, run_root: Path | None = None) -> Path | None:
+    """``<親>/preflight_snapshots/*/04_pending_cases.json`` のうち mtime が最新のもの。"""
+    base = pipeline_preflight_snapshots_base(run_root)
+    if not base.is_dir():
+        return None
+    candidates = list(base.glob("*/04_pending_cases.json"))
+    if not candidates:
+        return None
+    return max(candidates, key=lambda p: p.stat().st_mtime)
+
+
+def latest_phase1_snapshot_dir(*, run_root: Path | None = None) -> Path | None:
+    """``<親>/phase1_snapshots/*/`` のうち ``00_source.json`` があり mtime が最新のディレクトリ。"""
+    base = pipeline_phase1_snapshots_base(run_root)
+    if not base.is_dir():
+        return None
+    dirs = [
+        d
+        for d in base.iterdir()
+        if d.is_dir() and (d / "00_source.json").is_file()
+    ]
+    if not dirs:
+        return None
+    return max(dirs, key=lambda d: d.stat().st_mtime)
+
 
 # スプレッドシート列マッピング
 SPREADSHEET_COLUMNS = {
@@ -356,11 +476,11 @@ COMMON_TECHNICAL_SPEC = {
         "forbidden": "アイコンを画像プレースホルダーで代用することは禁止",
     },
     "images": {
-        "unsplash": "Unsplash の利用禁止",
-        "real_assets": "実画像ファイルは配置しない",
-        "placeholder": (
-            "画像プレースホルダーUI（枠・比率・説明テキスト）で何が表示されるべきかを明示。"
-            "画像上に載せるべきテキストはオーバーレイとしてデザイン上そのまま表示"
+        "unsplash": "Unsplash・外部ストック URL 禁止",
+        "final_refactor": (
+            "ビジュアルはマニュアル後の最終リファクタ（Gemini）で実装。"
+            "`next/image` と `public/images/`（フェンスで SVG 等を出力）。"
+            "後工程の一括画像 API は使わない。"
         ),
     },
     "maps": {
@@ -391,4 +511,3 @@ def get_common_technical_spec_prompt_block() -> str:
 
 # 出力ディレクトリを作成
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-TEMPLATE_DIR.mkdir(parents=True, exist_ok=True)

@@ -4,6 +4,8 @@ from __future__ import annotations
 import re
 from collections.abc import Iterable
 
+from modules.hearing_url_utils import HEARING_HTTP_URL_RE as _HEARING_URL_IN_CELL
+
 
 def column_letter_to_index(letters: str) -> int:
     """
@@ -58,10 +60,6 @@ def a1_range(sheet_name: str, cell_range: str) -> str:
 def normalize_header_label(value: str) -> str:
     """比較用に全角半角スペースを圧縮し小文字化（日本語はそのまま）"""
     return " ".join((value or "").replace("\u3000", " ").split()).casefold()
-
-
-# ``spec_generator.fetch_hearing_sheet`` と整合する簡易 URL 抽出
-_HEARING_URL_IN_CELL = re.compile(r"https?://[^\s\]<>\")]+", re.IGNORECASE)
 
 
 def hearing_cell_is_eligible_for_mac_mini_bot(text: str) -> bool:

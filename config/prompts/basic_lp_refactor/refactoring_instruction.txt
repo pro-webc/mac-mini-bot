@@ -1,6 +1,6 @@
 # Next.js（App Router）+ Tailwind CSS｜リファクタ指示書
 
-**ゴール:** リファクタ結果を、プロジェクトルート相対パス付きのマークダウンコードフェンスで**ソースとして出力**する（実画像の生成・配置は行わない。プレースホルダは維持）。
+**ゴール:** リファクタ結果を、プロジェクトルート相対パス付きのマークダウンコードフェンスで**ソースとして出力**する。**ビジュアルは本段階で実装**：`ImagePlaceholder` を廃止し `next/image` + **`public/images/` の静的ファイル**（主に **SVG をフェンスで出力**）に置き換える。
 
 ---
 
@@ -10,7 +10,7 @@
 |------|------|
 | 元ソース | メッセージ内 `BEGIN_CANVAS_SOURCE`〜`END` の単一ファイル（Canvas 想定） |
 | 優先 | デザイン・レイアウト・配色・**テキストは 100% 維持**（Tailwind の `className` 文字列も変更しない） |
-| 統合先 | 空に近い App Router + Tailwind テンプレに載せる形でファイルを出力 |
+| 統合先 | Next.js App Router + Tailwind の**本番用完成ファイル群**として出力する（ローカル雛形テンプレへののせ替えではない。**あなたの返答がサイトのソースの正本**） |
 
 ---
 
@@ -97,7 +97,7 @@ app/components/shared/Header.tsx
 | 論点 | ルール |
 |------|--------|
 | Server / Client | `page.tsx` は原則 Server。`useState` / `useEffect` / イベントは**該当コンポーネントを Client**（先頭 `"use client";`）。 |
-| 画像 | `<img>` 禁止 → `next/image` の `Image`。外部ドメインは `next.config` に記載。 |
+| 画像 | `<img>` 禁止 → `next/image` の `Image`。**`src` は `/images/...`（リポジトリ内 `public/images/`）のみ**。同一返答で **`public/images/*.svg` をフェンス追加**（プレーン SVG テキスト）。`ImagePlaceholder` は残さない。Unsplash・外部ストック URL 禁止。`remotePatterns` は空のままでよい。 |
 | リンク | 内部遷移は `next/link` の `<Link>`（`<a>` のみ・`onClick` 遷移で代替しない）。 |
 | 定数 | `COLORS` / `FONTS` 等は必要なら `tailwind.config` または `app/constants/theme.ts` へ（**見た目は変えない**）。 |
 
@@ -132,6 +132,7 @@ app/components/shared/Header.tsx
 ## 7. 出力の順序（推奨）
 
 1. `tailwind.config.ts` / `next.config.ts`
+1.5. `public/images/*.svg`（ビジュアル用・必要な分だけ）
 2. `app/components/shared/*`
 3. `app/components/<ページ別>/*`
 4. `app/**/page.tsx`
@@ -144,7 +145,7 @@ app/components/shared/Header.tsx
 - [ ] **§「自動適用ボットとの整合」** — 各フェンス先頭が許可パス行になっている（抽出0件にならないこと）
 - [ ] `page.tsx` に className・ラッパー要素が**一切ない**
 - [ ] TypeScript / import / Server・Client 境界
-- [ ] `next/image`・`next/link` の漏れなし
+- [ ] **`ImagePlaceholder` 残存なし**・`next/image`・ローカル `/images/`・必要な **`public/images/*.svg` フェンス**・`next/link` の漏れなし
 - [ ] Hydration 的に妥当な DOM
 - [ ] `globals.css` の **@import 順** と「空＋例外」のルール
 

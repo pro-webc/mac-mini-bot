@@ -42,3 +42,17 @@ def test_subst_fills_step_1_1_placeholder() -> None:
 def test_subst_rejects_unfilled_placeholder() -> None:
     with pytest.raises(RuntimeError, match="未置換"):
         _subst("a {{X}} b", Y="1")
+
+
+def test_subst_step_6_fills_design_and_structure_placeholders() -> None:
+    t = _MANUAL.joinpath("step_6.txt").read_text(encoding="utf-8")
+    out = _subst(
+        t,
+        HEARING_1_3_OUTPUT="ヒアリング本文",
+        STEP_4_OUTPUT="ワイヤー構成本文",
+        STEP_5_OUTPUT="手順5デザイン3点本文",
+    )
+    assert "{{" not in out
+    assert "ヒアリング本文" in out
+    assert "ワイヤー構成本文" in out
+    assert "手順5デザイン3点本文" in out

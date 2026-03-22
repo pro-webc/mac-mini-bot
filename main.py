@@ -4,11 +4,11 @@
 
 パイプライン概略:
   1. ヒアリングシート類の抽出（`modules.case_extraction`）
-  2. TEXT_LLM（`modules.text_llm_stage` — プラン別 Gemini マニュアルまたは `llm_mock`）
-  3. サイト土台生成 → `llm_raw_output/` に LLM 生出力を保存
-  4. フェンス解析で `app/` 等へ反映（失敗時は例外）
-  5. `GEMINI_API_KEY` 利用時: Gemini 画像 API で `ImagePlaceholder` を実ファイル化
-  6. ビルド検証 → GitHub push → Vercel デプロイ → スプレッドシートに公開 URL
+  2. TEXT_LLM（`modules.llm.text_llm_stage` — プランは ``if/elif`` で分岐。各 ``*_USE_GEMINI_MANUAL`` と ``GEMINI_API_KEY`` が必須）
+  3. 出力先ディレクトリ準備（テンプレコピーなし）→ `llm_raw_output/` に LLM 生出力を保存
+  4. フェンス解析で Gemini 出力のみ `app/` 等へ反映（失敗時は例外）
+  5. ビルド検証（失敗時は ``CURSOR_SITE_BUILD_FIX_ENABLED`` 時のみ Cursor がソースを修正し再ビルド。それ以外は成果物に触れない）
+  6. GitHub push → Vercel デプロイ → スプレッドシートに公開 URL
 
 各段の LLM 割当は ``docs/LLM_PIPELINE.md`` を参照。
 """
@@ -22,14 +22,11 @@ from typing import Any
 
 from config.logging_setup import configure_logging
 
+# 他 import より先にログ設定（import 時のログレベルが揃う）
 configure_logging()
 
 from config.config import (
     BOT_MAX_CASES,
-    GEMINI_API_KEY,
-    GEMINI_SITE_IMAGE_DELAY_SEC,
-    GEMINI_SITE_IMAGE_MAX_SLOTS,
-    GEMINI_SITE_IMAGE_MODEL,
     SITE_BUILD_ENABLED,
     SITE_IMPLEMENTATION_ENABLED,
     SPREADSHEET_AI_STATUS_ERROR_MAX_LEN,
@@ -45,44 +42,48 @@ from config.log_theme import (
     stream_supports_color,
 )
 from config.types import CaseRecord
-from config.validation import validate_startup_config
+from config.validation import StartupValidationResult, validate_startup_config
 from modules.basic_lp_generated_apply import apply_contract_outputs_to_site_dir
 from modules.case_extraction import extract_hearing_bundle
 from modules.contract_workflow import (
     ContractWorkBranch,
     gemini_manual_enabled_for_branch,
     resolve_contract_work_branch,
+    resolve_work_branch_with_basic_lp_override,
 )
 from modules.github_client import GitHubClient, sanitize_github_repo_name
-from modules.llm_raw_output import write_llm_raw_artifacts
+from modules.llm.llm_raw_output import write_llm_raw_artifacts
+from modules.llm.text_llm_stage import run_text_llm_stage
 from modules.site_build import verify_site_build_with_cursor_pass
 from modules.site_generator import SiteGenerator
 from modules.site_implementer import SiteImplementer
 from modules.spec_generator import SpecGenerator
 from modules.spreadsheet import SpreadsheetClient, missing_required_case_fields
-from modules.text_llm_stage import run_text_llm_stage
 from modules.vercel_client import VercelClient
 
 logger = logging.getLogger(__name__)
+
+# ---------------------------------------------------------------------------
+# スプレッドシート AV 列用のエラー文言短縮（セル幅・可読性のため）
+# ---------------------------------------------------------------------------
 
 
 def _format_ai_status_error(exc: BaseException) -> str:
     """AV 列向けに例外メッセージを短く整形（モジュールパス連呼を削る）。"""
     msg = (str(exc) or type(exc).__name__).strip()
     for noise in (
-        "（modules.spec_generator.generate_spec）。",
         "（modules.spec_generator）。",
         " modules.spec_generator",
-        " modules.llm_mock",
-        "（modules.llm_mock）。",
-        "（modules.llm_mock.finalize_plain_prompt）。",
-        "（modules.llm_mock.build_spec_dict_mock）。",
-        " modules.text_llm_stage",
-        "（modules.text_llm_stage）。",
-        " modules.basic_lp_text_llm",
-        "（modules.basic_lp_text_llm）。",
-        " modules.basic_text_llm",
-        "（modules.basic_text_llm）。",
+        " modules.llm.llm_pipeline_common",
+        "（modules.llm.llm_pipeline_common）。",
+        "（modules.llm.llm_pipeline_common.finalize_plain_prompt）。",
+        "（modules.llm.llm_pipeline_common.assemble_spec_dict_from_requirements）。",
+        " modules.llm.text_llm_stage",
+        "（modules.llm.text_llm_stage）。",
+        " modules.llm.basic_lp_spec",
+        "（modules.llm.basic_lp_spec）。",
+        " modules.llm.basic_cp_spec",
+        "（modules.llm.basic_cp_spec）。",
         " modules.basic_lp_gemini_manual",
         "（modules.basic_lp_gemini_manual）。",
         " modules.basic_cp_gemini_manual",
@@ -91,10 +92,6 @@ def _format_ai_status_error(exc: BaseException) -> str:
         "（modules.standard_cp_gemini_manual）。",
         " modules.advance_cp_gemini_manual",
         "（modules.advance_cp_gemini_manual）。",
-        " modules.standard_text_llm",
-        "（modules.standard_text_llm）。",
-        " modules.advance_text_llm",
-        "（modules.advance_text_llm）。",
         " modules.basic_lp_generated_apply",
         "（modules.basic_lp_generated_apply）。",
         " modules.case_extraction",
@@ -107,6 +104,11 @@ def _format_ai_status_error(exc: BaseException) -> str:
     if len(msg) > budget:
         msg = msg[: budget - 1] + "…"
     return prefix + msg
+
+
+# ---------------------------------------------------------------------------
+# ボット本体: 1 バッチ = 複数案件を run() で列挙し、各案件は process_case()
+# ---------------------------------------------------------------------------
 
 
 class WebsiteBot:
@@ -142,6 +144,7 @@ class WebsiteBot:
         impl_log = ""
 
         try:
+            # --- 着手条件: 必須列が揃わなければ AV も更新せず None ---
             missing = missing_required_case_fields(case)
             if missing:
                 logger.error(
@@ -151,6 +154,7 @@ class WebsiteBot:
                 )
                 return None
 
+            # --- 案件開始ログ + AV を「処理中」に ---
             _tty_color = stream_supports_color(sys.stdout)
             logger.info(
                 case_start_banner(
@@ -163,6 +167,7 @@ class WebsiteBot:
 
             self.spreadsheet.update_ai_status(case["row_number"], "処理中")
 
+            # --- フェーズ1: ヒアリング本文・関連メモの取得（LLM 入力の原料） ---
             logger.info("【フェーズ1】ヒアリングシート類の抽出…")
             hearing_bundle = extract_hearing_bundle(
                 case,
@@ -181,21 +186,25 @@ class WebsiteBot:
                 )
                 return None
 
+            # --- 契約プラン → 作業分岐（BASIC は別シートで LP なら BASIC_LP に寄せる） ---
             plan_raw = (case.get("contract_plan") or "").strip()
             plan_info = get_contract_plan_info(plan_raw)
-            work_branch = resolve_contract_work_branch(case["contract_plan"])
-            if work_branch == ContractWorkBranch.BASIC:
-                lp_flag = self.spreadsheet.lookup_basic_is_landing_page(
-                    str(case.get("record_number") or ""),
-                    str(case.get("partner_name") or ""),
+            work_branch_before_lp = resolve_contract_work_branch(case["contract_plan"])
+            work_branch = resolve_work_branch_with_basic_lp_override(
+                case["contract_plan"],
+                record_number=str(case.get("record_number") or ""),
+                partner_name=str(case.get("partner_name") or ""),
+                lookup_basic_is_landing_page=self.spreadsheet.lookup_basic_is_landing_page,
+            )
+            if (
+                work_branch_before_lp == ContractWorkBranch.BASIC
+                and work_branch == ContractWorkBranch.BASIC_LP
+            ):
+                logger.info(
+                    "BASIC サイトタイプシートにより作業分岐を BASIC LP に変更しました "
+                    "(record=%r)",
+                    case.get("record_number"),
                 )
-                if lp_flag is True:
-                    work_branch = ContractWorkBranch.BASIC_LP
-                    logger.info(
-                        "BASIC サイトタイプシートにより作業分岐を BASIC LP に変更しました "
-                        "(record=%r)",
-                        case.get("record_number"),
-                    )
             logger.info(
                 "契約プラン作業分岐: plan=%r branch=%s resolved_type=%s pages=%s",
                 plan_raw,
@@ -204,30 +213,12 @@ class WebsiteBot:
                 plan_info.get("pages"),
             )
 
-            if work_branch == ContractWorkBranch.BASIC_LP:
-                logger.info(
-                    "【フェーズ2】TEXT_LLM（BASIC LP・1ページランディング）… "
-                    "modules.basic_lp_text_llm"
-                )
-            elif work_branch == ContractWorkBranch.BASIC:
-                logger.info(
-                    "【フェーズ2】TEXT_LLM（BASIC・コーポレート1ページ）… "
-                    "modules.basic_text_llm（現状モック）"
-                )
-            elif work_branch == ContractWorkBranch.STANDARD:
-                logger.info(
-                    "【フェーズ2】TEXT_LLM（STANDARD・コーポレート複数ページ）… "
-                    "modules.standard_text_llm"
-                )
-            elif work_branch == ContractWorkBranch.ADVANCE:
-                logger.info(
-                    "【フェーズ2】TEXT_LLM（ADVANCE・コーポレート12ページ想定）… "
-                    "modules.advance_text_llm"
-                )
-            else:
-                logger.info(
-                    "【フェーズ2】TEXT_LLM 処理（要望・仕様）… 現状モック — 実LLMは modules.text_llm_stage を拡張"
-                )
+            # --- フェーズ2: TEXT_LLM（要望抽出・仕様 dict 生成）---
+            # 引数: hearing_bundle（フェーズ1のヒアリング本文・メモ等） / contract_plan・partner_name（案件メタ）
+            #       work_branch（BASIC_LP 等。プラン別パイプライン選択に使用）
+            # 処理: modules.llm.text_llm_stage が work_branch で if/elif 分岐し、対応する Gemini TEXT パイプラインを実行
+            # 出力: requirements_result（要望まとめ）, spec（フェーズ3の generate_site・raw 保存などの入力）
+            logger.info("【フェーズ2】TEXT_LLM … branch=%s", work_branch.value)
             requirements_result, spec = run_text_llm_stage(
                 hearing_bundle,
                 contract_plan=case["contract_plan"],
@@ -235,13 +226,15 @@ class WebsiteBot:
                 work_branch=work_branch,
             )
 
+            # --- フェーズ3: ディスク上のサイト出力先（output/sites/<名前>/） ---
             logger.info(
-                "【フェーズ3】土台生成・LLM 正本の保存・検証・Git push / デプロイ…"
+                "【フェーズ3】出力先準備・LLM 正本の保存・検証・Git push / デプロイ…"
             )
-            logger.info("› Next.js の技術土台を生成…")
+            logger.info("› Gemini 出力の適用先ディレクトリを用意（テンプレは使わない）…")
             site_name = f"{case['partner_name']}-{case['record_number']}"
             site_dir = self.site_generator.generate_site(spec, [], site_name)
 
+            # LLM の生出力を llm_raw_output/ に残す（追跡・デバッグ用。コミットに含まれる）
             raw_n = write_llm_raw_artifacts(
                 site_dir,
                 spec=spec,
@@ -253,6 +246,7 @@ class WebsiteBot:
                 raw_n,
             )
 
+            # spec 内マークダウンのフェンス → app/ 等へファイル書き込み
             n_gen = apply_contract_outputs_to_site_dir(
                 spec, site_dir, work_branch=work_branch
             )
@@ -278,24 +272,18 @@ class WebsiteBot:
                     " 該当プランの Gemini マニュアルとリファクタ出力が spec に入っているか確認してください。"
                 )
 
-            if (GEMINI_API_KEY or "").strip():
-                from modules.gemini_site_images import materialize_site_images
-
-                n_img = materialize_site_images(
-                    site_dir,
-                    api_key=GEMINI_API_KEY.strip(),
-                    model=GEMINI_SITE_IMAGE_MODEL,
-                    max_slots=GEMINI_SITE_IMAGE_MAX_SLOTS,
-                    delay_sec_between_calls=GEMINI_SITE_IMAGE_DELAY_SEC,
-                )
-                if n_img:
-                    logger.info(
-                        "› Gemini 画像 API: %s 箇所を public/images/generated/ に保存し next/image に置換",
-                        n_img,
+            # ビルドをかけるなら package.json はフェンス出力に必須
+            if SITE_BUILD_ENABLED or SITE_IMPLEMENTATION_ENABLED:
+                pkg = site_dir / "package.json"
+                if not pkg.is_file():
+                    raise RuntimeError(
+                        "package.json がありません。実装は Gemini のマークダウン（フェンス）のみとするため、"
+                        "出力に `package.json` を含めてください（Next.js 依存関係・スクリプトの完全な定義）。"
                     )
 
+            # site_implementer = 実装パス + npm build。SITE_BUILD_ENABLED のみ = build のみ（軽い方）
             if SITE_IMPLEMENTATION_ENABLED:
-                logger.info("› サイト実装を実行（モック: テンプレ土台のビルド検証）…")
+                logger.info("› サイト実装を実行（npm build 検証）…")
                 ok_impl, impl_log = self.site_implementer.implement(
                     spec,
                     site_dir,
@@ -316,17 +304,25 @@ class WebsiteBot:
                         "npm build に失敗: " + (blog[-2000:] if blog else "")
                     )
 
-            logger.info("› GitHub にソースコードを push…")
+            # --- GitHub: Manus が URL を返した場合はローカル push をスキップ（.env オプション） ---
             repo_name = sanitize_github_repo_name(
                 case["partner_name"], str(case["record_number"])
             )
-            github_url = self.github_client.push_to_github(
-                site_dir,
-                repo_name,
-                "test",
-            )
-
-            repo_https = github_url.rstrip("/").removesuffix(".git")
+            manus_git = (spec.get("manus_deploy_github_url") or "").strip()
+            if manus_git:
+                logger.info(
+                    "› GitHub: Manus が push したリポジトリ URL を使用（ローカルからの push をスキップ）…"
+                )
+                github_url = manus_git.rstrip("/")
+                if not github_url.lower().endswith(".git"):
+                    github_url = f"{github_url}.git"
+            else:
+                logger.info("› GitHub にソースコードを push…")
+                github_url = self.github_client.push_to_github(
+                    site_dir,
+                    repo_name,
+                    "test",
+                )
 
             logger.info("› Vercel にデプロイ…")
             deployment = self.vercel_client.deploy_from_github(
@@ -346,6 +342,7 @@ class WebsiteBot:
             logger.info("✓ 案件完了 — 公開 URL: %s", deploy_url)
             return deploy_url
 
+        # 失敗: ログ → AV に短いエラー → 例外を再送出（run() は次の案件へ続行可）
         except Exception as e:
             logger.error(
                 "案件処理エラー row=%s record=%s partner=%s: %s",
@@ -370,17 +367,19 @@ class WebsiteBot:
             raise
 
     def run(self) -> None:
-        """メイン処理を実行"""
+        """スプレッドシートから対象行を取り、各行を process_case で順に処理する。"""
         try:
             _uc = stream_supports_color(sys.stdout)
             logger.info(startup_title(use_color=_uc))
 
+            # SPREADSHEET_TARGET_AI_STATUS 等の条件でフィルタ済みのキュー
             cases = self.spreadsheet.get_pending_cases()
 
             if not cases:
                 logger.info(idle_banner(use_color=_uc))
                 return
 
+            # テスト用: 先頭 N 件だけ処理（未設定なら全件）
             if BOT_MAX_CASES:
                 cases = cases[:BOT_MAX_CASES]
 
@@ -392,6 +391,7 @@ class WebsiteBot:
                 )
             )
 
+            # 1 件失敗してもループは続ける（各 process_case が例外を投げうる）
             for case in cases:
                 try:
                     self.process_case(case)
@@ -411,73 +411,112 @@ class WebsiteBot:
             raise
 
 
-def _run_startup_validation() -> bool:
-    """検証結果をログに出し、成功なら True"""
-    result = validate_startup_config(require_full_pipeline=True)
+def _emit_startup_validation(result: StartupValidationResult, *, to_stdout: bool) -> bool:
+    """検証結果をログまたは標準出力へ出す。戻り値は result.ok（呼び出し側が exit 判定に使う）。"""
+    if to_stdout:
+        for w in result.warnings:
+            print(f"WARN: {w}")
+        for err in result.errors:
+            print(f"ERROR: {err}")
+        return result.ok
     for w in result.warnings:
         logger.warning("[設定] %s", w)
     if not result.ok:
         for err in result.errors:
             logger.error("[設定] %s", err)
-        return False
-    return True
+    return result.ok
+
+
+def _run_startup_validation() -> bool:
+    """.env 等の必須設定を検証。失敗時は False（呼び出し側が exit）。"""
+    return _emit_startup_validation(
+        validate_startup_config(require_full_pipeline=True),
+        to_stdout=False,
+    )
+
+
+def _spreadsheet_header_issues(spreadsheet: SpreadsheetClient) -> list[str]:
+    """列見出し検証の結果メッセージ一覧（本番・スナップショットで共通）。"""
+    return spreadsheet.validate_header_labels()
+
+
+def _react_to_spreadsheet_header_issues(issues: list[str], *, to_stdout: bool) -> None:
+    """列見出し不一致をログまたは標準出力へ出し、厳格モードなら sys.exit(1)。"""
+    if to_stdout:
+        for m in issues:
+            print(f"HEADER_MISMATCH: {m}")
+        if SPREADSHEET_HEADERS_STRICT and issues:
+            print(
+                "ERROR: 列見出し不一致のため終了（SPREADSHEET_HEADERS_STRICT=true。"
+                " AV・AW は検証対象外）"
+            )
+            sys.exit(1)
+        return
+    for msg in issues:
+        if SPREADSHEET_HEADERS_STRICT:
+            logger.error("[起動時・列見出し] %s", msg)
+        else:
+            logger.warning("[起動時・列見出し] %s", msg)
+    if SPREADSHEET_HEADERS_STRICT and issues:
+        logger.error(
+            "列見出し不一致のため起動を中止します。"
+            "config.py の SPREADSHEET_HEADER_LABELS をシート1行目に合わせるか（AV・AW は検証対象外）、"
+            "SPREADSHEET_HEADERS_STRICT=false で警告のみにしてください。"
+        )
+        sys.exit(1)
+
+
+def _apply_spreadsheet_header_validation(
+    spreadsheet: SpreadsheetClient, *, to_stdout: bool
+) -> None:
+    """列見出しを検証。厳格モードで不一致があれば sys.exit(1)。"""
+    _react_to_spreadsheet_header_issues(
+        _spreadsheet_header_issues(spreadsheet),
+        to_stdout=to_stdout,
+    )
 
 
 def main() -> None:
-    """メイン関数"""
+    """
+    エントリポイント。
+
+    通常: 起動検証 → WebsiteBot 生成 → 列見出し確認 → run()。
+    BOT_CONFIG_CHECK=1: 上記と同じ検証を標準出力に出して終了（案件は処理しない）。
+    """
+    # ---- 診断モード: 本番と同じ検証ロジックを print し、問題なければ 0 で終了 ----
     if os.getenv("BOT_CONFIG_CHECK", "").strip().lower() in ("1", "true", "yes"):
         logging.getLogger().setLevel(logging.INFO)
-        result = validate_startup_config(require_full_pipeline=True)
-        for w in result.warnings:
-            print(f"WARN: {w}")
-        for err in result.errors:
-            print(f"ERROR: {err}")
-        if not result.ok:
+        cfg_result = validate_startup_config(require_full_pipeline=True)
+        if not _emit_startup_validation(cfg_result, to_stdout=True):
             sys.exit(1)
         try:
-            from modules.spreadsheet import SpreadsheetClient
-
-            sp = SpreadsheetClient()
-            mm = sp.validate_header_labels()
-            for m in mm:
-                print(f"HEADER_MISMATCH: {m}")
-            if SPREADSHEET_HEADERS_STRICT and mm:
-                print(
-                    "ERROR: 列見出し不一致のため終了（SPREADSHEET_HEADERS_STRICT=true。"
-                    " AV・AW は検証対象外）"
-                )
-                sys.exit(1)
+            _react_to_spreadsheet_header_issues(
+                _spreadsheet_header_issues(SpreadsheetClient()),
+                to_stdout=True,
+            )
         except Exception as e:
             print(f"ERROR: スプレッドシート列検証で例外: {e}")
             sys.exit(1)
         print("OK: 設定・列見出し検証に問題ありません。")
         sys.exit(0)
 
+    # ---- 本番起動: Sheets / GitHub / Vercel / API キー等 ----
     if not _run_startup_validation():
         sys.exit(1)
 
     try:
         bot = WebsiteBot()
-        header_issues = bot.spreadsheet.validate_header_labels()
-        for msg in header_issues:
-            if SPREADSHEET_HEADERS_STRICT:
-                logger.error("[起動時・列見出し] %s", msg)
-            else:
-                logger.warning("[起動時・列見出し] %s", msg)
-        if SPREADSHEET_HEADERS_STRICT and header_issues:
-            logger.error(
-                "列見出し不一致のため起動を中止します。"
-                "config.py の SPREADSHEET_HEADER_LABELS をシート1行目に合わせるか（AV・AW は検証対象外）、"
-                "SPREADSHEET_HEADERS_STRICT=false で警告のみにしてください。"
-            )
-            sys.exit(1)
+        _apply_spreadsheet_header_validation(bot.spreadsheet, to_stdout=False)
         bot.run()
     except KeyboardInterrupt:
+        # Ctrl+C
         logger.info("Botを停止しました")
     except Exception as e:
+        # run() 外の想定外（初期化失敗など）
         logger.error("予期しないエラー: %s", e, exc_info=True)
         sys.exit(1)
 
 
+# python main.py 実行時の起点（pytest 等から import しただけでは呼ばれない）
 if __name__ == "__main__":
     main()

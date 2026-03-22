@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import json
 
-from modules.spec_json_extract import extract_spec_dict_from_llm_text
+from modules.llm.spec_json_extract import extract_spec_dict_from_llm_text
 
 
 def test_extract_plain_json():

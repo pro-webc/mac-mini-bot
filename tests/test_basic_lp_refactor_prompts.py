@@ -1,4 +1,4 @@
-"""BASIC LP / BASIC-CP リファクタ用プロンプト"""
+"""Manus リファクタ用プロンプト（手作業マニュアル同様の manus/*.txt）"""
 import pytest
 from modules.basic_lp_refactor_gemini import (
     ADVANCE_CP_REFACTOR_PREFACE_DIR,
@@ -13,14 +13,21 @@ def test_refactor_prompt_contains_markers() -> None:
     assert "===== BEGIN_CANVAS_SOURCE =====" in p
     assert "===== END_CANVAS_SOURCE =====" in p
     assert "export default function X()" in p
-    assert "ソース" in p
-    assert "リファクタ指示書" in p
-    assert "BASIC LP" in p
-    assert "preface_shared" not in p  # ファイル名はプロンプトに出さない
+    assert "リファクタリング指示書" in p
+    assert "propagate-webcreation" in p
+    assert "DefaultSetting" in p
     assert "nanobanana" in p.lower()
-    assert "同一のリファクタ指示書" in p
-    assert "STANDARD-CP" in p
-    assert "ADVANCE-CP" in p
+    assert "public/images" in p.lower()
+    assert "next/image" in p.lower()
+
+
+def test_refactor_prompt_partner_name_in_orchestration() -> None:
+    p = build_basic_lp_refactor_user_prompt(
+        "export default function X() { return null }",
+        partner_name="テスト商事",
+    )
+    assert "テスト商事" in p
+    assert "{{PARTNER_NAME}}" not in p
 
 
 def test_refactor_prompt_empty_raises() -> None:
@@ -28,29 +35,19 @@ def test_refactor_prompt_empty_raises() -> None:
         build_basic_lp_refactor_user_prompt("  \n  ")
 
 
-def test_cp_refactor_preface_option() -> None:
-    p = build_basic_lp_refactor_user_prompt(
-        "export default function Page() { return null }",
+def test_cp_preface_dir_ignored_same_as_handwork() -> None:
+    """preface_dir は Manus 手作業プロンプトでは使わない（どの分岐も同一本文）。"""
+    base = build_basic_lp_refactor_user_prompt("const x = 1")
+    p_cp = build_basic_lp_refactor_user_prompt(
+        "const x = 1",
         preface_dir=BASIC_CP_REFACTOR_PREFACE_DIR,
     )
-    assert "BASIC-CP" in p
-    assert "===== BEGIN_CANVAS_SOURCE =====" in p
-
-
-def test_standard_cp_refactor_preface_option() -> None:
-    p = build_basic_lp_refactor_user_prompt(
-        "export default function App() { return null }",
+    p_st = build_basic_lp_refactor_user_prompt(
+        "const x = 1",
         preface_dir=STANDARD_CP_REFACTOR_PREFACE_DIR,
     )
-    assert "STANDARD-CP" in p
-    assert "===== BEGIN_CANVAS_SOURCE =====" in p
-
-
-def test_advance_cp_refactor_preface_option() -> None:
-    p = build_basic_lp_refactor_user_prompt(
-        "export default function App() { return null }",
+    p_adv = build_basic_lp_refactor_user_prompt(
+        "const x = 1",
         preface_dir=ADVANCE_CP_REFACTOR_PREFACE_DIR,
     )
-    assert "ADVANCE-CP" in p
-    assert "12ページ" in p
-    assert "===== BEGIN_CANVAS_SOURCE =====" in p
+    assert base == p_cp == p_st == p_adv

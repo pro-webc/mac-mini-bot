@@ -1,6 +1,7 @@
 # プラン共通の技術要件
 
-実装・仕様書生成の際は `config.config.COMMON_TECHNICAL_SPEC` および `get_common_technical_spec_prompt_block()` と同一内容を遵守してください。
+実装・仕様書生成の際は `config.config.COMMON_TECHNICAL_SPEC` および `get_common_technical_spec_prompt_block()` と同一内容を遵守してください。  
+LLM へ渡す文言の正本は **`config/prompts/common/technical_spec_prompt_block.txt`**（UTF-8 プレーンテキスト）です。
 
 ## 技術スタック
 

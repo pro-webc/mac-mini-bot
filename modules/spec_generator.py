@@ -1,6 +1,6 @@
-"""仕様書生成のラッパー・ヒアリング取得。実体は `modules.llm_mock` のモック TEXT_LLM。
+"""ヒアリングシート取得（`fetch_hearing_sheet`）と、仕様入力ブリーフの組み立て。
 
-正常ルート以外でのフォールバックは行わない（README「エラー処理の原則」参照）。
+本番の案件処理で仕様を得る入口は ``modules.llm.text_llm_stage.run_text_llm_stage``（フェーズ2）。
 """
 from __future__ import annotations
 
@@ -10,10 +10,74 @@ import re
 from typing import Any, Dict, Optional
 
 import requests
-from config.config import get_contract_plan_info
-from modules.llm_mock import build_spec_dict_mock
+
+from modules.hearing_url_utils import HEARING_HTTP_URL_RE, HEARING_PASTE_BODY_MIN_LEN
 
 logger = logging.getLogger(__name__)
+
+
+def _looks_like_html(text: str) -> bool:
+    """レスポンス本文やセル貼り付けが HTML かざっくり判定する。"""
+    s = (text or "").lstrip()
+    if len(s) < 3 or s[0] != "<":
+        return False
+    head = s[:4000].lower()
+    return (
+        "<!doctype html" in head
+        or "<html" in head
+        or "<head" in head
+        or "<body" in head
+    )
+
+
+def _html_to_plain_text(html: str) -> str:
+    """HTML を LLM 投入用のプレーンテキストに正規化する（タグ・script/style を除去）。"""
+    from bs4 import BeautifulSoup
+
+    soup = BeautifulSoup(html, "html.parser")
+    for tag in soup(["script", "style", "noscript", "template"]):
+        tag.decompose()
+    text = soup.get_text(separator="\n", strip=True)
+    lines = [ln.strip() for ln in text.splitlines()]
+    out = "\n".join(ln for ln in lines if ln)
+    while "\n\n\n" in out:
+        out = out.replace("\n\n\n", "\n\n")
+    return out.strip()
+
+
+def _http_response_as_plain_text(response: requests.Response) -> str:
+    """Content-Type または本文先頭から HTML を判定し、プレーンテキストで返す。"""
+    raw = response.text or ""
+    ct = (response.headers.get("Content-Type") or "").lower()
+    if (
+        "text/html" in ct
+        or "application/xhtml" in ct
+        or _looks_like_html(raw)
+    ):
+        plain = _html_to_plain_text(raw)
+        if plain:
+            return plain
+        logger.warning(
+            "HTML と判定したが本文抽出後が空でした（先頭 %s 文字）",
+            min(len(raw), 120),
+        )
+        return raw
+    return raw
+
+
+def _maybe_strip_html_pasted_text(text: str) -> str:
+    """スプレッドシートセルに HTML が貼られている場合のみテキスト化。"""
+    raw = text or ""
+    if _looks_like_html(raw):
+        plain = _html_to_plain_text(raw)
+        if plain:
+            logger.info(
+                "ヒアリング列の本文を HTML とみなしテキスト化しました（先頭 %s 文字）",
+                min(len(raw), 200),
+            )
+            return plain
+    return raw
+
 
 def _briefing_value_as_text(v: Any) -> str:
     if isinstance(v, (dict, list)):
@@ -140,7 +204,7 @@ def compose_spec_input_briefing(
 
 
 class SpecGenerator:
-    """ヒアリング取得と、モック TEXT_LLM による仕様 dict 生成の薄いラッパー。"""
+    """ヒアリングシート取得（セル URL / 長文貼り付け）。"""
 
     def __init__(self) -> None:
         pass
@@ -150,7 +214,9 @@ class SpecGenerator:
         ヒアリングシートの内容を取得
 
         Args:
-            url: ヒアリングシートURL
+            url: セル値。先頭が ``http(s)://`` ならその URL を取得する。
+                それ以外で **十分長い** 場合はフォーム回答のコピペ本文とみなし、
+                文中に参考サイトの URL があっても **取得せず全文を返す**。
 
         Returns:
             ヒアリングシートの内容（テキスト）
@@ -161,7 +227,13 @@ class SpecGenerator:
                 return None
             # セルに全文が貼られているだけの場合（http で始まらない）
             if not re.match(r"^https?://", raw, re.IGNORECASE):
-                m = re.search(r"https?://[^\s\]<>\")]+", raw)
+                if len(raw) >= HEARING_PASTE_BODY_MIN_LEN:
+                    logger.info(
+                        "ヒアリング列が長文（%s 文字以上）のため、セル全文を本文とします（文中 URL は取得しません）",
+                        HEARING_PASTE_BODY_MIN_LEN,
+                    )
+                    return _maybe_strip_html_pasted_text(raw)
+                m = HEARING_HTTP_URL_RE.search(raw)
                 if m:
                     fetched = self.fetch_hearing_sheet(m.group(0))
                     if (fetched or "").strip():
@@ -170,83 +242,28 @@ class SpecGenerator:
                         "ヒアリング列内の URL 取得が空のため、セル全文を本文として使用します（先頭 %s 文字）",
                         min(len(raw), 200),
                     )
-                    return raw
+                    return _maybe_strip_html_pasted_text(raw)
                 logger.info(
                     "ヒアリングシート列が URL ではないため、本文としてそのまま使用します（先頭 %s 文字）",
                     min(len(raw), 200),
                 )
-                return raw
+                return _maybe_strip_html_pasted_text(raw)
 
             # Google Sheets URLの場合
             if "docs.google.com/spreadsheets" in raw:
                 # 簡易的な取得（実際はGoogle Sheets APIを使用）
                 response = requests.get(raw, timeout=60)
                 if response.status_code == 200:
-                    # HTMLからテキストを抽出（簡易版）
-                    from bs4 import BeautifulSoup
-
-                    soup = BeautifulSoup(response.text, "html.parser")
-                    text = soup.get_text()
-                    logger.info("ヒアリングシートを取得しました")
+                    text = _http_response_as_plain_text(response)
+                    logger.info("ヒアリングシートを取得しました（HTML はプレーンテキスト化）")
                     return text
             else:
-                # その他のURL
+                # その他のURL（HTML 応答はタグを除去してテキスト化）
                 response = requests.get(raw, timeout=60)
                 if response.status_code == 200:
-                    return response.text
+                    return _http_response_as_plain_text(response)
 
             return None
         except Exception as e:
             logger.error(f"ヒアリングシート取得エラー: {e}")
             return None
-
-    def generate_spec(
-        self,
-        hearing_sheet_content: str,
-        requirements_result: Dict,
-        contract_plan: str,
-        partner_name: str,
-    ) -> Dict:
-        """
-        `modules.llm_mock.build_spec_dict_mock` へ委譲（後方互換・単体テスト用）。
-        """
-        plan_info = get_contract_plan_info(contract_plan)
-        contract_pages = int(plan_info.get("pages") or 1)
-        page_rule = (
-            "サイト台本は **トップ（/）のみ**の単一ページ構成とすること（`## ページ:` は `/` のみ）。"
-            if contract_pages <= 1
-            else (
-                f"サイト台本に **`## ページ: /...` でちょうど {contract_pages} 個のルート**（それぞれ一意のパス）を書くこと。"
-                "コンテンツが薄くてもページを統合・省略して数を減らさない。"
-                "トップを含め、一覧・詳細・問い合わせ等へ内容を配分してよい。"
-            )
-        )
-        sbp = (requirements_result.get("site_build_prompt") or "").strip()
-        if not sbp:
-            cv = requirements_result.get("client_voice")
-            if isinstance(cv, str) and cv.strip():
-                sbp = (
-                    "【互換: site_build_prompt が無いため client_voice を主入力とする】\n"
-                    + cv.strip()
-                )
-            else:
-                sbp = (
-                    "【互換: 要約のみ】\n"
-                    + json.dumps(requirements_result, ensure_ascii=False, indent=2)[:8000]
-                )
-        _ = compose_spec_input_briefing(
-            partner_name=partner_name,
-            contract_plan=contract_plan,
-            contract_pages=contract_pages,
-            page_rule=page_rule,
-            plan_info=plan_info,
-            hearing_sheet_content=hearing_sheet_content or "",
-            site_build_prompt=sbp,
-            requirements_result=requirements_result,
-        )
-        return build_spec_dict_mock(
-            hearing_sheet_content,
-            requirements_result,
-            contract_plan,
-            partner_name,
-        )

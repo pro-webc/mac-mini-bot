@@ -59,3 +59,10 @@ def test_strip_unused_placeholder_import() -> None:
 export default function() { return null; }
 """
     assert "ImagePlaceholder" not in strip_unused_image_placeholder_import(src)
+
+
+def test_strip_unused_named_placeholder_import() -> None:
+    src = """import { ImagePlaceholder } from '../shared/ImagePlaceholder';
+export default function() { return null; }
+"""
+    assert "ImagePlaceholder" not in strip_unused_image_placeholder_import(src)

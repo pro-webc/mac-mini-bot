@@ -76,7 +76,25 @@ def validate_startup_config(*, require_full_pipeline: bool = True) -> StartupVal
 
         if not cfg.GEMINI_API_KEY.strip():
             r.errors.append(
-                "GEMINI_API_KEY が空です。本番パイプラインではテキスト LLM・サイト画像生成に必要です。"
+                "GEMINI_API_KEY が空です。本番パイプラインではテキスト LLM（Gemini マニュアル）に必要です。"
+            )
+
+        _refactor_needs_manus = (
+            (cfg.BASIC_LP_USE_GEMINI_MANUAL and cfg.BASIC_LP_REFACTOR_AFTER_MANUAL)
+            or (cfg.BASIC_CP_USE_GEMINI_MANUAL and cfg.BASIC_CP_REFACTOR_AFTER_MANUAL)
+            or (
+                cfg.STANDARD_CP_USE_GEMINI_MANUAL
+                and cfg.STANDARD_CP_REFACTOR_AFTER_MANUAL
+            )
+            or (
+                cfg.ADVANCE_CP_USE_GEMINI_MANUAL
+                and cfg.ADVANCE_CP_REFACTOR_AFTER_MANUAL
+            )
+        )
+        if _refactor_needs_manus and not cfg.MANUS_API_KEY.strip():
+            r.errors.append(
+                "MANUS_API_KEY が空です。最終リファクタは Manus API を使用します。"
+                "（いずれかのプランで *_USE_GEMINI_MANUAL と *_REFACTOR_AFTER_MANUAL が両方 true のとき必須）"
             )
 
         if cfg.BASIC_LP_REFACTOR_AFTER_MANUAL and not cfg.BASIC_LP_USE_GEMINI_MANUAL:

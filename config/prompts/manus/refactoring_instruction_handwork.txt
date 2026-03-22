@@ -1,0 +1,308 @@
+# Next.js（App Router）+ Tailwind CSS リファクタリング指示書
+
+## 前提
+
+- 参照ファイル: `@canvas_code.txt`（`@canvas_code.txt`をリファクタリング元のソースコードとして扱う）
+- `canvas_code.txt` には **Gemini Canvas で作成された React + Tailwind CSS の単一ファイル**が含まれている
+- 既存の **Next.js（App Router）+ Tailwind CSS の空テンプレート**に統合する
+- **最優先事項**
+  - デザイン
+  - レイアウト
+  - 配色
+  - テキスト内容
+
+👉 **元コードを 100% 維持すること（変更不可）**
+
+---
+
+## 1. プロジェクト解析とルーティング決定
+
+### 解析ルール
+`canvas_code.txt` のコード構造を解析し、以下 **A / B のどちらか**を判定する。
+
+---
+
+### パターンA：シングルページ構成（LP型）
+
+**特徴**
+- `useState` 等による画面切り替えが存在しない
+- スクロールでコンテンツを見せる構成
+
+**実装方針**
+- ルート: `app/page.tsx`
+- セクション単位でコンポーネント分割
+
+**構成例**
+```text
+app/components/home/
+├── HomeHero.tsx
+├── HomeServices.tsx
+├── HomeFeatures.tsx
+└── HomeContact.tsx
+```
+
+`app/page.tsx` では、上から順にコンポーネントを並べるのみ。
+
+---
+
+### パターンB：複数ページ構成（擬似SPA）
+
+**特徴**
+- `useState` による条件分岐で Home / About / Contact 等を切り替えている
+
+**実装方針**
+- Next.js のファイルベースルーティングに変換
+- 状態管理による切り替えは禁止
+- ページ単位、セクション単位でコンポーネント分割
+
+**構成例**
+```text
+app/
+├── page.tsx          # Home
+├── about/page.tsx    # About
+└── contact/page.tsx  # Contact
+```
+
+コンポーネントはページごと、セクションごとに分離する。
+
+---
+
+## 2. ディレクトリ構造ルール（Strict）
+
+### 基本ルール(絶対反映)
+- **すべてのコンポーネントは `app/components` 配下**
+- `page.tsx` は「組み立て専用」
+- JSX やロジックは極力コンポーネント側に記述
+
+---
+
+### コンポーネント構成例
+```text
+app/components/
+├── home/                  # トップページ用
+│   ├── HomeHero.tsx
+│   ├── HomeFeatures.tsx
+│   └── HomePricing.tsx
+├── about/                 # Aboutページ用
+│   └── AboutContent.tsx
+└── shared/                # 共通パーツ
+    ├── Header.tsx
+    ├── Footer.tsx
+    ├── Button.tsx
+    └── LayoutWrapper.tsx
+```
+
+---
+
+### ページファイルの役割
+
+- `app/**/page.tsx`
+  - コンポーネントを import して並べるだけ
+  - ロジック・詳細な JSX を書かない
+
+---
+
+## 3. 実装要件（Strict Requirements）
+
+### Client / Server Component
+
+- `app/**/page.tsx`
+  - **原則 Server Component**
+- 以下を使用する場合は **必ず Client Component**
+  - `useState`
+  - `useEffect`
+  - イベントハンドラ
+- Client Component の先頭に必ず記述：
+```ts
+"use client";
+```
+
+---
+
+### 画像処理
+
+- `<img>` タグは禁止
+  → **`next/image` の `<Image />` に置換**
+- 外部画像（Unsplash 等）を使用している場合
+  - `next.config.ts` にドメイン許可を追加
+
+---
+
+### リンク
+
+- `<a>` や `onClick` によるページ遷移は禁止
+- 必ず `next/link` の `<Link />` を使用
+
+---
+
+### スタイリング
+
+- **Tailwind CSS のクラスは一切変更しない**
+- 元コードにある以下の定数は切り出しを検討
+  - COLORS
+  - FONTS
+- 移動先
+  - `tailwind.config.ts`
+  - または定数ファイル（例: `app/constants/theme.ts`）
+
+---
+
+### Global CSS に関する厳格ルール
+
+- `app/globals.css` には **何も記述しない**
+- Tailwind のユーティリティクラスのみでスタイリングを完結させる
+- 独自の CSS 定義・リセット・上書きは禁止
+
+## 6. Global CSS の例外ルール（重要）
+
+### 原則（既存ルールを維持）
+- `app/globals.css` には **何も記述しない**（独自CSS・リセット・上書きは禁止）
+- Tailwind ユーティリティでスタイリングを完結させる
+
+### 例外（唯一許可）
+- 元コード内に **`<style>` タグでカスタムCSSが存在する場合のみ**、その内容を **`app/globals.css` に移植してよい**
+
+### 移植が許可されるもの（例）
+- `.hero-bg`, `.btn-3d`, `.section-title::after` などの **カスタムクラス**
+- `::before / ::after` など **疑似要素**
+- Tailwind だけでは再現困難な **複雑なグラデーション / マスク / filter / keyframes** 等
+
+### 判断基準（厳守）
+- 元コードの `<style>` が **空**なら、`app/globals.css` も **空（最小）**
+- 元コードに存在しないCSSを **新規に追加することは禁止**
+- 移植は **“そのままコピー”**が原則（意味を変える編集禁止）
+
+---
+
+## 4. Hydration Error 防止（最重要）
+
+### HTML ネストルール（厳守）
+
+❌ 禁止例
+```html
+<p>
+  <div>...</div>
+</p>
+```
+
+- `<p>` タグの中に以下を **絶対に入れない**
+  - `<div>`
+  - `<section>`
+  - `<ul>`
+  - `<h1>`〜`<h6>`
+
+---
+
+### 動的要素の扱い
+
+- 日時・ランダム値などは以下のいずれかで対応
+  - `useEffect` でマウント後に描画
+  - `suppressHydrationWarning` を付与
+
+---
+
+### layout.tsx 設定
+
+```tsx
+<body suppressHydrationWarning={true}>
+```
+
+- ブラウザ拡張機能対策として必須
+
+---
+
+### window / document
+
+- 直接アクセスは禁止
+- 必ず以下の中で使用
+  - `useEffect`
+  - イベントハンドラ内
+
+---
+
+## 追加の絶対制約（違反したら不合格）
+
+### A. page.tsx 禁止事項（強制）
+- app/**/page.tsx 内に Tailwind className を1つでも書くことを禁止する。
+- app/**/page.tsx 内に div/section/header/footer/main 等のレイアウト要素を書くことを禁止する。
+- app/**/page.tsx に残して良いのは以下のみ：
+  1) import 文
+  2) export default function Page()
+  3) <Component /> を上から順に並べる記述（ラッパーdivすら禁止）
+  4) metadata / generateMetadata（必要な場合のみ）
+
+→ つまり page.tsx は「組み立て専用の薄いファイル」以外の存在を許さない。
+
+### B. JSX の移動ルール（強制）
+- 元コードの JSX は “100%” app/components/** に移すこと。
+- page.tsx に JSX を残すことは「デザイン維持のため」でも例外なく禁止。
+- 例外として許可するのは <Fragment> と <Component /> のみ。
+
+### C. 出力物の定義（強制）
+- 最終出力には必ず以下を含める：
+  - app/page.tsx（上記Aを満たす）
+  - app/components/** の全ファイル（元の JSX を完全移植）
+  - もし Header/Footer が存在するなら app/components/shared に配置
+
+---
+
+## 5. 出力・実装手順（順序厳守）
+
+1. **設定ファイル**
+   - `tailwind.config.ts`
+   - `next.config.ts`
+
+2. **共通コンポーネント**
+   - `app/components/shared/*`
+
+3. **ページ / セクションコンポーネント**
+   - `app/components/[page]/*`
+
+4. **ページ本体**
+   - `app/page.tsx`
+   - 必要に応じて `app/about/page.tsx` など
+
+5. **グローバル設定**
+   - `app/layout.tsx`
+   - `app/globals.css`（※記述なし）
+
+6. **ビルドエラー確認（必須）**
+   - すべての実装完了後、必ず以下を実行する
+     ```bash
+     npm run build
+     ```
+   - 以下の観点でエラーが出ないことを確認する
+     - TypeScript 型エラーが存在しない
+     - Server / Client Component の境界違反がない
+     - `next/image`, `next/link` の import 漏れがない
+     - 未使用 import / 未定義変数が存在しない
+     - Hydration Warning / Error が発生していない
+   - ビルドが通らない場合は **実装完了とみなさない**
+
+---
+
+## 7. Tailwind v4 対応ルール（必須）
+
+### バージョン確認（必須）
+- `postcss.config.mjs` と `package.json` を確認し、Tailwind のメジャーバージョンを特定すること
+- **v4 の場合のみ**、以下のルールを適用する
+
+### Tailwind v4 のときの制約（重要）
+- `tailwind.config.ts` へのカラー定義は **期待通り機能しないケースがある**
+- そのため **色・影などのデザイントークンは `app/globals.css` の `@theme` に定義する**
+
+### `@theme` の扱い（例外の例外：これは“設定”でありカスタムCSSではない）
+- `app/globals.css` への記述が許可されるのは **`@theme` ブロック（カラー・シャドウ等のトークン定義）と、元コード `<style>` の移植のみ**
+- `@theme` は **スタイル上書きではなく設定**として扱うため許可
+
+---
+
+## 原則まとめ
+
+- デザイン・レイアウト・テキストは **完全維持**
+- Next.js App Router の思想に忠実に分離
+- Hydration Error は **1件も許容しない**
+- `page.tsx` は薄く、コンポーネントは厚く
+- **`npm run build` が通る状態をゴールとする**
+
+---

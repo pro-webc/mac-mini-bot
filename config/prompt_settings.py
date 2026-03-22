@@ -1,10 +1,11 @@
-"""共通プロンプト YAML（`config/prompts/common/*.yaml`）のみ読み込む。
+"""共通プロンプト（`config/prompts/common/*.txt`）を UTF-8 テキストとして読み込む。
 
-- **生成パイプライン（Gemini マニュアル等）には混ぜない。** 参照されるのは
-  `get_technical_spec_prompt_block()`（サイト土台への技術要件テキスト）のみ。
-- `common` 内の複数 YAML は **深いマージ**（後ろのファイルがキーを上書き）。
+- 生成パイプラインへの自動マージは行わない。参照されるのは主に
+  `get_technical_spec_prompt_block()`（仕様・実装向けの技術要件テキスト）。
+- 編集はエディタにそのまま貼り付け・追記できるプレーン UTF-8 テキスト。
 
-プレースホルダーは `{name}`。差し込み値に `{` を含めないこと（誤置換防止）。
+プレースホルダーは `{name}`（`format_prompt` / `apply_prompt_template` 利用時）。
+差し込み値に `{` を含めないこと（誤置換防止）。
 """
 from __future__ import annotations
 
@@ -12,73 +13,42 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
-import yaml
-
 _CONFIG_DIR = Path(__file__).resolve().parent
 _PROMPTS_DIR = _CONFIG_DIR / "prompts"
-
-
-def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
-    out = dict(base)
-    for k, v in override.items():
-        if k in out and isinstance(out[k], dict) and isinstance(v, dict):
-            out[k] = _deep_merge(out[k], v)
-        else:
-            out[k] = v
-    return out
+_COMMON_DIR = _PROMPTS_DIR / "common"
+_TECH_SPEC_TXT = _COMMON_DIR / "technical_spec_prompt_block.txt"
 
 
 @lru_cache(maxsize=1)
-def _load_raw() -> dict[str, Any]:
+def _read_technical_spec_prompt_block_raw() -> str:
     if not _PROMPTS_DIR.is_dir():
         raise FileNotFoundError(
             f"プロンプトディレクトリが見つかりません: {_PROMPTS_DIR}"
         )
-    common_dir = _PROMPTS_DIR / "common"
-    if not common_dir.is_dir():
+    if not _COMMON_DIR.is_dir():
         raise FileNotFoundError(
-            f"config/prompts/common/ が必要です（技術要件 YAML のみここを読みます）: {common_dir}"
+            f"config/prompts/common/ が必要です: {_COMMON_DIR}"
         )
-    stage_blob: dict[str, Any] = {}
-    yaml_paths = sorted(common_dir.glob("*.yaml"))
-    if not yaml_paths:
+    if not _TECH_SPEC_TXT.is_file():
         raise FileNotFoundError(
-            f"config/prompts/common/ に *.yaml がありません: {common_dir}"
+            f"技術要件テキストが見つかりません（UTF-8 .txt を配置してください）: {_TECH_SPEC_TXT}"
         )
-    for path in yaml_paths:
-        with open(path, encoding="utf-8") as f:
-            data = yaml.safe_load(f)
-        if data is None:
-            data = {}
-        if not isinstance(data, dict):
-            raise ValueError(
-                f"プロンプトファイルのルートはマッピングである必要があります: {path}"
-            )
-        stage_blob = _deep_merge(stage_blob, data)
-    return {"common": stage_blob}
+    return _TECH_SPEC_TXT.read_text(encoding="utf-8")
 
 
 def clear_prompt_cache() -> None:
     """テストやホットリロード用（通常運用では不要）。"""
-    _load_raw.cache_clear()
-
-
-def _get_nested(key_path: str) -> Any:
-    cur: Any = _load_raw()
-    for part in key_path.split("."):
-        if not isinstance(cur, dict) or part not in cur:
-            raise KeyError(
-                f"prompt_settings にキーがありません: {key_path!r} (失敗セグメント: {part!r})"
-            )
-        cur = cur[part]
-    return cur
+    _read_technical_spec_prompt_block_raw.cache_clear()
 
 
 def get_prompt_str(key_path: str) -> str:
-    v = _get_nested(key_path)
-    if not isinstance(v, str):
-        raise TypeError(f"prompt_settings.{key_path} は文字列である必要があります（実際: {type(v)!r}）")
-    return v
+    """現状は `common.technical_spec_prompt_block` のみ（テキストファイルの内容）。"""
+    if key_path == "common.technical_spec_prompt_block":
+        return _read_technical_spec_prompt_block_raw()
+    raise KeyError(
+        f"prompt_settings にキーがありません: {key_path!r} "
+        f"（利用可能: 'common.technical_spec_prompt_block'）"
+    )
 
 
 def apply_prompt_template(template: str, **kwargs: Any) -> str:

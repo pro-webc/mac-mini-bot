@@ -1,6 +1,6 @@
 """LLM 出力パスの安全性"""
 import pytest
-from modules.llm_output_files import (
+from modules.llm.llm_output_files import (
     is_safe_llm_project_path,
     parse_llm_file_blocks,
     strip_markdown_code_fence,

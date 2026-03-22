@@ -5,7 +5,7 @@
 - Python 3.10 以上推奨。**venv の利用を推奨**（`README.md` の最短手順参照）
 - Node.js 18 以上と **npm**（生成サイトの `npm run build`）
 - Google Cloud Platform（Sheets API）・GitHub・Vercel（本番パイプライン実行時）
-- **TEXT_LLM は現状モック**（外部 LLM / Cursor CLI は不要）。実 LLM を接続するときは `modules/text_llm_stage.py` を拡張
+- **TEXT_LLM は現状モック**（外部 LLM / Cursor CLI は不要）。実 LLM を接続するときは `modules/llm/text_llm_stage.py` を拡張
 - （任意）**Cursor CLI**: `bash scripts/install_cursor_cli.sh` または `INSTALL_CURSOR_CLI=1 ./setup.sh`。将来エージェント連携で使う場合に PATH に `~/.local/bin` を含める
 
 ## セットアップ手順

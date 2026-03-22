@@ -1,5 +1,8 @@
 """サイト台本 + 末尾 YAML のパース"""
-from modules.site_script_parse import extract_last_yaml_fence, parse_llm_spec_or_site_script
+from modules.llm.site_script_parse import (
+    extract_last_yaml_fence,
+    parse_llm_spec_or_site_script,
+)
 
 
 def test_extract_last_yaml_fence_strips_trailing_block() -> None:

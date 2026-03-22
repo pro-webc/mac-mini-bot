@@ -1,10 +1,4 @@
-BASIC-CP マニュアル完了後の「リファクタ段階」で Gemini に渡すプロンプトの構成（STANDARD-CP / BASIC LP と同じ結合ロジック）。
+BASIC-CP マニュアル完了後の「リファクタ段階」
 
-【結合順（modules/basic_lp_refactor_gemini.build_basic_lp_refactor_user_prompt）】
-1. 本ディレクトリの preface_intro.txt（BASIC-CP 専用）
-2. ../basic_lp_refactor/preface_shared.txt（共通）
-3. ../basic_lp_refactor/refactoring_instruction.txt（技術指示・共通）
-4. 末尾に BEGIN/END ブロックで Canvas 単一ファイルソース
-
-【成果物】
-- パス付きマークダウンフェンスの複数ファイルソース（テキストのみ）。
+【Manus API】
+全プラン共通で ../manus/*.txt を結合（preface_intro は未使用）。詳細は ../basic_lp_refactor/REFACTOR_PROMPTS.txt と docs/LLM_PIPELINE.md。

@@ -1,4 +1,4 @@
-"""仕様書メタをサイトに書き込み、テンプレ土台のままビルド検証する（LLM によるコード生成は行わない）。"""
+"""サイトディレクトリのビルド検証（ソースは変更しない。修正は Cursor パスのみ）。"""
 from __future__ import annotations
 
 import logging
@@ -8,17 +8,9 @@ from pathlib import Path
 from config.config import OUTPUT_DIR, SITE_BUILD_ENABLED, SITE_IMPLEMENTATION_ENABLED
 
 from modules.contract_workflow import ContractWorkBranch
-from modules.site_build import (
-    _ensure_package_json,
-    verify_site_build_with_cursor_pass,
-)
+from modules.site_build import _ensure_package_json, verify_site_build_with_cursor_pass
 
 logger = logging.getLogger(__name__)
-
-
-_LUCIDE_BAD_ICON_NAMES: dict[str, str] = {
-    "Pipe": "Droplets",
-}
 
 
 def count_image_placeholder_tags(site_dir: Path) -> int:
@@ -35,34 +27,8 @@ def count_image_placeholder_tags(site_dir: Path) -> int:
     return n
 
 
-def patch_bad_lucide_icon_imports(site_dir: Path) -> int:
-    """
-    lucide-react の import / JSX で誤ったアイコン名を置換する。
-    Returns:
-        変更したファイル数
-    """
-    n = 0
-    for path in list(site_dir.rglob("*.tsx")) + list(site_dir.rglob("*.ts")):
-        if "node_modules" in path.parts:
-            continue
-        try:
-            text = path.read_text(encoding="utf-8")
-        except OSError:
-            continue
-        if "lucide-react" not in text:
-            continue
-        new = text
-        for old, repl in _LUCIDE_BAD_ICON_NAMES.items():
-            new = re.sub(r"\b" + re.escape(old) + r"\b", repl, new)
-        if new != text:
-            path.write_text(new, encoding="utf-8")
-            logger.info("lucide 誤アイコン名を修復: %s", path.relative_to(site_dir))
-            n += 1
-    return n
-
-
 class SiteImplementer:
-    """仕様メタの書き込みとテンプレ土台のビルド検証（モック・LLM 不使用）。"""
+    """ビルド検証のみ（成果物の自動パッチは行わない）。"""
 
     def __init__(self) -> None:
         pass
@@ -102,9 +68,6 @@ class SiteImplementer:
             ) from e
 
         _ensure_package_json(site_dir)
-        patched = patch_bad_lucide_icon_imports(site_dir)
-        if patched:
-            logger.info("lucide 誤名パッチ適用: %s ファイル", patched)
 
         if not SITE_BUILD_ENABLED:
             logger.info("SITE_BUILD_ENABLED=false のためビルド検証をスキップ")
@@ -114,6 +77,6 @@ class SiteImplementer:
             site_dir, skip_install_first=False
         )
         if ok:
-            logger.info("サイト実装（モック）+ ビルド成功")
+            logger.info("ビルド検証成功")
             return True, blog or ""
         return False, blog or ""
