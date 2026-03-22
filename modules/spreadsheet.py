@@ -132,6 +132,24 @@ def _assert_bot_writable_column(col_letter: str, context: str) -> None:
         )
 
 
+def ai_cell_excludes_from_pending_queue(ai_status_raw: str) -> bool:
+    """
+    ``get_pending_cases`` 用: AV（mac-mini）列の表示値が、キュー対象外なら True。
+
+    - エラー・スキップは先頭一致（従来どおり）
+    - 完了・処理中は前後空白除去のあと末尾の ``！!。.．）)`` を削って厳密比較（表記ゆれを吸収）
+    """
+    t = (ai_status_raw or "").strip()
+    if not t:
+        return False
+    if t.startswith("エラー"):
+        return True
+    if t.startswith("スキップ"):
+        return True
+    core = t.rstrip(" 　\t\n！!。.．）)")
+    return core in ("完了", "処理中")
+
+
 def missing_required_case_fields(case: dict) -> list[str]:
     """必須項目のうち、空（前後空白のみも空）のキーを返す。"""
     missing: list[str] = []
@@ -400,7 +418,7 @@ class SpreadsheetClient:
 
         条件（config）:
         - phase_status 列が SPREADSHEET_TARGET_AI_STATUS と完全一致
-        - mac-mini 列（AV）が未処理（完了/処理中/エラー/スキップで始まる値でない）
+        - mac-mini 列（AV）が未処理（``ai_cell_excludes_from_pending_queue`` が False）
         - SPREADSHEET_REQUIRE_HEARING_BODY_NOT_URL のとき: ヒアリング列が URL のみの行はスキップ（本文が1文字でもあれば着手）
         - かつ（既定）テストサイトURL列が空
         - かつ SPREADSHEET_MIN_PHASE_DEADLINE 設定時: フェーズ期限日（T 列）がその日付以降で解釈可能であること
@@ -464,10 +482,8 @@ class SpreadsheetClient:
             if phase_status != SPREADSHEET_TARGET_AI_STATUS:
                 continue
             # mac-mini 列（AV）が既に処理済みなら除外
-            ai_status = self._cell(row, SPREADSHEET_COLUMNS["ai_status"]).strip()
-            if ai_status in ("完了", "処理中") or ai_status.startswith("エラー"):
-                continue
-            if ai_status.startswith("スキップ"):
+            ai_status = self._cell(row, SPREADSHEET_COLUMNS["ai_status"])
+            if ai_cell_excludes_from_pending_queue(ai_status):
                 continue
 
             if SPREADSHEET_REQUIRE_HEARING_BODY_NOT_URL:
@@ -591,6 +607,59 @@ class SpreadsheetClient:
                     raise RuntimeError(_adc_sheets_scope_help("update_deploy_url")) from e
                 if _is_adc_quota_project_error(e):
                     raise RuntimeError(_adc_quota_project_help("update_deploy_url")) from e
+            raise
+
+    def update_deploy_url_and_complete_status(
+        self, row_number: int, deploy_url: str, sheet_name: str | None = None
+    ) -> None:
+        """
+        AW（deploy_url）と AV（mac-mini・完了）を 1 回の values.batchUpdate で書く。
+
+        成功時に AW のみ更新され AV が「処理中」のまま残る不整合を防ぐ。
+        """
+        sheet = sheet_name or self.sheet_name
+        col_aw = SPREADSHEET_COLUMNS["deploy_url"]
+        col_av = SPREADSHEET_COLUMNS["ai_status"]
+        _assert_bot_writable_column(col_aw, "update_deploy_url_and_complete_status")
+        _assert_bot_writable_column(col_av, "update_deploy_url_and_complete_status")
+        range_aw = a1_range(sheet, f"{col_aw}{row_number}")
+        range_av = a1_range(sheet, f"{col_av}{row_number}")
+        try:
+            self.service.spreadsheets().values().batchUpdate(
+                spreadsheetId=self.spreadsheet_id,
+                body={
+                    "valueInputOption": "RAW",
+                    "data": [
+                        {"range": range_aw, "values": [[deploy_url]]},
+                        {"range": range_av, "values": [["完了"]]},
+                    ],
+                },
+            ).execute()
+            logger.info(
+                "デプロイURL と mac-mini 列を一括更新しました sheet=%s row=%s col_aw=%s col_av=%s url=%s status=完了",
+                sheet,
+                row_number,
+                col_aw,
+                col_av,
+                deploy_url,
+            )
+        except HttpError as e:
+            logger.error(
+                "デプロイURL・mac-mini 一括更新に失敗しました sheet=%s row=%s %s",
+                sheet,
+                row_number,
+                _http_error_detail(e),
+                exc_info=True,
+            )
+            if GOOGLE_SHEETS_AUTH_MODE == "application_default":
+                if _is_insufficient_sheets_scope_error(e):
+                    raise RuntimeError(
+                        _adc_sheets_scope_help("update_deploy_url_and_complete_status")
+                    ) from e
+                if _is_adc_quota_project_error(e):
+                    raise RuntimeError(
+                        _adc_quota_project_help("update_deploy_url_and_complete_status")
+                    ) from e
             raise
 
     def update_ai_status(

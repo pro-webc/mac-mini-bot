@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import logging
+import re
 import time
 from pathlib import Path
 from typing import Any
@@ -23,31 +24,80 @@ from config.config import (
 
 logger = logging.getLogger(__name__)
 
-BOT_DEPLOY_GITHUB_URL_PREFIX = "BOT_DEPLOY_GITHUB_URL:"
+_BOT_DEPLOY_LINE_KEY = "bot_deploy_github_url"
+_GITHUB_CLONE_URL_RE = re.compile(
+    r"https://github\.com/[\w.-]+/[\w.-]+\.git",
+    re.IGNORECASE,
+)
+
+
+def infer_manus_github_clone_url(
+    text: str, *, record_number: str | None = None
+) -> str | None:
+    """
+    Manus が作業ログのみ返し `BOT_DEPLOY_GITHUB_URL:` 行が無い／壊れているとき、
+    本文中の ``https://github.com/owner/repo.git`` をレコード番号で絞って推定する。
+
+    複数 URL で曖昧なときは None（誤デプロイ防止）。
+    """
+    raw = (text or "").strip()
+    if not raw:
+        return None
+    found = _GITHUB_CLONE_URL_RE.findall(raw)
+    if not found:
+        return None
+
+    def _norm(u: str) -> str:
+        return u.rstrip(").,]}\"'")
+
+    seen: set[str] = set()
+    uniq: list[str] = []
+    for u in found:
+        n = _norm(u)
+        if n not in seen:
+            seen.add(n)
+            uniq.append(n)
+
+    rec = re.sub(r"\D", "", str(record_number or "").strip())
+    if rec:
+        hits = [u for u in uniq if rec in u]
+        if len(hits) == 1:
+            return hits[0]
+        if len(hits) > 1:
+            return hits[-1]
+
+    demos = [u for u in uniq if "demo-" in u.lower()]
+    if len(demos) == 1:
+        return demos[0]
+    if len(uniq) == 1:
+        return uniq[0]
+    return None
 
 
 def split_manus_response_deploy_url(response: str) -> tuple[str, str | None]:
     """
-    Manus 返答末尾の `BOT_DEPLOY_GITHUB_URL: https://github.com/...` を取り除き、(本文, URL) を返す。
+    Manus 返答から `BOT_DEPLOY_GITHUB_URL: https://github.com/...` を取り除き、(本文, URL) を返す。
 
-    最後の非空行のみを URL 行として扱う。無ければ (response 全体, None)。
+    - **下から**見つかった `BOT_DEPLOY_GITHUB_URL:` 行を採用（その行より**後**の「タスク完了」等は本文に含めず捨てる）。
+    - 行末が微妙に崩れているときは行単位の正規表現でもマッチ。
     """
     text = (response or "").rstrip()
     lines = text.split("\n")
-    last_i = -1
     for i in range(len(lines) - 1, -1, -1):
-        if lines[i].strip():
-            last_i = i
-            break
-    if last_i < 0:
-        return text, None
-    last = lines[last_i].strip()
-    low = last.lower()
-    pref_low = BOT_DEPLOY_GITHUB_URL_PREFIX.lower()
-    if low.startswith(pref_low):
-        url = last[len(BOT_DEPLOY_GITHUB_URL_PREFIX) :].strip()
-        body = "\n".join(lines[:last_i]).rstrip()
-        return body, url or None
+        raw = lines[i]
+        s = raw.strip()
+        if not s:
+            continue
+        parts = s.split(":", 1)
+        if len(parts) == 2 and parts[0].strip().lower() == _BOT_DEPLOY_LINE_KEY:
+            url = parts[1].strip().rstrip(").,]}\"'")
+            body = "\n".join(lines[:i]).rstrip()
+            return body, url or None
+        m = re.match(r"^\s*BOT_DEPLOY_GITHUB_URL:\s*(\S+)", raw, re.IGNORECASE)
+        if m:
+            url = m.group(1).strip().rstrip(").,]}\"'")
+            body = "\n".join(lines[:i]).rstrip()
+            return body, url or None
     return text, None
 
 

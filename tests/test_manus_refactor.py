@@ -136,3 +136,41 @@ def test_split_manus_response_deploy_url() -> None:
     b2, u2 = split_manus_response_deploy_url("```\na\n```")
     assert u2 is None
     assert b2 == "```\na\n```"
+
+
+def test_split_manus_response_deploy_url_allows_trailing_lines_after_url() -> None:
+    """BOT_DEPLOY 行の後に「タスク完了」等があっても URL を取る。"""
+    from modules.manus_refactor import split_manus_response_deploy_url
+
+    body, url = split_manus_response_deploy_url(
+        "memo\n\nBOT_DEPLOY_GITHUB_URL: https://github.com/o/r.git\n\nタスクが完了しました\n"
+    )
+    assert url == "https://github.com/o/r.git"
+    assert "タスクが完了" not in body
+    assert "BOT_DEPLOY" not in body
+
+
+def test_infer_manus_github_clone_url_by_record() -> None:
+    from modules.manus_refactor import infer_manus_github_clone_url
+
+    prose = "push 済み https://github.com/propagate-webcreation/demo-9408-shida-yoji.git です"
+    assert (
+        infer_manus_github_clone_url(prose, record_number="9408")
+        == "https://github.com/propagate-webcreation/demo-9408-shida-yoji.git"
+    )
+
+
+def test_infer_manus_github_clone_url_single_without_record() -> None:
+    from modules.manus_refactor import infer_manus_github_clone_url
+
+    assert (
+        infer_manus_github_clone_url("URL: https://github.com/acme/one.git", record_number="")
+        == "https://github.com/acme/one.git"
+    )
+
+
+def test_infer_manus_github_clone_url_ambiguous_returns_none() -> None:
+    from modules.manus_refactor import infer_manus_github_clone_url
+
+    t = "https://github.com/a/x.git と https://github.com/b/y.git"
+    assert infer_manus_github_clone_url(t, record_number="") is None

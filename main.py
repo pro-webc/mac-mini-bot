@@ -52,7 +52,10 @@ from modules.contract_workflow import (
     resolve_work_branch_with_basic_lp_override,
 )
 from modules.github_client import GitHubClient, sanitize_github_repo_name
-from modules.llm.llm_raw_output import write_llm_raw_artifacts
+from modules.llm.llm_raw_output import (
+    write_llm_raw_artifacts,
+    write_manus_only_style_run_artifacts,
+)
 from modules.llm.text_llm_stage import run_text_llm_stage
 from modules.site_build import verify_site_build
 from modules.site_generator import SiteGenerator
@@ -246,10 +249,25 @@ class WebsiteBot:
                 requirements_result=requirements_result,
                 work_branch=work_branch,
             )
+            manus_snap = write_manus_only_style_run_artifacts(
+                site_dir,
+                spec=spec,
+                work_branch=work_branch,
+                partner_name=str(case.get("partner_name") or ""),
+                record_number=str(case.get("record_number") or ""),
+            )
+            if manus_snap is not None:
+                logger.info(
+                    "› Manus 工程テスト互換: %s",
+                    manus_snap.relative_to(site_dir.resolve()),
+                )
             logger.info(
                 "› LLM 正本: llm_raw_output/ に %s ファイル（形式を強制せずそのまま保存・必ず push）",
                 raw_n,
             )
+
+            # Manus が末尾 URL のみ有効で本文にフェンスが無い場合の救済用（フェンス適用より前に参照）
+            manus_git_for_fallback = (spec.get("manus_deploy_github_url") or "").strip()
 
             # spec 内マークダウンのフェンス → app/ 等へファイル書き込み
             n_gen = apply_contract_outputs_to_site_dir(
@@ -272,10 +290,23 @@ class WebsiteBot:
                 and n_gen == 0
                 and gemini_manual_enabled_for_branch(work_branch)
             ):
-                raise RuntimeError(
-                    "生成マークダウンからサイトファイルを1件も適用できませんでした。"
-                    " 該当プランの Gemini マニュアルとリファクタ出力が spec に入っているか確認してください。"
-                )
+                if manus_git_for_fallback:
+                    # 引数: manus_git_for_fallback（Manus が push 済みの clone URL） / site_dir（llm_raw_output 保持）
+                    # 処理: GitHub を shallow clone し app 等を site_dir にマージ（作業ログだけの返答でもビルド可能にする）
+                    # 出力: site_dir に package.json 等が揃い、後続の build / Vercel と同一パスへ進む
+                    logger.warning(
+                        "フェンスからファイル 0 件だが manus_deploy_github_url があるため "
+                        "GitHub を shallow clone して続行します: %s",
+                        manus_git_for_fallback,
+                    )
+                    self.github_client.shallow_clone_repo_into_site_dir(
+                        manus_git_for_fallback, site_dir
+                    )
+                else:
+                    raise RuntimeError(
+                        "生成マークダウンからサイトファイルを1件も適用できませんでした。"
+                        " 該当プランの Gemini マニュアルとリファクタ出力が spec に入っているか確認してください。"
+                    )
 
             # ビルドをかけるなら package.json はフェンス出力に必須
             if SITE_BUILD_ENABLED or SITE_IMPLEMENTATION_ENABLED:
@@ -355,9 +386,12 @@ class WebsiteBot:
                 logger.warning("デプロイURLが閲覧できません: %s", deploy_url)
 
             logger.info("› スプレッドシートを更新…")
-            self.spreadsheet.update_deploy_url(case["row_number"], deploy_url)
-
-            self.spreadsheet.update_ai_status(case["row_number"], "完了")
+            # 引数: deploy_url（公開 URL） / row（案件行）
+            # 処理: AW と AV（完了）を 1 回の batchUpdate で更新（片方だけ成功しないよう揃える）
+            # 出力: シート上でデモ URL と mac-mini 完了が同時に確定
+            self.spreadsheet.update_deploy_url_and_complete_status(
+                case["row_number"], deploy_url
+            )
 
             logger.info("✓ 案件完了 — 公開 URL: %s", deploy_url)
             return deploy_url

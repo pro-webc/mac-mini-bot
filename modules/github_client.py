@@ -1,14 +1,45 @@
 """GitHub連携モジュール"""
+from __future__ import annotations
+
 import logging
 import re
+import shutil
+import tempfile
 from pathlib import Path
 from typing import Optional
+from urllib.parse import urlparse, urlunparse
 
-from config.config import GITHUB_TOKEN, GITHUB_USERNAME
-from git import Repo
+from config.config import GITHUB_TOKEN, GITHUB_USERNAME, VERCEL_GIT_REF
+from git import GitCommandError, Repo
 from github import Github
 
 logger = logging.getLogger(__name__)
+
+
+def authenticated_https_clone_url(
+    clone_url: str, *, github_token: str | None = None
+) -> str:
+    """
+    ``https://github.com/owner/repo.git`` に ``x-access-token`` を埋め込む（プライベート repo の clone 用）。
+
+    ``github_token`` を省略すると ``GITHUB_TOKEN`` を使う。非 github.com はそのまま返す。
+    """
+    raw = (clone_url or "").strip().rstrip("/")
+    if not raw.lower().endswith(".git"):
+        raw = f"{raw}.git"
+    tok = (github_token if github_token is not None else (GITHUB_TOKEN or "")).strip()
+    if not tok:
+        return raw
+    parsed = urlparse(raw)
+    host = (parsed.hostname or "").lower()
+    if "github.com" not in host:
+        return raw
+    netloc = f"x-access-token:{tok}@{parsed.hostname}"
+    if parsed.port:
+        netloc = f"x-access-token:{tok}@{parsed.hostname}:{parsed.port}"
+    return urlunparse(
+        (parsed.scheme, netloc, parsed.path, parsed.params, parsed.query, parsed.fragment)
+    )
 
 
 def _partner_name_slug(partner_name: str) -> str:
@@ -202,7 +233,95 @@ npm start
         except Exception as e:
             logger.error(f"GitHubプッシュエラー: {e}")
             raise
-    
+
+    def shallow_clone_repo_into_site_dir(
+        self,
+        clone_url: str,
+        site_dir: Path,
+        *,
+        preserve_names: frozenset[str] = frozenset({"llm_raw_output"}),
+    ) -> None:
+        """
+        一時ディレクトリへ shallow clone し、成果物を ``site_dir`` にマージする。
+
+        Manus が ``BOT_DEPLOY_GITHUB_URL`` は返すが本文にパス付きフェンスが無い場合でも、
+        GitHub 上の Next.js ソースで ``npm build`` と Vercel まで進める。
+        ``preserve_names`` にある直下エントリ（例: ``llm_raw_output/``）は上書きしない。
+        """
+        site_dir = site_dir.resolve()
+        if not site_dir.is_dir():
+            raise ValueError(f"site_dir が存在しません: {site_dir}")
+
+        auth_url = authenticated_https_clone_url(clone_url)
+        ref = (VERCEL_GIT_REF or "main").strip() or "main"
+        branch_candidates: list[str] = []
+        for b in (ref, "main", "master"):
+            if b and b not in branch_candidates:
+                branch_candidates.append(b)
+
+        last_exc: BaseException | None = None
+        with tempfile.TemporaryDirectory() as td:
+            clone_root = Path(td) / "repo"
+            cloned = False
+            for branch in branch_candidates:
+                if clone_root.exists():
+                    shutil.rmtree(clone_root, ignore_errors=True)
+                clone_root.mkdir(parents=True, exist_ok=True)
+                try:
+                    Repo.clone_from(
+                        auth_url,
+                        str(clone_root),
+                        branch=branch,
+                        multi_options=["--depth", "1"],
+                    )
+                    cloned = True
+                    break
+                except GitCommandError as e:
+                    last_exc = e
+                    logger.debug(
+                        "shallow clone branch=%r に失敗、次を試します: %s",
+                        branch,
+                        e,
+                    )
+            if not cloned:
+                if clone_root.exists():
+                    shutil.rmtree(clone_root, ignore_errors=True)
+                clone_root.mkdir(parents=True, exist_ok=True)
+                try:
+                    Repo.clone_from(
+                        auth_url,
+                        str(clone_root),
+                        multi_options=["--depth", "1"],
+                    )
+                    cloned = True
+                    last_exc = None
+                except GitCommandError as e:
+                    last_exc = e
+            if not cloned:
+                raise RuntimeError(
+                    f"GitHub の shallow clone に失敗しました: {clone_url!r}。"
+                    " ブランチ（main / master）と GITHUB_TOKEN の repo 参照権限を確認してください。"
+                ) from last_exc
+
+            for item in clone_root.iterdir():
+                if item.name in preserve_names:
+                    continue
+                dest = site_dir / item.name
+                if dest.exists():
+                    if dest.is_dir():
+                        shutil.rmtree(dest)
+                    else:
+                        dest.unlink()
+                if item.is_dir():
+                    shutil.copytree(item, dest)
+                else:
+                    shutil.copy2(item, dest)
+
+        logger.info(
+            "Manus 用 GitHub URL からソースを shallow clone し site_dir に反映しました: %s",
+            clone_url,
+        )
+
     def get_repo_url(self, repo_name: str) -> Optional[str]:
         """
         リポジトリURLを取得

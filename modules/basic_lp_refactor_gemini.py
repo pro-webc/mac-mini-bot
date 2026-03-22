@@ -133,9 +133,11 @@ def run_basic_lp_refactor_stage(
 
     Returns:
         (フェンス付きマークダウン本文, 任意の GitHub clone URL)。
-        ``MANUS_PROVIDES_DEPLOY_GITHUB_URL`` かつ末尾に ``BOT_DEPLOY_GITHUB_URL:`` があるとき URL を返し、本文からその行を除く。
+        ``MANUS_PROVIDES_DEPLOY_GITHUB_URL`` のとき、``BOT_DEPLOY_GITHUB_URL:`` 行（後続に別文があっても可）または
+        本文中の ``https://github.com/...git`` を推定して URL を返し、可能なら本文から当該行を除く。
     """
     from modules.manus_refactor import (
+        infer_manus_github_clone_url,
         run_manus_refactor_stage,
         split_manus_response_deploy_url,
     )
@@ -149,11 +151,21 @@ def run_basic_lp_refactor_stage(
     if not MANUS_PROVIDES_DEPLOY_GITHUB_URL:
         return raw, None
     md, url = split_manus_response_deploy_url(raw)
+    if not url:
+        url = infer_manus_github_clone_url(raw, record_number=record_number)
+        if url:
+            logger.warning(
+                "Manus 返答に BOT_DEPLOY_GITHUB_URL 行が無いか欠損のため、"
+                "本文中の GitHub clone URL をレコード等で推定しました: %s",
+                url,
+            )
     if url:
-        return md, url
+        u = url.rstrip("/")
+        if not u.lower().endswith(".git"):
+            u = f"{u}.git"
+        return md, u
     logger.warning(
-        "MANUS_PROVIDES_DEPLOY_GITHUB_URL=true だが Manus 返答末尾に %s 行がありません。"
+        "MANUS_PROVIDES_DEPLOY_GITHUB_URL=true だが Manus 返答から deploy URL を取得できませんでした。"
         " 従来どおりボットがローカルから GitHub に push します。",
-        "BOT_DEPLOY_GITHUB_URL:",
     )
     return raw, None
