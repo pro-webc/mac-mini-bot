@@ -11,6 +11,7 @@ class CaseRecord(TypedDict, total=False):
     record_number: str
     partner_name: str
     contract_plan: str
+    ball_holder: str
     hearing_sheet_url: str
     appo_memo: str
     sales_notes: str

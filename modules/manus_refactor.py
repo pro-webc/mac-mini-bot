@@ -66,10 +66,12 @@ def infer_manus_github_clone_url(
         if len(hits) > 1:
             return hits[-1]
 
-    # 本番命名 bot-{record}-{name}。過去の demo-{record}-{name} も単一候補なら許容。
-    bot_urls = [u for u in uniq if "bot-" in u.lower()]
-    if len(bot_urls) == 1:
-        return bot_urls[0]
+    # 本番命名 test-run-{record}。互換: bot-{record}-*、demo-{record}-*
+    pref_urls = [
+        u for u in uniq if "test-run-" in u.lower() or "bot-" in u.lower()
+    ]
+    if len(pref_urls) == 1:
+        return pref_urls[0]
     legacy_demo = [u for u in uniq if "demo-" in u.lower()]
     if len(legacy_demo) == 1:
         return legacy_demo[0]

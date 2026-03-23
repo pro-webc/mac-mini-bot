@@ -15,6 +15,7 @@ from config.config import (
     GOOGLE_SHEETS_CREDENTIALS_PATH,
     GOOGLE_SHEETS_SHEET_NAME,
     GOOGLE_SHEETS_SPREADSHEET_ID,
+    SPREADSHEET_BALL_HOLDER_REQUIRED_TEXT,
     SPREADSHEET_BOT_REQUIRE_EMPTY_TEST_SITE_URL,
     SPREADSHEET_COLUMNS,
     SPREADSHEET_HEADER_LABELS,
@@ -158,6 +159,19 @@ def missing_required_case_fields(case: dict) -> list[str]:
         if not v:
             missing.append(key)
     return missing
+
+
+def ball_holder_cell_matches_queue_requirement(raw: str) -> bool:
+    """
+    Q 列（ボール保持者）がキュー条件を満たすか。
+
+    ``SPREADSHEET_BALL_HOLDER_REQUIRED_TEXT`` が空のときは常に True（条件オフ）。
+    それ以外はセル値の前後空白除去後がその文字列と完全一致する必要がある。
+    """
+    req = (SPREADSHEET_BALL_HOLDER_REQUIRED_TEXT or "").strip()
+    if not req:
+        return True
+    return (raw or "").strip() == req
 
 
 def _is_insufficient_sheets_scope_error(exc: HttpError) -> bool:
@@ -422,6 +436,7 @@ class SpreadsheetClient:
         - SPREADSHEET_REQUIRE_HEARING_BODY_NOT_URL のとき: ヒアリング列が URL のみの行はスキップ（本文が1文字でもあれば着手）
         - かつ（既定）テストサイトURL列が空
         - かつ SPREADSHEET_MIN_PHASE_DEADLINE 設定時: フェーズ期限日（T 列）がその日付以降で解釈可能であること
+        - かつ SPREADSHEET_BALL_HOLDER_REQUIRED_TEXT 設定時: Q 列（ボール保持者）がその文字列と完全一致
 
         Args:
             sheet_name: 省略時は GOOGLE_SHEETS_SHEET_NAME
@@ -500,6 +515,16 @@ class SpreadsheetClient:
                 if test_site:
                     continue
 
+            ball_holder = self._cell(row, SPREADSHEET_COLUMNS["ball_holder"])
+            if not ball_holder_cell_matches_queue_requirement(ball_holder):
+                logger.debug(
+                    "行%s: Q列ボール保持者が %r と一致しないためスキップ（実際=%r）",
+                    row_index,
+                    (SPREADSHEET_BALL_HOLDER_REQUIRED_TEXT or "").strip(),
+                    (ball_holder or "").strip()[:80],
+                )
+                continue
+
             if SPREADSHEET_MIN_PHASE_DEADLINE is not None:
                 pd_raw = self._cell(row, SPREADSHEET_COLUMNS["phase_deadline"])
                 pd_date = parse_spreadsheet_phase_deadline_cell(pd_raw)
@@ -533,10 +558,11 @@ class SpreadsheetClient:
         cases.sort(key=lambda c: int(c["row_number"]))
         logger.info(
             "処理対象案件を %s 件取得（上から順・行番号昇順）target_ai_status=%r "
-            "require_empty_test_site_url=%s min_phase_deadline=%s 行一覧=%s",
+            "require_empty_test_site_url=%s ball_holder_required=%r min_phase_deadline=%s 行一覧=%s",
             len(cases),
             SPREADSHEET_TARGET_AI_STATUS,
             SPREADSHEET_BOT_REQUIRE_EMPTY_TEST_SITE_URL,
+            (SPREADSHEET_BALL_HOLDER_REQUIRED_TEXT or "").strip() or "(なし)",
             SPREADSHEET_MIN_PHASE_DEADLINE.isoformat()
             if SPREADSHEET_MIN_PHASE_DEADLINE
             else "(なし)",
@@ -559,6 +585,7 @@ class SpreadsheetClient:
             "record_number": get_value(SPREADSHEET_COLUMNS["record_number"]),
             "partner_name": get_value(SPREADSHEET_COLUMNS["partner_name"]),
             "contract_plan": get_value(SPREADSHEET_COLUMNS["contract_plan"]),
+            "ball_holder": get_value(SPREADSHEET_COLUMNS["ball_holder"]),
             "ai_status": get_value(SPREADSHEET_COLUMNS["ai_status"]),
             "phase_deadline": get_value(SPREADSHEET_COLUMNS["phase_deadline"]),
             "appo_memo": get_value(SPREADSHEET_COLUMNS["appo_memo"]),

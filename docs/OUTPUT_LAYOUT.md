@@ -28,12 +28,39 @@ output/sites/<パートナー名>-<レコード番号>/
 
 `<…>` は `main.py` が `site_generator.generate_site` に渡す `site_name` と同じです。
 
+## Manus 待ちでも消えない Gemini 正本（チェックポイント）
+
+`output/sites/<site_name>/` はフェーズ3で `generate_site` が**既存を退避削除**するため、**フェーズ2が Manus のポーリングで止まっているあいだ**はそこに `llm_raw_output/` がまだありません。
+
+その対策として、**Gemini マニュアル全手順が終わって Manus リファクタに入る直前**に、次へ **同一形式の生出力**が書かれます（`generate_site` の対象外なので残ります）。
+
+```
+output/phase2_llm_checkpoints/<site_name>/pre_manus/
+  README.txt
+  00_checkpoint.json
+  canvas_before_manus.md
+  llm_raw_output/gemini_steps/<pipe>/…   （サイト正本と同じ .md / *_prompt.txt / _model.txt）
+```
+
+`<site_name>` は main の `output/sites/<site_name>/` と同じ `{パートナー名}-{レコード番号}`（`/` `\` `:` のみ `_` に置換、日本語社名はそのまま）。Manus 完了後は従来どおりサイト配下の `llm_raw_output/` にフル正本が保存されます。
+
+## フェーズ2直後の正本（`phase2_complete`）
+
+TEXT_LLM が **正常終了した直後**（`generate_site` より前）に、次へ **サイト正本と同形式の `llm_raw_output/`** が必ず書かれます。フェーズ3で `output/sites/` がまだ無い・消えた・途中で落ちた場合でも、ここを見ればフェーズ2の成果が追えます。
+
+```
+output/phase2_complete/<site_name>/README.txt
+output/phase2_complete/<site_name>/llm_raw_output/…
+```
+
+`output/` 全体は **`.gitignore`** のため、Git には載りません（ローカル・CI 成果物として扱う）。
+
 ## フォルダの意味（時間順・ざっくり）
 
 | 中身 | いつできるか | 何を見るか |
 |------|----------------|------------|
 | `TECH_REQUIREMENTS.md` | サイトディレクトリ作成直後 | 共通技術要項（参照用） |
-| `llm_raw_output/` | TEXT_LLM 直後、`write_llm_raw_artifacts` 後 | **フェーズ2の正本**（spec の長文キーが `.md`、`site_build_prompt.txt`、Gemini ステップは `gemini_steps/<pipe>/step_*.md`） |
+| `llm_raw_output/` | TEXT_LLM 直後、`write_llm_raw_artifacts` 後 | **フェーズ2の正本**（spec の長文キーが `.md`、`site_build_prompt.txt`、Gemini は `gemini_steps/<pipe>/step_*.md`（応答）と `step_*_prompt.txt`（API に渡した入力）、Manus は `manus_refactor_task_prompt.txt`） |
 | `app/`, `components/`, `public/`, `package.json` など | `apply_contract_outputs_to_site_dir` 成功後 | **フェンス適用後のサイト本体** |
 | `.next/`, `node_modules/` | ローカルで `npm install` / `npm run build` 後 | ビルドキャッシュ（push に含まないことが多い） |
 

@@ -105,12 +105,23 @@ else:
             f" 現在の値: {_raw_min_phase!r}"
         ) from e
 
+# Q 列（ボール保持者）がこの文字列と完全一致（前後空白除く）の行のみキュー対象。
+# 未設定（環境変数なし）時は「ポリッシュ」。空文字を明示指定するとこの条件を無効化。
+_raw_ball_holder = os.getenv("SPREADSHEET_BALL_HOLDER_REQUIRED_TEXT")
+if _raw_ball_holder is None:
+    SPREADSHEET_BALL_HOLDER_REQUIRED_TEXT = "ポリッシュ"
+else:
+    SPREADSHEET_BALL_HOLDER_REQUIRED_TEXT = _raw_ball_holder.strip()
+
 # 1回の起動で処理する案件の最大件数（0 または未設定で無制限・上から順）
 _raw_max_cases = os.getenv("BOT_MAX_CASES", "").strip()
 try:
     BOT_MAX_CASES = max(0, int(_raw_max_cases, 10)) if _raw_max_cases else 0
 except ValueError:
     BOT_MAX_CASES = 0
+
+# 未処理キューのうちこのレコード番号（B列 record_id の表示値と完全一致）だけ処理。空で無効
+BOT_ONLY_RECORD_NUMBER = (os.getenv("BOT_ONLY_RECORD_NUMBER") or "").strip()
 
 # mac-mini（AV）列のエラー表示の最大文字数（「エラー: 」を除く本文側の上限に近い挙動。50〜500）
 _raw_ai_err = os.getenv("SPREADSHEET_AI_STATUS_ERROR_MAX_LEN", "200").strip()
@@ -372,6 +383,7 @@ SPREADSHEET_COLUMNS = {
     "record_number": "B",  # record_id
     "partner_name": "C",   # client_name
     "contract_plan": "D",  # plan_type
+    "ball_holder": "Q",  # ボール保持者（着手条件: 既定では「ポリッシュ」のみ）
     # SPREADSHEET_TARGET_AI_STATUS と照合する列（例: overall_status）
     "phase_status": "M",
     # Bot 専用: 処理中 / 完了 / エラー（業務フェーズ列とは別）。1行目の見出しは不要・検証しない
@@ -391,6 +403,7 @@ SPREADSHEET_HEADER_LABELS: dict[str, str] = {
     "record_number": "record_id",
     "partner_name": "client_name",
     "contract_plan": "plan_type",
+    "ball_holder": "ball_holder",
     "phase_status": "overall_status",
     "phase_deadline": "phase_deadline",
     "appo_memo": "ap_recording_memo",
@@ -504,6 +517,30 @@ COMMON_TECHNICAL_SPEC = {
         "css_variables": "CSS変数を使う場合も各要素に明示的にクラスで色を指定",
         "text_color": "body の色継承に依存せず、テキスト要素ごとに色を指定",
         "buttons": "ボタンは default / hover / active / disabled 等、状態ごとに色を明示",
+    },
+    "layout_responsive": {
+        "mobile_first": "モバイルファーストで幅・段組・余白を設計し、viewport をはみ出さない",
+        "images": "next/image は親に追従し、CLS を避ける（サイズまたは aspect の明示）",
+    },
+    "performance": {
+        "lcp": "LCP になり得る画像に priority、他は sizes・遅延読み込みを適切に",
+    },
+    "cta": {
+        "primary": "ファーストビューでは primary CTA を一系統に絞り、副次は視覚一段下げ",
+    },
+    "content_integrity": {
+        "no_fabrication": "ヒアリングに無い数値・実績・固有名の創作禁止。不足はプレースホルダで明示",
+        "risky_claims": "誇大・断定的効果表現を避け、業種に応じ中立・正確なコピーに寄せる",
+    },
+    "copy_fidelity": {
+        "no_trimming": "構成案・手順3/4の【テキスト情報】を実装で省略・要約・マージしない",
+        "no_lorem": "Lorem・無意味英文ダミーをユーザー向けUIに出さない",
+        "faq_depth": "FAQは結論＋補足で原則2文以上。表・料金は仕様どおり全表示",
+    },
+    "immersion_modern_ui": {
+        "worldview": "design_spec に沿い世界観・リズム・視線誘導を統一",
+        "patterns": "段組・scroll-mt・sticky 目次可、motion-safe と reduced-motion 併用",
+        "motion_limits": "点滅・自動再生・過剰パララックス禁止。shadow 禁止は従来どおり",
     },
 }
 

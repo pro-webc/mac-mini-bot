@@ -46,9 +46,12 @@ from google.generativeai.types import HarmBlockThreshold, HarmCategory
 from modules.basic_lp_refactor_gemini import (
     BASIC_CP_REFACTOR_PREFACE_DIR,
     BASIC_LP_REFACTOR_MANUS_TASKS,
+    build_basic_lp_refactor_user_prompt,
     run_basic_lp_refactor_stage,
 )
+from modules.contract_workflow import ContractWorkBranch
 from modules.gemini_generative_timeout import ensure_gemini_rpc_patch_from_config
+from modules.llm.llm_raw_output import write_pre_manus_llm_checkpoint
 from modules.hearing_url_utils import (
     existing_site_url_guess_from_hearing,
     reference_site_url_from_hearing,
@@ -185,6 +188,7 @@ class BasicCpManualGeminiOutputs:
     step_7_3: str = ""
     step_refactor: str = ""
     raw: dict[str, str] = field(default_factory=dict)
+    raw_prompts: dict[str, str] = field(default_factory=dict)
 
 
 def run_basic_cp_gemini_manual_pipeline(
@@ -233,6 +237,7 @@ def run_basic_cp_gemini_manual_pipeline(
     r11 = model.generate_content(p11, generation_config=gcfg)
     outs.step_1_1 = _response_text(r11)
     outs.raw["step_1_1"] = outs.step_1_1
+    outs.raw_prompts["step_1_1"] = p11
 
     ap_block = (appo_memo or "").strip()
     if (sales_notes or "").strip():
@@ -257,6 +262,8 @@ def run_basic_cp_gemini_manual_pipeline(
     outs.raw["step_1_2"] = ""
     outs.step_1_3 = tab2_text
     outs.raw["step_1_3"] = tab2_text
+    outs.raw_prompts["step_1_2"] = p12_p13
+    outs.raw_prompts["step_1_3"] = p12_p13
 
     p2 = _subst(
         _load_step("step_2.txt"),
@@ -269,9 +276,11 @@ def run_basic_cp_gemini_manual_pipeline(
     r2 = chat3.send_message(p2, generation_config=gcfg)
     outs.step_2 = _response_text(r2)
     outs.raw["step_2"] = outs.step_2
+    outs.raw_prompts["step_2"] = p2
     r3 = chat3.send_message(p3, generation_config=gcfg)
     outs.step_3 = _response_text(r3)
     outs.raw["step_3"] = outs.step_3
+    outs.raw_prompts["step_3"] = p3
 
     hp_c, mood_c = _client_hp_and_mood_placeholders()
     p4 = _subst(
@@ -287,6 +296,7 @@ def run_basic_cp_gemini_manual_pipeline(
     r4 = chat4.send_message(p4, generation_config=gcfg)
     outs.step_4 = _response_text(r4)
     outs.raw["step_4"] = outs.step_4
+    outs.raw_prompts["step_4"] = p4
     p5 = _subst(
         _load_step("step_5.txt"),
         STEP_4_OUTPUT=outs.step_4,
@@ -296,9 +306,11 @@ def run_basic_cp_gemini_manual_pipeline(
     r5 = chat4.send_message(p5, generation_config=gcfg)
     outs.step_5_assistant_ack = _response_text(r5)
     outs.raw["step_5"] = outs.step_5_assistant_ack
+    outs.raw_prompts["step_5"] = p5
     r6 = chat4.send_message(p6, generation_config=gcfg)
     outs.step_6 = _response_text(r6)
     outs.raw["step_6"] = outs.step_6
+    outs.raw_prompts["step_6"] = p6
 
     p71 = _subst(
         _load_step("step_7_1.txt"),
@@ -315,15 +327,35 @@ def run_basic_cp_gemini_manual_pipeline(
     r71 = chat5.send_message(p71, generation_config=gcfg)
     outs.step_7_1 = _response_text(r71)
     outs.raw["step_7_1"] = outs.step_7_1
+    outs.raw_prompts["step_7_1"] = p71
     r72 = chat5.send_message(p72, generation_config=gcfg)
     outs.step_7_2 = _response_text(r72)
     outs.raw["step_7_2"] = outs.step_7_2
+    outs.raw_prompts["step_7_2"] = p72
     r73 = chat5.send_message(p73, generation_config=gcfg)
     outs.step_7_3 = _response_text(r73)
     outs.raw["step_7_3"] = outs.step_7_3
+    outs.raw_prompts["step_7_3"] = p73
 
     manus_deploy_github_url: str | None = None
     if BASIC_CP_REFACTOR_AFTER_MANUAL:
+        write_pre_manus_llm_checkpoint(
+            site_name=f"{partner_name}-{record_number}",
+            work_branch=ContractWorkBranch.BASIC,
+            manual_meta_key="basic_cp_manual_gemini",
+            model=GEMINI_BASIC_CP_MODEL,
+            steps=dict(outs.raw),
+            step_prompts=dict(outs.raw_prompts),
+            canvas_markdown=outs.step_7_3,
+            partner_name=partner_name,
+            record_number=record_number,
+        )
+        outs.raw_prompts["manus_refactor_task"] = build_basic_lp_refactor_user_prompt(
+            outs.step_7_3,
+            preface_dir=BASIC_CP_REFACTOR_PREFACE_DIR,
+            partner_name=partner_name,
+            record_number=record_number,
+        )
         md, manus_deploy_github_url = run_basic_lp_refactor_stage(
             canvas_source_code=outs.step_7_3,
             preface_dir=BASIC_CP_REFACTOR_PREFACE_DIR,
@@ -350,6 +382,7 @@ def run_basic_cp_gemini_manual_pipeline(
     requirements_result["basic_cp_manual_gemini"] = {
         "model": GEMINI_BASIC_CP_MODEL,
         "steps": outs.raw,
+        "step_prompts": outs.raw_prompts,
     }
 
     spec = build_basic_spec_dict(

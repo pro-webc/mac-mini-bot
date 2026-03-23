@@ -42,40 +42,22 @@ def authenticated_https_clone_url(
     )
 
 
-def _partner_name_slug(partner_name: str) -> str:
-    """GitHub リポジトリ名用（ASCII の英数字とハイフンのみ・連続ハイフンを圧縮）。"""
-    raw = (partner_name or "").strip().lower()
-    parts: list[str] = []
-    for ch in raw:
-        if "a" <= ch <= "z" or "0" <= ch <= "9":
-            parts.append(ch)
-        elif ch in "-_":
-            parts.append("-")
-        else:
-            parts.append("-")
-    s = "".join(parts)
-    s = re.sub(r"-+", "-", s).strip("-")
-    return s or "partner"
-
-
 def sanitize_github_repo_name(partner_name: str, record_number: str) -> str:
     """
-    GitHub リポジトリ名: ``bot-{レコード番号}-{パートナー名スラッグ}``（英数字・ハイフンのみ）。
+    GitHub リポジトリ名: ``test-run-{レコード番号}``（レコードは英数字のみ抽出）。
 
-    レコード番号は英数字のみ抽出、パートナー名は ASCII 英数字以外をハイフン化して連結。
-    Manus が作成する ``bot-{番号}-{先方名}`` と揃えた命名（ローカル push フォールバック用）。
+    ``partner_name`` は呼び出し互換のため残すがリポジトリ名には使わない。
+    Manus が作成する名前と揃える（ローカル push フォールバック用）。
     GitHub の名前長上限（100）に収める。
     """
+    _ = partner_name
     rec = re.sub(r"[^a-zA-Z0-9]", "", str(record_number).strip()) or "0"
-    slug = _partner_name_slug(partner_name)
-    prefix = "bot-"
-    name = f"{prefix}{rec}-{slug}"
+    prefix = "test-run-"
+    name = f"{prefix}{rec}"
     if len(name) > 100:
-        budget = max(4, 100 - len(f"{prefix}{rec}-"))
-        slug = slug[:budget].rstrip("-") or "p"
-        name = f"{prefix}{rec}-{slug}"
-        if len(name) > 100:
-            name = name[:100].rstrip("-")
+        max_rec = max(1, 100 - len(prefix))
+        rec = rec[:max_rec]
+        name = f"{prefix}{rec}"
     return name
 
 

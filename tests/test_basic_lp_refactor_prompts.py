@@ -46,8 +46,8 @@ def test_refactor_prompt_repo_name_and_description_in_orchestration() -> None:
         partner_name="テスト商事",
         record_number="",
     )
-    assert "bot-0-テスト商事" in p
-    assert "testテスト商事" in p
+    assert "test-run-0" in p
+    assert "テスト商事" in p
     assert "{{MANUS_REPO_NAME}}" not in p
     assert "{{MANUS_REPO_DESCRIPTION}}" not in p
 
@@ -58,8 +58,8 @@ def test_refactor_prompt_record_number_in_repo_name() -> None:
         partner_name="ACME株式会社",
         record_number="12345",
     )
-    assert "bot-12345-ACME株式会社" in p
-    assert "testACME株式会社" in p
+    assert "test-run-12345" in p
+    assert "ACME株式会社" in p
 
 
 def test_refactor_prompt_empty_raises() -> None:

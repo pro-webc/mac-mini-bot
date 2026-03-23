@@ -15,6 +15,7 @@ from config.config import (
     MANUS_DEPLOY_GITHUB_REPO_HINT,
     MANUS_PROVIDES_DEPLOY_GITHUB_URL,
 )
+from modules.github_client import sanitize_github_repo_name
 
 logger = logging.getLogger(__name__)
 
@@ -38,22 +39,23 @@ def manus_repo_name_for_prompt(
     record_number: str | None,
     partner_name: str | None,
 ) -> str:
-    """Manus 手順1: リポジトリ名 ``bot-{レコード番号}-{先方名}``（プレースホルダ展開後のそのまま）。
+    """Manus 手順1: リポジトリ名 ``test-run-{レコード番号}``（GitHub 向けに正規化済み）。
 
-    先方名は制作スプレッドシートの「パートナー名」列（コード上 ``partner_name``）と同一。
+    ``partner_name`` はシグネチャ互換のため残す（命名には使わない）。
     """
-    rec = str(record_number or "").strip() or "0"
-    pn = (partner_name or "").strip() or "先方名未設定"
-    return f"bot-{rec}-{pn}"
+    del partner_name
+    return sanitize_github_repo_name("", str(record_number or "").strip() or "0")
 
 
 def manus_repo_description_for_prompt(partner_name: str | None) -> str:
-    """Manus 手順1: ディスクリプションは常に ``test`` + 先方名（工程テスト・本番共通）。
+    """Manus 手順1: ディスクリプションはパートナー名のみ（スプレッドシートのパートナー名列と同一）。
 
-    先方名は制作スプレッドシートの「パートナー名」列（``partner_name``）と同一。
+    GitHub の description 上限（350 文字）で切り詰める。
     """
     pn = (partner_name or "").strip() or "先方名未設定"
-    return f"test{pn}"
+    if len(pn) > 350:
+        pn = pn[:350]
+    return pn
 
 
 def _read(path: Path) -> str:
@@ -78,7 +80,7 @@ def build_basic_lp_refactor_user_prompt(
         canvas_source_code: Gemini Canvas 単一ファイル相当。
         preface_dir: 未使用（シグネチャ互換）。
         partner_name: 制作スプレッドシートの「パートナー名」列（プロンプト上の先方名と同一）。
-        record_number: 制作スプレッドシートのレコード番号（リポジトリ名 ``bot-{番号}-{先方名}`` 用）。
+        record_number: 制作スプレッドシートのレコード番号（リポジトリ名 ``test-run-{番号}`` 用）。
     """
     del preface_dir  # Manus 手作業フローではプラン別 preface を使わない
     src = (canvas_source_code or "").strip()

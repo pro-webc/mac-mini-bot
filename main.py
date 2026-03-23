@@ -6,6 +6,7 @@
   1. ヒアリングシート類の抽出（`modules.case_extraction`）
   2. TEXT_LLM（`modules.llm.text_llm_stage` — プランは ``if/elif`` で分岐。各 ``*_USE_GEMINI_MANUAL`` と ``GEMINI_API_KEY`` が必須）
   3. 出力先ディレクトリ準備（テンプレコピーなし）→ `llm_raw_output/` に LLM 生出力を保存
+     （Manus 待ちで 3 に進めない間は `output/phase2_llm_checkpoints/…/pre_manus/` に Gemini 分のみ先行保存）
   4. フェンス解析で Gemini 出力のみ `app/` 等へ反映（失敗時は例外）
   5. ビルド検証（失敗時も成果物の自動修正は行わない）
   6. GitHub push → Vercel デプロイ → スプレッドシートに公開 URL
@@ -27,6 +28,7 @@ configure_logging()
 
 from config.config import (
     BOT_MAX_CASES,
+    BOT_ONLY_RECORD_NUMBER,
     SITE_BUILD_ENABLED,
     SITE_IMPLEMENTATION_ENABLED,
     SPREADSHEET_AI_STATUS_ERROR_MAX_LEN,
@@ -54,6 +56,7 @@ from modules.contract_workflow import (
 from modules.github_client import GitHubClient, sanitize_github_repo_name
 from modules.llm.llm_raw_output import (
     write_llm_raw_artifacts,
+    write_llm_raw_artifacts_phase2_snapshot,
     write_manus_only_style_run_artifacts,
 )
 from modules.llm.text_llm_stage import run_text_llm_stage
@@ -234,12 +237,22 @@ class WebsiteBot:
                 work_branch=work_branch,
             )
 
+            site_name = f"{case['partner_name']}-{case['record_number']}"
+            # 引数: フェーズ2の spec / requirements（generate_site 前に必ずディスクへ）
+            # 処理: output/phase2_complete/…（sites の削除・フェーズ3成否に依存しない）
+            # 出力: ログに絶対パス（output は .gitignore のためリポジトリには載らない）
+            write_llm_raw_artifacts_phase2_snapshot(
+                site_name=site_name,
+                spec=spec,
+                requirements_result=requirements_result,
+                work_branch=work_branch,
+            )
+
             # --- フェーズ3: ディスク上のサイト出力先（output/sites/<名前>/） ---
             logger.info(
                 "【フェーズ3】出力先準備・LLM 正本の保存・検証・Git push / デプロイ…"
             )
             logger.info("› Gemini 出力の適用先ディレクトリを用意（テンプレは使わない）…")
-            site_name = f"{case['partner_name']}-{case['record_number']}"
             site_dir = self.site_generator.generate_site(spec, [], site_name)
 
             # LLM の生出力を llm_raw_output/ に残す（追跡・デバッグ用。コミットに含まれる）
@@ -435,6 +448,28 @@ class WebsiteBot:
             if not cases:
                 logger.info(idle_banner(use_color=_uc))
                 return
+
+            if BOT_ONLY_RECORD_NUMBER:
+                want = BOT_ONLY_RECORD_NUMBER
+                filtered = [
+                    c
+                    for c in cases
+                    if str(c.get("record_number") or "").strip() == want
+                ]
+                if not filtered:
+                    logger.warning(
+                        "BOT_ONLY_RECORD_NUMBER=%r に一致する未処理案件がありません（キュー内 %s 件）",
+                        want,
+                        len(cases),
+                    )
+                    logger.info(idle_banner(use_color=_uc))
+                    return
+                cases = filtered
+                logger.info(
+                    "BOT_ONLY_RECORD_NUMBER により %s 件に絞り込み record=%r",
+                    len(cases),
+                    want,
+                )
 
             # テスト用: 先頭 N 件だけ処理（未設定なら全件）
             if BOT_MAX_CASES:

@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from config.config import OUTPUT_DIR
 from modules.contract_workflow import ContractWorkBranch
 
 from .llm_text_artifacts import write_llm_yaml_artifact
@@ -19,6 +20,10 @@ logger = logging.getLogger(__name__)
 
 _RAW_OUTPUT_DIR = "llm_raw_output"
 _GEMINI_STEPS_SUBDIR = "gemini_steps"
+# Manus 待ちでフェーズ3に進めないときも Gemini 完了分を失わない（generate_site は sites 直下を消すため sites 外に置く）
+_PHASE2_LLM_CHECKPOINT_SUBDIR = "phase2_llm_checkpoints"
+# TEXT_LLM 直後・generate_site 前（フェーズ3未到達でも正本を残す）
+_PHASE2_COMPLETE_SUBDIR = "phase2_complete"
 
 # プラン別に spec に載りうる LLM 文字列キー（順不同・空はスキップ）
 _SPEC_LLM_KEYS: dict[ContractWorkBranch, tuple[str, ...]] = {
@@ -87,10 +92,201 @@ def _safe_segment(name: str) -> str:
     return s or "unnamed"
 
 
+def _site_name_for_output_path(site_name: str) -> str:
+    """
+    ``main`` の ``site_name``（パートナー名-レコード）と同じ見え方でパスに使う。
+
+    ``_safe_segment`` は非 ASCII をすべて `_` にするため、日本語社名のチェックポイントが
+    判別不能になる。ここではファイルシステム上危険な文字のみ置換する。
+    """
+    s = (site_name or "").strip() or "unnamed"
+    for ch in ("/", "\\", "\x00", ":"):
+        s = s.replace(ch, "_")
+    return s[:240] if len(s) > 240 else s
+
+
 def _write_text(path: Path, text: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     normalized = text.replace("\r\n", "\n").replace("\r", "\n")
     path.write_text(normalized, encoding="utf-8")
+
+
+def write_gemini_manual_step_files(
+    llm_raw_root: Path,
+    *,
+    meta_key: str,
+    steps: dict[str, Any],
+    model: Any = None,
+    step_prompts: dict[str, Any] | None = None,
+) -> int:
+    """
+    ``llm_raw_root/gemini_steps/<pipe>/`` に Gemini マニュアルの steps / step_prompts / model を書く。
+
+    引数: llm_raw_root（通常は ``.../llm_raw_output``） / meta_key（requirements のメタキー） /
+          steps（応答） / model（任意） / step_prompts（任意・API 入力）。
+    処理: site 正本と同じファイル命名（``_model.txt`` / ``*.md`` / ``*_prompt.txt``）。
+    出力: 書いたファイル数。
+    """
+    n = 0
+    pipe = _safe_segment(meta_key)
+    base = llm_raw_root / _GEMINI_STEPS_SUBDIR / pipe
+    if isinstance(model, str) and model.strip():
+        _write_text(base / "_model.txt", model.strip() + "\n")
+        n += 1
+    for step_name, step_body in steps.items():
+        if not isinstance(step_body, str) or not step_body.strip():
+            continue
+        fn = _safe_segment(str(step_name)) + ".md"
+        _write_text(base / fn, step_body)
+        n += 1
+    if isinstance(step_prompts, dict):
+        for prompt_key, prompt_body in step_prompts.items():
+            if not isinstance(prompt_body, str) or not prompt_body.strip():
+                continue
+            pfn = _safe_segment(str(prompt_key)) + "_prompt.txt"
+            _write_text(base / pfn, prompt_body)
+            n += 1
+    return n
+
+
+def write_pre_manus_llm_checkpoint(
+    *,
+    site_name: str,
+    work_branch: ContractWorkBranch,
+    manual_meta_key: str,
+    model: str,
+    steps: dict[str, Any],
+    step_prompts: dict[str, Any],
+    canvas_markdown: str,
+    partner_name: str,
+    record_number: str,
+) -> Path:
+    """
+    Gemini マニュアル完了直後・Manus リファクタ開始前に、生出力を ``output/`` 配下へ保存する。
+
+    ``main.generate_site`` は ``output/sites/<site_name>/`` を退避削除するため、
+    ここでは ``output/phase2_llm_checkpoints/<site_name>/pre_manus/`` にのみ書く
+    （Manus で長時間ブロックしても Gemini 分はディスクに残る）。
+
+    引数: site_name（main と同じ ``{partner}-{record}``） / work_branch / manual_meta_key /
+          model・steps・step_prompts（この時点の outs） / canvas_markdown（Manus に渡す Canvas 相当） /
+          partner_name・record_number（メタ用）。
+    処理: ``llm_raw_output/gemini_steps/...`` 互換ツリー + ``canvas_before_manus.md`` + JSON メタ。
+    出力: チェックポイントディレクトリ（絶対パス）。
+    """
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    path_site = _site_name_for_output_path(site_name)
+    checkpoint_dir = (
+        OUTPUT_DIR.resolve()
+        / _PHASE2_LLM_CHECKPOINT_SUBDIR
+        / path_site
+        / "pre_manus"
+    )
+    checkpoint_dir.mkdir(parents=True, exist_ok=True)
+
+    llm_raw = checkpoint_dir / _RAW_OUTPUT_DIR
+    n_steps = write_gemini_manual_step_files(
+        llm_raw,
+        meta_key=manual_meta_key,
+        steps=steps,
+        model=model,
+        step_prompts=step_prompts,
+    )
+    _write_text(checkpoint_dir / "canvas_before_manus.md", canvas_markdown or "")
+
+    stamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    meta = {
+        "checkpoint_utc": stamp,
+        "site_name": site_name,
+        "work_branch": work_branch.value,
+        "manual_meta_key": manual_meta_key,
+        "gemini_model": model,
+        "partner_name": (partner_name or "").strip() or None,
+        "record_number": (record_number or "").strip() or None,
+        "canvas_chars": len(canvas_markdown or ""),
+        "gemini_artifact_files": n_steps,
+        "note": "Manus 完了前のスナップショット。完了後は output/sites/.../llm_raw_output/ が正本。",
+    }
+    _write_text(
+        checkpoint_dir / "00_checkpoint.json",
+        json.dumps(meta, ensure_ascii=False, indent=2) + "\n",
+    )
+    _write_text(
+        checkpoint_dir / "README.txt",
+        "\n".join(
+            [
+                "フェーズ2: Gemini マニュアル完了後・Manus リファクタ待機前のチェックポイント",
+                "",
+                f"案件ディレクトリ名（main 準拠）: {site_name}",
+                f"作業分岐: {work_branch.value}",
+                f"UTC: {stamp}",
+                "",
+                "- llm_raw_output/gemini_steps/ … サイト正本と同形式（応答 .md / 入力 *_prompt.txt）",
+                "- canvas_before_manus.md … Manus に渡す Canvas 相当テキスト",
+                "- 00_checkpoint.json … メタデータ",
+                "",
+                "Manus が完了し main がフェーズ3に進むと output/sites/<site_name>/llm_raw_output/ に",
+                "フル正本が再度書かれます（このフォルダは generate_site で削除されません）。",
+                "",
+            ]
+        ),
+    )
+    logger.info(
+        "Manus 待機前チェックポイント: %s に Gemini 生出力 %s ファイル（%s・絶対パス: %s）",
+        checkpoint_dir.relative_to(OUTPUT_DIR.resolve()),
+        n_steps + 3,
+        manual_meta_key,
+        checkpoint_dir,
+    )
+    return checkpoint_dir
+
+
+def write_llm_raw_artifacts_phase2_snapshot(
+    *,
+    site_name: str,
+    spec: dict[str, Any],
+    requirements_result: dict[str, Any] | None,
+    work_branch: ContractWorkBranch,
+) -> Path:
+    """
+    TEXT_LLM 直後・``generate_site`` より前に ``output/phase2_complete/<site>/llm_raw_output/`` へ正本を書く。
+
+    ``generate_site`` の退避削除やフェーズ3途中のクラッシュで ``output/sites/`` が空でも、
+    ここにフェーズ2の spec / requirements / gemini_steps が残る（``output/`` は .gitignore）。
+
+    引数: main と同じ site_name / フェーズ2の spec・requirements_result / work_branch。
+    処理: ``write_llm_raw_artifacts`` をサイト直下相当のディレクトリに対して1回呼ぶ。
+    出力: スナップショットのベースディレクトリ（絶対パス）。
+    """
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    path_site = _site_name_for_output_path(site_name)
+    base = OUTPUT_DIR.resolve() / _PHASE2_COMPLETE_SUBDIR / path_site
+    base.mkdir(parents=True, exist_ok=True)
+    _write_text(
+        base / "README.txt",
+        "\n".join(
+            [
+                "フェーズ2（TEXT_LLM）完了直後のスナップショット（generate_site・フェンス適用の前）",
+                f"案件ディレクトリ名（main 準拠）: {site_name}",
+                "llm_raw_output/ の中身は output/sites/<同一名前>/llm_raw_output/ と同形式。",
+                "フェーズ3が成功するとサイト側にも同内容が再度保存されます。",
+                "",
+            ]
+        ),
+    )
+    n = write_llm_raw_artifacts(
+        base,
+        spec=spec,
+        requirements_result=requirements_result,
+        work_branch=work_branch,
+    )
+    root = base / _RAW_OUTPUT_DIR
+    logger.info(
+        "フェーズ2スナップショット: %s ファイル（絶対パス: %s）",
+        n,
+        root,
+    )
+    return base
 
 
 def write_llm_raw_artifacts(
@@ -105,7 +301,8 @@ def write_llm_raw_artifacts(
 
     - spec 上のプラン別テキストフィールド（Markdown 本文は .md、``manus_deploy_github_url`` のみプレーン URL 用に .txt）
     - requirements_result の ``site_build_prompt``（.txt）
-    - ``*_manual_gemini`` メタの ``steps`` 辞書（各ステップ .md）
+    - ``*_manual_gemini`` メタの ``steps`` 辞書（各ステップ応答 .md）と
+      任意の ``step_prompts`` 辞書（API に渡したユーザー入力テキストを ``*_prompt.txt`` で保存）
     - 構造化データの正本 ``requirements_result.yaml`` / ``spec.yaml``（UTF-8 テキスト）
 
     Returns:
@@ -137,23 +334,14 @@ def write_llm_raw_artifacts(
             steps = meta.get("steps")
             if not isinstance(steps, dict):
                 continue
-            pipe = _safe_segment(meta_key)
-            model = meta.get("model")
-            if isinstance(model, str) and model.strip():
-                _write_text(
-                    root / _GEMINI_STEPS_SUBDIR / pipe / "_model.txt",
-                    model.strip() + "\n",
-                )
-                n += 1
-            for step_name, step_body in steps.items():
-                if not isinstance(step_body, str) or not step_body.strip():
-                    continue
-                fn = _safe_segment(str(step_name)) + ".md"
-                _write_text(
-                    root / _GEMINI_STEPS_SUBDIR / pipe / fn,
-                    step_body,
-                )
-                n += 1
+            sp = meta.get("step_prompts")
+            n += write_gemini_manual_step_files(
+                root,
+                meta_key=meta_key,
+                steps=steps,
+                model=meta.get("model"),
+                step_prompts=sp if isinstance(sp, dict) else None,
+            )
 
     if requirements_result is not None:
         write_llm_yaml_artifact(root / "requirements_result.yaml", requirements_result)
@@ -162,9 +350,10 @@ def write_llm_raw_artifacts(
     n += 1
 
     logger.info(
-        "LLM 生出力を %s に %s ファイル保存（push に含まれます）",
+        "LLM 生出力を %s に %s ファイル保存（push に含まれるのは sites 配下のみ・絶対パス: %s）",
         root.relative_to(site_dir),
         n,
+        root,
     )
     return n
 

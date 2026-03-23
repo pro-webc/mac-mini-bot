@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import sys
 import time
 from typing import ClassVar
@@ -78,7 +79,15 @@ def configure_logging() -> None:
     level_name = (LOG_LEVEL or "INFO").upper()
     level = getattr(logging, level_name, logging.INFO)
 
-    log_file = PROJECT_ROOT / "bot.log"
+    # テスト実行時は本番 bot.log と分離（pytest が先に conftest を読むこと）
+    _pytest_mode = os.environ.get("MAC_MINI_BOT_PYTEST", "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+    )
+    log_file = (
+        PROJECT_ROOT / "bot-test.log" if _pytest_mode else PROJECT_ROOT / "bot.log"
+    )
     file_fmt = "%(asctime)s | %(levelname)-8s | %(name)s | %(message)s"
     datefmt = "%Y-%m-%d %H:%M:%S"
 
