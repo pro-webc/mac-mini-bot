@@ -202,6 +202,16 @@ def test_infer_manus_github_clone_url_by_record() -> None:
     )
 
 
+def test_infer_manus_github_clone_url_by_record_bot_prefix() -> None:
+    from modules.manus_refactor import infer_manus_github_clone_url
+
+    prose = "push 済み https://github.com/propagate-webcreation/bot-9408-shida-yoji.git です"
+    assert (
+        infer_manus_github_clone_url(prose, record_number="9408")
+        == "https://github.com/propagate-webcreation/bot-9408-shida-yoji.git"
+    )
+
+
 def test_infer_manus_github_clone_url_single_without_record() -> None:
     from modules.manus_refactor import infer_manus_github_clone_url
 

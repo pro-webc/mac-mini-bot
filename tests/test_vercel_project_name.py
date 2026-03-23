@@ -5,6 +5,7 @@ from modules.vercel_client import sanitize_vercel_project_name
 
 def test_lowercase_and_double_hyphen_collapsed() -> None:
     assert sanitize_vercel_project_name("demo-16715--TS-hub") == "demo-16715-ts-hub"
+    assert sanitize_vercel_project_name("bot-16715--TS-hub") == "bot-16715-ts-hub"
 
 
 def test_triple_hyphen_removed() -> None:

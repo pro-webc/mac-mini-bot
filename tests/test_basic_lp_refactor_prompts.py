@@ -34,10 +34,10 @@ def test_refactor_prompt_without_deploy_url_block_when_disabled(
 
 def test_refactor_prompt_deploy_hint_from_file(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(refactor_mod, "MANUS_PROVIDES_DEPLOY_GITHUB_URL", True)
-    monkeypatch.setattr(refactor_mod, "MANUS_DEPLOY_GITHUB_REPO_HINT", "org/demo-99-acme")
+    monkeypatch.setattr(refactor_mod, "MANUS_DEPLOY_GITHUB_REPO_HINT", "org/bot-99-acme")
     p = build_basic_lp_refactor_user_prompt("const x = 1")
-    assert "org/demo-99-acme" in p
-    assert "https://github.com/org/demo-99-acme.git" in p
+    assert "org/bot-99-acme" in p
+    assert "https://github.com/org/bot-99-acme.git" in p
 
 
 def test_refactor_prompt_repo_name_and_description_in_orchestration() -> None:
@@ -46,7 +46,7 @@ def test_refactor_prompt_repo_name_and_description_in_orchestration() -> None:
         partner_name="テスト商事",
         record_number="",
     )
-    assert "demo-0-テスト商事" in p
+    assert "bot-0-テスト商事" in p
     assert "testテスト商事" in p
     assert "{{MANUS_REPO_NAME}}" not in p
     assert "{{MANUS_REPO_DESCRIPTION}}" not in p
@@ -58,7 +58,7 @@ def test_refactor_prompt_record_number_in_repo_name() -> None:
         partner_name="ACME株式会社",
         record_number="12345",
     )
-    assert "demo-12345-ACME株式会社" in p
+    assert "bot-12345-ACME株式会社" in p
     assert "testACME株式会社" in p
 
 

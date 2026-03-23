@@ -38,13 +38,13 @@ def manus_repo_name_for_prompt(
     record_number: str | None,
     partner_name: str | None,
 ) -> str:
-    """Manus 手順1: リポジトリ名 ``demo-{レコード番号}-{先方名}``（プレースホルダ展開後のそのまま）。
+    """Manus 手順1: リポジトリ名 ``bot-{レコード番号}-{先方名}``（プレースホルダ展開後のそのまま）。
 
     先方名は制作スプレッドシートの「パートナー名」列（コード上 ``partner_name``）と同一。
     """
     rec = str(record_number or "").strip() or "0"
     pn = (partner_name or "").strip() or "先方名未設定"
-    return f"demo-{rec}-{pn}"
+    return f"bot-{rec}-{pn}"
 
 
 def manus_repo_description_for_prompt(partner_name: str | None) -> str:
@@ -78,7 +78,7 @@ def build_basic_lp_refactor_user_prompt(
         canvas_source_code: Gemini Canvas 単一ファイル相当。
         preface_dir: 未使用（シグネチャ互換）。
         partner_name: 制作スプレッドシートの「パートナー名」列（プロンプト上の先方名と同一）。
-        record_number: 制作スプレッドシートのレコード番号（リポジトリ名 ``demo-{番号}-{先方名}`` 用）。
+        record_number: 制作スプレッドシートのレコード番号（リポジトリ名 ``bot-{番号}-{先方名}`` 用）。
     """
     del preface_dir  # Manus 手作業フローではプラン別 preface を使わない
     src = (canvas_source_code or "").strip()

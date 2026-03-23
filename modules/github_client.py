@@ -60,19 +60,20 @@ def _partner_name_slug(partner_name: str) -> str:
 
 def sanitize_github_repo_name(partner_name: str, record_number: str) -> str:
     """
-    GitHub リポジトリ名: ``{レコード番号}-test-{パートナー名}``（英数字のみのスラッグ化）。
+    GitHub リポジトリ名: ``bot-{レコード番号}-{パートナー名スラッグ}``（英数字・ハイフンのみ）。
 
     レコード番号は英数字のみ抽出、パートナー名は ASCII 英数字以外をハイフン化して連結。
+    Manus が作成する ``bot-{番号}-{先方名}`` と揃えた命名（ローカル push フォールバック用）。
     GitHub の名前長上限（100）に収める。
     """
     rec = re.sub(r"[^a-zA-Z0-9]", "", str(record_number).strip()) or "0"
     slug = _partner_name_slug(partner_name)
-    name = f"{rec}-test-{slug}"
+    prefix = "bot-"
+    name = f"{prefix}{rec}-{slug}"
     if len(name) > 100:
-        # パートナー側を削ってレコードと test を優先
-        budget = max(4, 100 - len(f"{rec}-test-"))
+        budget = max(4, 100 - len(f"{prefix}{rec}-"))
         slug = slug[:budget].rstrip("-") or "p"
-        name = f"{rec}-test-{slug}"
+        name = f"{prefix}{rec}-{slug}"
         if len(name) > 100:
             name = name[:100].rstrip("-")
     return name
