@@ -12,7 +12,7 @@
 | 2 | TEXT_LLM（仕様・台本） | **Gemini（マニュアル手順）** | `modules.llm.text_llm_stage` → 下表 | 各 `*_USE_GEMINI_MANUAL` と `GEMINI_API_KEY` が必須 |
 | 3 | 出力先ディレクトリ準備 | **LLM なし** | `modules.site_generator` | テンプレコピーなし。`TECH_REQUIREMENTS.md` のみ |
 | 4 | `llm_raw_output/` 保存 | **LLM なし**（書き出しのみ） | `modules.llm.llm_raw_output` | 手順 2 の結果をファイル化 |
-| 5 | フェンス → `app/` 反映 | **LLM なし**（パーサ） | `modules.basic_lp_generated_apply` | 該当プランで Gemini マニュアルが有効なとき、適用 0 件なら失敗 |
+| 5 | 生成マークダウン → `app/` 等へ反映 | **LLM なし**（パーサ） | `modules.basic_lp_generated_apply` | フェンス優先、0 件ならマーカー形式を試す。それでも 0 件かつ `manus_deploy_github_url` があれば `main` が shallow clone |
 | 6 | `npm build` 検証 | **LLM なし** | `modules.site_implementer` / `modules.site_build` | **stub 自動生成・自動パッチ・画像 TSX 置換は行わない**。ビルド失敗時もソースの自動修正はしない |
 | 7 | `git push` | **LLM なし** | `modules.github_client` | |
 | 8 | Vercel デプロイ | **LLM なし** | `modules.vercel_client` | 常に実行（公開 URL をスプレッドシートに記録） |

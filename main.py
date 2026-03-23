@@ -288,7 +288,10 @@ class WebsiteBot:
                     ContractWorkBranch.ADVANCE,
                 )
                 and n_gen == 0
-                and gemini_manual_enabled_for_branch(work_branch)
+                and (
+                    gemini_manual_enabled_for_branch(work_branch)
+                    or manus_git_for_fallback
+                )
             ):
                 if manus_git_for_fallback:
                     # 引数: manus_git_for_fallback（Manus が push 済みの clone URL） / site_dir（llm_raw_output 保持）

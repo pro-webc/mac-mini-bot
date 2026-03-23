@@ -1,10 +1,15 @@
 """Manus 最終リファクタ（HTTP モック）"""
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Any
 
 import config.config as cfg
 import pytest
+
+_FIXTURE_MANUS_DEPLOY = (
+    Path(__file__).resolve().parent / "fixtures" / "manus_response_with_deploy_url.md"
+)
 
 
 class _OkJson:
@@ -136,6 +141,43 @@ def test_split_manus_response_deploy_url() -> None:
     b2, u2 = split_manus_response_deploy_url("```\na\n```")
     assert u2 is None
     assert b2 == "```\na\n```"
+
+
+def test_split_manus_response_deploy_url_fixture_file() -> None:
+    """tests/fixtures の実ファイルで BOT_DEPLOY 行を解釈できること。"""
+    from modules.manus_refactor import split_manus_response_deploy_url
+
+    text = _FIXTURE_MANUS_DEPLOY.read_text(encoding="utf-8")
+    body, url = split_manus_response_deploy_url(text)
+    assert url == "https://github.com/example-org/example-repo.git"
+    assert "export default function Page" in body
+
+
+def test_split_manus_response_deploy_url_short_body_with_trailing_newline() -> None:
+    from modules.manus_refactor import split_manus_response_deploy_url
+
+    body, url = split_manus_response_deploy_url(
+        "hello\n\nBOT_DEPLOY_GITHUB_URL: https://github.com/a/b.git\n"
+    )
+    assert url == "https://github.com/a/b.git"
+    assert body.strip() == "hello"
+
+
+def test_split_manus_response_deploy_url_after_code_fence_block() -> None:
+    """フェンスブロックのあと空行・URL 行だけの構成。"""
+    from modules.manus_refactor import split_manus_response_deploy_url
+
+    text = (
+        "```\n"
+        "app/x.tsx\n"
+        "x\n"
+        "```\n"
+        "\n"
+        "BOT_DEPLOY_GITHUB_URL: https://github.com/pipe/line.git\n"
+    )
+    body, url = split_manus_response_deploy_url(text)
+    assert url == "https://github.com/pipe/line.git"
+    assert "app/x.tsx" in body
 
 
 def test_split_manus_response_deploy_url_allows_trailing_lines_after_url() -> None:

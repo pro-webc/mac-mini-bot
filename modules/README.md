@@ -28,7 +28,7 @@
 | モジュール | 役割 |
 |------------|------|
 | `site_generator.py` | `output/sites/<案件>/` 用意 |
-| `basic_lp_generated_apply.py` | フェンス解析・ファイル書き込み |
+| `basic_lp_generated_apply.py` | 生成マークダウン（フェンス・マーカー形式）の解析と `site_dir` への書き込み |
 | `site_implementer.py` / `site_build.py` | 実装・ビルド検証 |
 
 ## デプロイ・その他

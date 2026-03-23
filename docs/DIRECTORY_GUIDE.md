@@ -18,7 +18,7 @@
 | 3 | TEXT_LLM（プラン別・フェーズ2） | `modules/llm/text_llm_stage.py`（`if/elif` → 各 `*_gemini_manual.py`） |
 | 4 | 出力先ディレクトリ準備 | `modules/site_generator.py` → `output/sites/<案件名>/` |
 | 5 | LLM 正本の保存 | `modules/llm/llm_raw_output.py` → 同一案件の `llm_raw_output/` |
-| 6 | フェンス → サイトファイル反映 | `modules/basic_lp_generated_apply.py` |
+| 6 | 生成マークダウン → サイトファイル反映 | `modules/basic_lp_generated_apply.py` |
 | 7 | npm build | `modules/site_implementer.py`, `modules/site_build.py` |
 | 8 | GitHub push → Vercel | `modules/github_client.py`, `modules/vercel_client.py` |
 

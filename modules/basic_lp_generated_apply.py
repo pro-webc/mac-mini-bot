@@ -93,17 +93,16 @@ def _safe_target_file(site_dir: Path, rel: str) -> Path:
     return out
 
 
-def parse_generated_markdown_to_files(markdown: str) -> dict[str, str]:
+def _parse_fence_markdown_to_files(markdown: str) -> dict[str, str]:
     """
-    マークダウン内の ``` フェンスを走査し、(相対パス -> 本文) を得る。
+    ``` フェンス（先頭行に相対パス）を走査し、(相対パス -> 本文) を得る。
 
     想定形式:
       ```tsx
       app/page.tsx
       （ソース本文）
       ```
-    または開始行が ``app/page.tsx`` のみで言語タグなし。
-    開始フェンスのメタにパスだけがある場合（例: ```app/page.tsx）にも対応。
+    開始フェンス行がパスのみ（言語タグなし、または `` ```tsx`` 直後の1行目がパス）にも対応。
     """
     text = (markdown or "").lstrip("\ufeff")
     lines = text.split("\n")
@@ -156,6 +155,28 @@ def parse_generated_markdown_to_files(markdown: str) -> dict[str, str]:
     return files
 
 
+def collect_generated_files_from_markdown(markdown: str) -> dict[str, str]:
+    """
+    生成物マークダウンから (相対パス -> 本文) を集める。
+
+    1. フェンス（パス行付き ``` ブロック）
+    2. 0 件なら ``<<<FILE>>>`` / ``<file>`` 等（``parse_llm_file_blocks``）
+
+    0 件のままなら ``main.process_case`` が ``manus_deploy_github_url`` で shallow clone する。
+    """
+    mapping = _parse_fence_markdown_to_files(markdown)
+    if mapping:
+        return mapping
+    from modules.llm.llm_output_files import parse_llm_file_blocks
+
+    out: dict[str, str] = {}
+    for raw_path, body in parse_llm_file_blocks(markdown).items():
+        norm = _normalize_path_candidate(raw_path)
+        if _is_allowed_relpath(norm):
+            out[norm] = body
+    return out
+
+
 def apply_basic_lp_generated_markdown(
     *,
     site_dir: Path,
@@ -167,23 +188,19 @@ def apply_basic_lp_generated_markdown(
     Returns:
         書き込んだファイル数
 
-    Raises:
-        RuntimeError: 1件も書けなかった場合
     """
     site_dir = site_dir.resolve()
-    mapping = parse_generated_markdown_to_files(markdown)
+    mapping = collect_generated_files_from_markdown(markdown)
     if not mapping:
         raw = (markdown or "").strip()
         tail = raw[:500] + ("…" if len(raw) > 500 else "")
-        logger.error(
-            "generated apply: 0 ファイル抽出。フェンス内の1行目に app/page.tsx 等の相対パスが必要です。"
+        logger.warning(
+            "generated apply: 0 ファイル抽出（フェンス・<<<FILE>>> いずれも該当なし）。"
+            " manus_deploy_github_url がある場合は main が shallow clone します。"
             " 先頭抜粋: %r",
             tail,
         )
-        raise RuntimeError(
-            "マークダウンからファイルを1件も抽出できませんでした。"
-            " 各 ``` ブロックの直後に app/・public/・components/ から始まるパス行を置いてください。"
-        )
+        return 0
     n = 0
     for rel in sorted(mapping.keys(), key=lambda x: (x.count("/"), x)):
         content = mapping[rel]

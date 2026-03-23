@@ -31,20 +31,8 @@ jobs:
           modules/llm/llm_output_files.py modules/phase2_text_llm_snapshot.py modules/site_implementer.py
           modules/site_build.py
           modules/spreadsheet.py modules/spreadsheet_schema.py modules/vercel_client.py
-          scripts/extract_manus_deploy_github_url.py
+          modules/saved_manus_deploy_url.py
           tests/
 
       - name: Pytest
         run: pytest
-
-      - name: Manus 返答から BOT_DEPLOY_GITHUB_URL を抽出（CLI スモーク）
-        run: |
-          set -euo pipefail
-          got="$(python scripts/extract_manus_deploy_github_url.py \
-            --input tests/fixtures/manus_response_with_deploy_url.md \
-            --require)"
-          test "$got" = "https://github.com/example-org/example-repo.git"
-          printf '%s\n' '```' 'app/x.tsx' 'x' '```' '' \
-            'BOT_DEPLOY_GITHUB_URL: https://github.com/pipe/line.git' \
-            | python scripts/extract_manus_deploy_github_url.py --require \
-            | grep -qx 'https://github.com/pipe/line.git'
