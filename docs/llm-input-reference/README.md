@@ -15,13 +15,3 @@
 5. コンテンツ・コピー・表現
 6. Git / リポジトリ / デプロイ連携
 
-## 個別ファイル（参考）
-
-| ファイル | 領域 |
-|----------|------|
-| [runtime-inputs.md](./runtime-inputs.md) | ランタイム入力 |
-| [site-structure-rules.md](./site-structure-rules.md) | サイト構成 |
-| [design-rules.md](./design-rules.md) | デザイン |
-| [technical-requirements.md](./technical-requirements.md) | 技術要件 |
-| [git-and-deploy-rules.md](./git-and-deploy-rules.md) | Git / デプロイ |
-| [content-and-expression.md](./content-and-expression.md) | コンテンツ・表現 |
