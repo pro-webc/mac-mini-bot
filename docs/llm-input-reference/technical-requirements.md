@@ -1,5 +1,7 @@
 # 技術要綱（スタック・実装制約）
 
+派生版 **`mac-mini-bot-v2`** の **LLM 2 段**索引の一部（両段・`TECH_REQUIREMENTS.md` 含む）。全体は [README](./README.md) / [README](../../README.md)。
+
 情報は次の経路で現れます。
 
 1. **各マニュアルの手順 7〜8 付近**に繰り返し書かれる短い箇条書き（Gemini への直接プロンプト）。

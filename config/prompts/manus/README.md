@@ -1,5 +1,7 @@
 # Manus 用プロンプト（手作業マニュアルと本番 API の対応）
 
+**LLM 2 段の第 2 段**: 本ディレクトリの文面は、Gemini マニュアル（第 1 段）が出力した Canvas 相当ソースを、App Router 実装・画像・build・GitHub push まで進めるためのプロンプトである。派生版の位置づけはルート `README.md`、工程対応は `docs/LLM_PIPELINE.md` を参照。
+
 ## 手作業でやっていること（要約）
 
 **タイミング**: Gemini（Canvas 相当）で単一ファイルのソースが出た直後。

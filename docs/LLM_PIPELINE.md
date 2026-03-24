@@ -2,6 +2,13 @@
 
 `main.py` の `WebsiteBot.process_case` を基準に、**外部モデル API を呼ぶ箇所**と **API を呼ばない前処理・組み立て** を分けて示す。
 
+## 派生版と「LLM 2 段」を目指す位置づけ
+
+- **派生ブランチ** `mac-mini-bot-v2` を開発の主軸とし、本ドキュメント群は **LLM 2 段実装**（下表の第 1・第 2 フェーズ）を**安定運用のゴール**として揃える。
+- **第 1 段（Gemini）**: ヒアリングとマニュアル手順に沿った多段生成（仕様・台本・Canvas 相当）。
+- **第 2 段（Manus）**: Gemini 出力を App Router 実装に落とし、画像・`npm run build`・GitHub push（および `BOT_DEPLOY_GITHUB_URL`）までをプロンプトで指示。プラン別 `*_REFACTOR_AFTER_MANUAL` と `MANUS_API_KEY` でオン。
+- リポジトリ全体の方針・ブランチ運用は **ルート `README.md` の「派生版 `mac-mini-bot-v2` と LLM 2 段実装」**を参照。プロンプト文言のジャンル分け索引は **`docs/llm-input-reference/`**。
+
 ---
 
 ## 生成の第1フェーズ（Gemini）／第2フェーズ（Manus）

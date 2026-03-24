@@ -1,5 +1,7 @@
 # サイト構成ルール（プロンプトに含まれる構成・情報設計）
 
+派生版 **`mac-mini-bot-v2`** の **LLM 2 段**索引の一部（主に第 1 段 Gemini マニュアル）。全体は [README](./README.md) / [README](../../README.md)。
+
 ## 共通の考え方
 
 - マニュアル手順はプランごとに `config/prompts/basic_lp_manual/`、`basic_cp_manual/`、`standard_cp_manual/`、`advance_cp_manual/` に分割されている。

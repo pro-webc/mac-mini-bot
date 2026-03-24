@@ -2,6 +2,11 @@
 
 本フォルダは、`config/prompts/` のテキストと `docs/LLM_PIPELINE.md` に沿った**実装フロー**から、モデル（Gemini / Manus）に渡る入力とルールをジャンル別に整理したものです。
 
+## 派生版 `mac-mini-bot-v2` と LLM 2 段
+
+- **開発主軸ブランチ**: `mac-mini-bot-v2`（上流 `main` との関係はルート `README.md` を参照）。
+- **LLM 2 段**: **第 1 段 Gemini**（`*_manual/*.txt`）で要件・Canvas 相当を生成し、**第 2 段 Manus**（`manus/*.txt`）でリファクタ・実装・push を担う構成を**正**として本索引を保守する。
+
 | ファイル | 内容 |
 |----------|------|
 | [runtime-inputs.md](./runtime-inputs.md) | コードから差し込まれるデータ（ヒアリング本文・案件メタ・プレースホルダ・チェーン出力の受け渡し） |

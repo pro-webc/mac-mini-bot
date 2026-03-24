@@ -1,5 +1,7 @@
 # コンテンツ・コピー・表現・アクセシビリティ
 
+派生版 **`mac-mini-bot-v2`** の **LLM 2 段**索引の一部。全体は [README](./README.md) / [README](../../README.md)。
+
 マニュアル各所と `technical_spec_prompt_block.txt` に分散している「文言とユーザー向け品質」のルールを集約します。
 
 ## 絵文字・装飾記号

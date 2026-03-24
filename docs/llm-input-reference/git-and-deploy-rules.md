@@ -1,5 +1,7 @@
 # Git / リポジトリ / push・デプロイ連携ルール
 
+派生版 **`mac-mini-bot-v2`** の **LLM 2 段**索引の一部（主に第 2 段 Manus・`BOT_DEPLOY_GITHUB_URL`）。全体は [README](./README.md) / [README](../../README.md)。
+
 ## 対象
 
 主に **Manus 第2フェーズ**（`config/prompts/manus/*.txt`）と、`MANUS_PROVIDES_DEPLOY_GITHUB_URL` 有効時の**返答形式**。ローカルでの `modules.github_client` による push は別経路（`docs/LLM_PIPELINE.md` 参照）。

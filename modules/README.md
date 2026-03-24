@@ -2,6 +2,8 @@
 
 `main.py` の `process_case` に近い順に並べています。
 
+**派生版 `mac-mini-bot-v2`**: **LLM 2 段**（`*_gemini_manual`＝第 1 段、`basic_lp_refactor_gemini` / `manus_refactor`＝第 2 段）を主系とする。全体方針はルート `README.md`、割当表は `docs/LLM_PIPELINE.md`。
+
 ## オーケストレーション・入出力
 
 | モジュール | 役割 |

@@ -1,5 +1,7 @@
 # `config/prompts/` の見方
 
+**派生版 `mac-mini-bot-v2`** では **LLM 2 段**（`*_manual/` の Gemini 手順 → `manus/` の Manus 手順）を主系とする。方針・ブランチ運用はルート `README.md`、工程対応表は `docs/LLM_PIPELINE.md`、ルールのジャンル索引は `docs/llm-input-reference/` を参照。
+
 ## 自動読み込み（共通・プレーンテキスト）
 
 **`config/prompts/common/technical_spec_prompt_block.txt`** を UTF-8 のまま読み、  

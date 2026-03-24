@@ -1,5 +1,7 @@
 # ランタイム入力（コードから LLM へ渡るデータ）
 
+派生版 **`mac-mini-bot-v2`** の **LLM 2 段**（Gemini 第 1 段 → Manus 第 2 段）索引の一部。全体方針は [README](./README.md) およびリポジトリ直下 [README](../../README.md) を参照。
+
 ## 入口: TEXT_LLM ステージ
 
 `modules.llm.text_llm_stage.run_text_llm_stage` が `ExtractedHearingBundle` と案件メタを各 Gemini マニュアルパイプラインに渡します。

@@ -1,5 +1,7 @@
 # デザインルール（配色・レイアウト・UI 品質）
 
+派生版 **`mac-mini-bot-v2`** の **LLM 2 段**索引の一部。全体は [README](./README.md) / [README](../../README.md)。
+
 ## マニュアル手順内（プラン別 .txt）
 
 ### BASIC LP
