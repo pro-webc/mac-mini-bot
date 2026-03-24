@@ -223,7 +223,8 @@ class WebsiteBot:
             # --- フェーズ2: TEXT_LLM（要望抽出・仕様 dict 生成）---
             # 引数: hearing_bundle（フェーズ1のヒアリング本文・メモ等） / contract_plan・partner_name（案件メタ）
             #       work_branch（BASIC_LP 等。プラン別パイプライン選択に使用）
-            # 処理: modules.llm.text_llm_stage が work_branch で if/elif 分岐し、対応する Gemini TEXT パイプラインを実行
+            # 処理: text_llm_stage が Gemini マニュアル（第1フェーズ: プロンプト・仕様生成）を実行し、
+            #       設定時は続けて Manus（第2フェーズ: 実装・GitHub push・URL 返却）を呼ぶ。対応表は docs/LLM_PIPELINE.md。
             # 出力: requirements_result（要望まとめ）, spec（フェーズ3の generate_site・raw 保存などの入力）
             logger.info("【フェーズ2】TEXT_LLM … branch=%s", work_branch.value)
             requirements_result, spec = run_text_llm_stage(

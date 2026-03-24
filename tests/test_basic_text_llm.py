@@ -1,4 +1,4 @@
-"""BASIC プラン TEXT_LLM（Gemini マニュアル経路をスタブで検証）"""
+"""BASIC プラン TEXT_LLM（統一2段パイプラインをスタブで検証）"""
 import pytest
 from modules.case_extraction import ExtractedHearingBundle
 from modules.contract_workflow import ContractWorkBranch
@@ -7,7 +7,8 @@ from modules.llm.text_llm_stage import run_text_llm_stage
 
 
 def test_basic_pipeline_single_page(monkeypatch: pytest.MonkeyPatch) -> None:
-    def fake_cp(**kwargs: object) -> tuple[dict, dict, object]:
+    def fake_two_stage(**kwargs: object) -> tuple[dict, dict, object]:
+        assert kwargs.get("plan_type") == "basic"
         req = {
             "plan_type": "basic",
             "site_build_prompt": "x" * 400,
@@ -25,11 +26,10 @@ def test_basic_pipeline_single_page(monkeypatch: pytest.MonkeyPatch) -> None:
         )
         return req, spec, object()
 
-    monkeypatch.setattr("config.config.BASIC_CP_USE_GEMINI_MANUAL", True)
     monkeypatch.setattr("config.config.GEMINI_API_KEY", "dummy-key")
     monkeypatch.setattr(
-        "modules.basic_cp_gemini_manual.run_basic_cp_gemini_manual_pipeline",
-        fake_cp,
+        "modules.two_stage_gemini_pipeline.run_two_stage_gemini_pipeline",
+        fake_two_stage,
     )
     bundle = ExtractedHearingBundle(
         hearing_sheet_content="会社: テスト商事。事業: コンサル。",

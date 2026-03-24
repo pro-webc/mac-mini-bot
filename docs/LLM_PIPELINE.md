@@ -4,6 +4,21 @@
 
 ---
 
+## 生成の第1フェーズ（Gemini）／第2フェーズ（Manus）
+
+ドキュメント・運用で「誰が何を渡すか」を揃えるための呼び方（**案件全体の `main` ログ「フェーズ1〜3」とは別番号**）。
+
+| 呼び方 | 役割 | 主な入力 | 主な出力 |
+|--------|------|----------|----------|
+| **第1フェーズ（Gemini）** | スプレッドシート由来の情報と、**プラン・構成・マニュアル手順に沿ったルール**（各 `config/prompts/*_manual/*.txt` 等）を渡し、**サイト制作用プロンプト・台本・仕様**（マークダウン／Canvas 相当）を生成する | `ExtractedHearingBundle`（ヒアリング本文・メモ等）、`contract_plan` / `work_branch` に応じたプロンプト群、`partner_name` / `record_number` など案件メタ | `requirements_result`、`spec`（例: `site_build_prompt`、フェンス付き生成物、Canvas ソース）。組み立ては `modules.llm.text_llm_stage` → 各 `run_*_gemini_manual_pipeline` |
+| **第2フェーズ（Manus）** | **サイト実装ルール**（`config/prompts/manus/orchestration_prompt.txt` + `refactoring_instruction_handwork.txt`）と **GitHub push・返答形式の指示**（`bot_deploy_instruction.txt` 等。`MANUS_PROVIDES_DEPLOY_GITHUB_URL` 参照）を渡し、**第1フェーズの出力**（Canvas ブロック）を実装に落とし、**GitHub に push したリポジトリの URL** を返す | 上記 `.txt` の連結（`build_basic_lp_refactor_user_prompt`）、Gemini 段の Canvas 単一ファイル相当の文字列 | タスク完了テキスト内の `BOT_DEPLOY_GITHUB_URL:` 行 → `spec` の `manus_deploy_github_url` 等。実装は `modules.basic_lp_refactor_gemini` → `modules.manus_refactor` |
+
+第2フェーズはプランごとの `*_REFACTOR_AFTER_MANUAL` が有効なときに、各 `*_gemini_manual` の**末尾**から 1 タスクとして実行される（**別 API キー `MANUS_API_KEY`**）。
+
+`main` の流れとの対応: **案件フェーズ1**＝ヒアリング抽出（LLM なし）→ **案件フェーズ2**＝`run_text_llm_stage`（中に上表の第1・第2フェーズが含まる）→ **案件フェーズ3**＝`output/sites/...` への反映・ビルド・（必要なら）ボット側 `git push`・Vercel。
+
+---
+
 ## 一覧（処理順）
 
 | 順 | 工程（ログのイメージ） | 使うもの | 主モジュール | 有効条件・備考 |
