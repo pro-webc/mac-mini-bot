@@ -180,6 +180,48 @@ def test_split_manus_response_deploy_url_after_code_fence_block() -> None:
     assert "app/x.tsx" in body
 
 
+def test_split_manus_response_deploy_url_markdown_link_value() -> None:
+    """BOT_DEPLOY 行の値がマークダウンリンクでも https を抽出する。"""
+    from modules.manus_refactor import split_manus_response_deploy_url
+
+    body, url = split_manus_response_deploy_url(
+        "ok\n\nBOT_DEPLOY_GITHUB_URL: [リポジトリ](https://github.com/o/r.git)\n"
+    )
+    assert url == "https://github.com/o/r.git"
+    assert body.strip() == "ok"
+
+
+def test_split_manus_response_deploy_url_angle_brackets() -> None:
+    from modules.manus_refactor import split_manus_response_deploy_url
+
+    body, url = split_manus_response_deploy_url(
+        "x\nBOT_DEPLOY_GITHUB_URL: <https://github.com/acme/proj.git>\n"
+    )
+    assert url == "https://github.com/acme/proj.git"
+    assert body.strip() == "x"
+
+
+def test_split_manus_response_deploy_url_without_git_suffix() -> None:
+    from modules.manus_refactor import split_manus_response_deploy_url
+
+    _, url = split_manus_response_deploy_url(
+        "BOT_DEPLOY_GITHUB_URL: https://github.com/o/r\n"
+    )
+    assert url == "https://github.com/o/r"
+
+
+def test_infer_manus_github_clone_url_optional_git_suffix() -> None:
+    from modules.manus_refactor import infer_manus_github_clone_url
+
+    assert (
+        infer_manus_github_clone_url(
+            "see https://github.com/propagate-webcreation/bot-1-acme.co.jp",
+            record_number="1",
+        )
+        == "https://github.com/propagate-webcreation/bot-1-acme.co.jp"
+    )
+
+
 def test_split_manus_response_deploy_url_allows_trailing_lines_after_url() -> None:
     """BOT_DEPLOY 行の後に「タスク完了」等があっても URL を取る。"""
     from modules.manus_refactor import split_manus_response_deploy_url

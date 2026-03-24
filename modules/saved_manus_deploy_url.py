@@ -10,12 +10,17 @@ from pathlib import Path
 def read_deploy_github_url_file(path: Path) -> str:
     """
     ``03_deploy_github_url.txt`` 相当: 先頭の非空・非コメント行を返す。
+
+    行がマークダウンリンク等の場合は ``https://github.com/...`` だけ抽出する。
     """
+    from modules.manus_refactor import extract_github_clone_url_from_manus_fragment
+
     text = path.read_text(encoding="utf-8").strip()
     for line in text.splitlines():
         s = line.strip()
         if s and not s.startswith("#"):
-            return s
+            hit = extract_github_clone_url_from_manus_fragment(s)
+            return hit if hit else s
     return ""
 
 

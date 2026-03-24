@@ -25,10 +25,30 @@ from config.config import (
 logger = logging.getLogger(__name__)
 
 _BOT_DEPLOY_LINE_KEY = "bot_deploy_github_url"
+# 本文走査用（.git 省略・マークダウンリンク内の URL も search で拾う）
 _GITHUB_CLONE_URL_RE = re.compile(
-    r"https://github\.com/[\w.-]+/[\w.-]+\.git",
+    r"https://github\.com/[\w.-]+/[\w.-]+(?:\.git)?",
     re.IGNORECASE,
 )
+
+
+def extract_github_clone_url_from_manus_fragment(fragment: str | None) -> str | None:
+    """
+    Manus が `BOT_DEPLOY_GITHUB_URL:` の値をプレーン以外で返したときの救済。
+
+    - マークダウンリンク ``[表示名](https://github.com/...)``
+    - 角括弧 ``<https://github.com/...>``
+    - スプレッドシート等でハイパーリンク化された文字列に紛れた URL
+
+    いずれも先頭の ``https://github.com/owner/repo(.git)?`` を抽出する。
+    """
+    if not fragment or not str(fragment).strip():
+        return None
+    s = str(fragment).strip()
+    m = _GITHUB_CLONE_URL_RE.search(s)
+    if not m:
+        return None
+    return m.group(0).rstrip(").,]}\"'")
 
 
 def infer_manus_github_clone_url(
@@ -96,14 +116,16 @@ def split_manus_response_deploy_url(response: str) -> tuple[str, str | None]:
             continue
         parts = s.split(":", 1)
         if len(parts) == 2 and parts[0].strip().lower() == _BOT_DEPLOY_LINE_KEY:
-            url = parts[1].strip().rstrip(").,]}\"'")
+            raw_url = parts[1].strip().rstrip(").,]}\"'")
+            url = extract_github_clone_url_from_manus_fragment(raw_url)
             body = "\n".join(lines[:i]).rstrip()
-            return body, url or None
-        m = re.match(r"^\s*BOT_DEPLOY_GITHUB_URL:\s*(\S+)", raw, re.IGNORECASE)
+            return body, url
+        m = re.match(r"^\s*BOT_DEPLOY_GITHUB_URL:\s*(.+)$", raw, re.IGNORECASE)
         if m:
-            url = m.group(1).strip().rstrip(").,]}\"'")
+            raw_url = m.group(1).strip().rstrip(").,]}\"'")
+            url = extract_github_clone_url_from_manus_fragment(raw_url)
             body = "\n".join(lines[:i]).rstrip()
-            return body, url or None
+            return body, url
     return text, None
 
 
@@ -156,6 +178,8 @@ def run_manus_refactor_stage(
         partner_name=partner_name,
         record_number=record_number,
     )
+    from modules.llm.llm_step_trace import record_llm_turn
+
     if preface_dir == _ref.ADVANCE_CP_REFACTOR_PREFACE_DIR:
         _branch = "ADVANCE-CP"
     elif preface_dir == _ref.STANDARD_CP_REFACTOR_PREFACE_DIR:
@@ -183,84 +207,110 @@ def run_manus_refactor_stage(
         MANUS_TASK_MODE or "(default)",
         len(MANUS_TASK_CONNECTOR_IDS) if MANUS_TASK_CONNECTOR_IDS else 0,
     )
-    r = requests.post(
-        url_create,
-        headers=_headers(),
-        json=body,
-        timeout=120,
-    )
+    try:
+        r = requests.post(
+            url_create,
+            headers=_headers(),
+            json=body,
+            timeout=120,
+        )
+    except BaseException as e:
+        record_llm_turn(
+            kind="manus_refactor",
+            input_text=prompt,
+            error_text=f"{type(e).__name__}: {e}",
+        )
+        raise
     if r.status_code != 200:
+        record_llm_turn(
+            kind="manus_refactor",
+            input_text=prompt,
+            error_text=f"タスク作成 HTTP {r.status_code}: {(r.text or '')[:800]}",
+        )
         raise RuntimeError(
             f"Manus タスク作成失敗 HTTP {r.status_code}: {(r.text or '')[:800]}"
         )
-    created = r.json()
-    task_id = (created or {}).get("task_id") or (created or {}).get("id")
-    task_url = (created or {}).get("task_url")
-    if not task_id and not task_url:
-        raise RuntimeError(f"Manus 応答に task_id / task_url がありません: {created!r}")
-    task_id = str(task_id or "").strip()
-    task_url_slug: str | None = None
-    if task_url:
-        logger.info("Manus タスク URL: %s", task_url)
-        path = (urlparse(str(task_url)).path or "").rstrip("/")
-        if path:
-            last = path.split("/")[-1]
-            if last:
-                task_url_slug = last
+    try:
+        created = r.json()
+        task_id = (created or {}).get("task_id") or (created or {}).get("id")
+        task_url = (created or {}).get("task_url")
+        if not task_id and not task_url:
+            raise RuntimeError(f"Manus 応答に task_id / task_url がありません: {created!r}")
+        task_id = str(task_id or "").strip()
+        task_url_slug: str | None = None
+        if task_url:
+            logger.info("Manus タスク URL: %s", task_url)
+            path = (urlparse(str(task_url)).path or "").rstrip("/")
+            if path:
+                last = path.split("/")[-1]
+                if last:
+                    task_url_slug = last
 
-    # GET /v1/tasks/{id} は Create の task_id と manus.im URL のスラッグが一致しないと 404 になることがある。
-    # スラッグを優先し、404 のときは task_id にフォールバックする。
-    poll_candidates: list[str] = []
-    if task_url_slug:
-        poll_candidates.append(task_url_slug)
-    if task_id and task_id not in poll_candidates:
-        poll_candidates.append(task_id)
-    if not poll_candidates:
-        raise RuntimeError(f"Manus ポーリング用 ID を決められません: {created!r}")
-    poll_idx = 0
-    poll_id = poll_candidates[poll_idx]
-    deadline = time.monotonic() + float(MANUS_REFACTOR_TIMEOUT_SEC)
-    last_status = ""
-    while time.monotonic() < deadline:
-        url_get = f"{base}/v1/tasks/{poll_id}"
-        gr = requests.get(url_get, headers=_headers(), timeout=60)
-        if gr.status_code == 404 and poll_idx + 1 < len(poll_candidates):
-            poll_idx += 1
-            poll_id = poll_candidates[poll_idx]
-            logger.warning(
-                "Manus GetTask 404 のため別 ID でポーリングします → %s",
-                poll_id,
-            )
-            time.sleep(min(2.0, float(MANUS_REFACTOR_POLL_INTERVAL_SEC)))
-            continue
-        if gr.status_code != 200:
-            raise RuntimeError(
-                f"Manus GetTask 失敗 HTTP {gr.status_code}: {(gr.text or '')[:800]}"
-            )
-        task = gr.json()
-        status = (task or {}).get("status") or ""
-        if status != last_status:
-            logger.info("Manus タスク %s status=%s", poll_id, status)
-            last_status = status
-        if status == "completed":
-            text = _extract_assistant_markdown(task)
-            if not text.strip():
-                raise RuntimeError(
-                    "Manus タスクは completed ですが output_text が空です。"
-                    f" metadata={task.get('metadata')!r}"
+        # GET /v1/tasks/{id} は Create の task_id と manus.im URL のスラッグが一致しないと 404 になることがある。
+        # スラッグを優先し、404 のときは task_id にフォールバックする。
+        poll_candidates: list[str] = []
+        if task_url_slug:
+            poll_candidates.append(task_url_slug)
+        if task_id and task_id not in poll_candidates:
+            poll_candidates.append(task_id)
+        if not poll_candidates:
+            raise RuntimeError(f"Manus ポーリング用 ID を決められません: {created!r}")
+        poll_idx = 0
+        poll_id = poll_candidates[poll_idx]
+        deadline = time.monotonic() + float(MANUS_REFACTOR_TIMEOUT_SEC)
+        last_status = ""
+        while time.monotonic() < deadline:
+            url_get = f"{base}/v1/tasks/{poll_id}"
+            gr = requests.get(url_get, headers=_headers(), timeout=60)
+            if gr.status_code == 404 and poll_idx + 1 < len(poll_candidates):
+                poll_idx += 1
+                poll_id = poll_candidates[poll_idx]
+                logger.warning(
+                    "Manus GetTask 404 のため別 ID でポーリングします → %s",
+                    poll_id,
                 )
-            logger.info(
-                "%s Manus: リファクタ完了 task_id=%s chars=%s",
-                _branch,
-                poll_id,
-                len(text),
-            )
-            return text
-        if status == "failed":
-            err = (task or {}).get("error") or (task or {}).get("incomplete_details")
-            raise RuntimeError(f"Manus タスク失敗: {err!r}")
-        time.sleep(float(MANUS_REFACTOR_POLL_INTERVAL_SEC))
+                time.sleep(min(2.0, float(MANUS_REFACTOR_POLL_INTERVAL_SEC)))
+                continue
+            if gr.status_code != 200:
+                raise RuntimeError(
+                    f"Manus GetTask 失敗 HTTP {gr.status_code}: {(gr.text or '')[:800]}"
+                )
+            task = gr.json()
+            status = (task or {}).get("status") or ""
+            if status != last_status:
+                logger.info("Manus タスク %s status=%s", poll_id, status)
+                last_status = status
+            if status == "completed":
+                text = _extract_assistant_markdown(task)
+                if not text.strip():
+                    raise RuntimeError(
+                        "Manus タスクは completed ですが output_text が空です。"
+                        f" metadata={task.get('metadata')!r}"
+                    )
+                record_llm_turn(
+                    kind="manus_refactor",
+                    input_text=prompt,
+                    output_text=text,
+                )
+                logger.info(
+                    "%s Manus: リファクタ完了 task_id=%s chars=%s",
+                    _branch,
+                    poll_id,
+                    len(text),
+                )
+                return text
+            if status == "failed":
+                err = (task or {}).get("error") or (task or {}).get("incomplete_details")
+                raise RuntimeError(f"Manus タスク失敗: {err!r}")
+            time.sleep(float(MANUS_REFACTOR_POLL_INTERVAL_SEC))
 
-    raise RuntimeError(
-        f"Manus タスクがタイムアウトしました（{MANUS_REFACTOR_TIMEOUT_SEC}s）: {poll_id}"
-    )
+        raise RuntimeError(
+            f"Manus タスクがタイムアウトしました（{MANUS_REFACTOR_TIMEOUT_SEC}s）: {poll_id}"
+        )
+    except BaseException as e:
+        record_llm_turn(
+            kind="manus_refactor",
+            input_text=prompt,
+            error_text=f"{type(e).__name__}: {e}",
+        )
+        raise

@@ -59,6 +59,7 @@ from modules.llm.llm_raw_output import (
     write_llm_raw_artifacts_phase2_snapshot,
     write_manus_only_style_run_artifacts,
 )
+from modules.llm.llm_step_trace import begin_case_llm_trace, end_case_llm_trace
 from modules.llm.text_llm_stage import run_text_llm_stage
 from modules.site_build import verify_site_build
 from modules.site_generator import SiteGenerator
@@ -176,242 +177,250 @@ class WebsiteBot:
             )
 
             self.spreadsheet.update_ai_status(case["row_number"], "処理中")
-
-            # --- フェーズ1: ヒアリング本文・関連メモの取得（LLM 入力の原料） ---
-            logger.info("【フェーズ1】ヒアリングシート類の抽出…")
-            hearing_bundle = extract_hearing_bundle(
-                case,
-                fetch_hearing_sheet=self.spec_generator.fetch_hearing_sheet,
-            )
-            if not (hearing_bundle.hearing_sheet_content or "").strip():
-                logger.warning(
-                    "ヒアリング本文が空のため案件をスキップします row=%s record=%s partner=%s",
-                    case.get("row_number"),
-                    case.get("record_number"),
-                    case.get("partner_name"),
-                )
-                self.spreadsheet.update_ai_status(
-                    case["row_number"],
-                    "スキップ: ヒアリング本文なし（AH列の取得結果が空）",
-                )
-                return None
-
-            # --- 契約プラン → 作業分岐（BASIC は別シートで LP なら BASIC_LP に寄せる） ---
-            plan_raw = (case.get("contract_plan") or "").strip()
-            plan_info = get_contract_plan_info(plan_raw)
-            work_branch_before_lp = resolve_contract_work_branch(case["contract_plan"])
-            work_branch = resolve_work_branch_with_basic_lp_override(
-                case["contract_plan"],
-                record_number=str(case.get("record_number") or ""),
-                partner_name=str(case.get("partner_name") or ""),
-                lookup_basic_is_landing_page=self.spreadsheet.lookup_basic_is_landing_page,
-            )
-            if (
-                work_branch_before_lp == ContractWorkBranch.BASIC
-                and work_branch == ContractWorkBranch.BASIC_LP
-            ):
-                logger.info(
-                    "BASIC サイトタイプシートにより作業分岐を BASIC LP に変更しました "
-                    "(record=%r)",
-                    case.get("record_number"),
-                )
+            trace_root = begin_case_llm_trace(str(case.get("record_number") or ""))
             logger.info(
-                "契約プラン作業分岐: plan=%r branch=%s resolved_type=%s pages=%s",
-                plan_raw,
-                work_branch.value,
-                plan_info.get("type"),
-                plan_info.get("pages"),
+                "LLM 入出力トレース: %s/llm_steps/ （Gemini・Manus 各呼び出し）",
+                trace_root,
             )
+            try:
 
-            # --- フェーズ2: TEXT_LLM（要望抽出・仕様 dict 生成）---
-            # 引数: hearing_bundle（フェーズ1のヒアリング本文・メモ等） / contract_plan・partner_name（案件メタ）
-            #       work_branch（BASIC_LP 等。プラン別パイプライン選択に使用）
-            # 処理: modules.llm.text_llm_stage が work_branch で if/elif 分岐し、対応する Gemini TEXT パイプラインを実行
-            # 出力: requirements_result（要望まとめ）, spec（フェーズ3の generate_site・raw 保存などの入力）
-            logger.info("【フェーズ2】TEXT_LLM … branch=%s", work_branch.value)
-            requirements_result, spec = run_text_llm_stage(
-                hearing_bundle,
-                contract_plan=case["contract_plan"],
-                partner_name=case["partner_name"],
-                record_number=str(case.get("record_number") or ""),
-                work_branch=work_branch,
-            )
-
-            site_name = f"{case['partner_name']}-{case['record_number']}"
-            # 引数: フェーズ2の spec / requirements（generate_site 前に必ずディスクへ）
-            # 処理: output/phase2_complete/…（sites の削除・フェーズ3成否に依存しない）
-            # 出力: ログに絶対パス（output は .gitignore のためリポジトリには載らない）
-            write_llm_raw_artifacts_phase2_snapshot(
-                site_name=site_name,
-                spec=spec,
-                requirements_result=requirements_result,
-                work_branch=work_branch,
-            )
-
-            # --- フェーズ3: ディスク上のサイト出力先（output/sites/<名前>/） ---
-            logger.info(
-                "【フェーズ3】出力先準備・LLM 正本の保存・検証・Git push / デプロイ…"
-            )
-            logger.info("› Gemini 出力の適用先ディレクトリを用意（テンプレは使わない）…")
-            site_dir = self.site_generator.generate_site(spec, [], site_name)
-
-            # LLM の生出力を llm_raw_output/ に残す（追跡・デバッグ用。コミットに含まれる）
-            raw_n = write_llm_raw_artifacts(
-                site_dir,
-                spec=spec,
-                requirements_result=requirements_result,
-                work_branch=work_branch,
-            )
-            manus_snap = write_manus_only_style_run_artifacts(
-                site_dir,
-                spec=spec,
-                work_branch=work_branch,
-                partner_name=str(case.get("partner_name") or ""),
-                record_number=str(case.get("record_number") or ""),
-            )
-            if manus_snap is not None:
-                logger.info(
-                    "› Manus 工程テスト互換: %s",
-                    manus_snap.relative_to(site_dir.resolve()),
+                # --- フェーズ1: ヒアリング本文・関連メモの取得（LLM 入力の原料） ---
+                logger.info("【フェーズ1】ヒアリングシート類の抽出…")
+                hearing_bundle = extract_hearing_bundle(
+                    case,
+                    fetch_hearing_sheet=self.spec_generator.fetch_hearing_sheet,
                 )
-            logger.info(
-                "› LLM 正本: llm_raw_output/ に %s ファイル（形式を強制せずそのまま保存・必ず push）",
-                raw_n,
-            )
-
-            # Manus が末尾 URL のみ有効で本文にフェンスが無い場合の救済用（フェンス適用より前に参照）
-            manus_git_for_fallback = (spec.get("manus_deploy_github_url") or "").strip()
-
-            # spec 内マークダウンのフェンス → app/ 等へファイル書き込み
-            n_gen = apply_contract_outputs_to_site_dir(
-                spec, site_dir, work_branch=work_branch
-            )
-            if n_gen:
-                logger.info(
-                    "› フェンス解析でサイトに %s ファイル反映（分岐 %s）",
-                    n_gen,
-                    work_branch.value,
-                )
-            if (
-                work_branch
-                in (
-                    ContractWorkBranch.BASIC_LP,
-                    ContractWorkBranch.BASIC,
-                    ContractWorkBranch.STANDARD,
-                    ContractWorkBranch.ADVANCE,
-                )
-                and n_gen == 0
-                and (
-                    gemini_manual_enabled_for_branch(work_branch)
-                    or manus_git_for_fallback
-                )
-            ):
-                if manus_git_for_fallback:
-                    # 引数: manus_git_for_fallback（Manus が push 済みの clone URL） / site_dir（llm_raw_output 保持）
-                    # 処理: GitHub を shallow clone し app 等を site_dir にマージ（作業ログだけの返答でもビルド可能にする）
-                    # 出力: site_dir に package.json 等が揃い、後続の build / Vercel と同一パスへ進む
+                if not (hearing_bundle.hearing_sheet_content or "").strip():
                     logger.warning(
-                        "フェンスからファイル 0 件だが manus_deploy_github_url があるため "
-                        "GitHub を shallow clone して続行します: %s",
-                        manus_git_for_fallback,
+                        "ヒアリング本文が空のため案件をスキップします row=%s record=%s partner=%s",
+                        case.get("row_number"),
+                        case.get("record_number"),
+                        case.get("partner_name"),
                     )
-                    self.github_client.shallow_clone_repo_into_site_dir(
-                        manus_git_for_fallback, site_dir
+                    self.spreadsheet.update_ai_status(
+                        case["row_number"],
+                        "スキップ: ヒアリング本文なし（AH列の取得結果が空）",
                     )
-                else:
-                    raise RuntimeError(
-                        "生成マークダウンからサイトファイルを1件も適用できませんでした。"
-                        " 該当プランの Gemini マニュアルとリファクタ出力が spec に入っているか確認してください。"
-                    )
+                    return None
 
-            # ビルドをかけるなら package.json はフェンス出力に必須
-            if SITE_BUILD_ENABLED or SITE_IMPLEMENTATION_ENABLED:
-                pkg = site_dir / "package.json"
-                if not pkg.is_file():
-                    raise RuntimeError(
-                        "package.json がありません。実装は Gemini のマークダウン（フェンス）のみとするため、"
-                        "出力に `package.json` を含めてください（Next.js 依存関係・スクリプトの完全な定義）。"
-                    )
-
-            # site_implementer = 実装パス + npm build。SITE_BUILD_ENABLED のみ = build のみ（軽い方）
-            if SITE_IMPLEMENTATION_ENABLED:
-                logger.info("› サイト実装を実行（npm build 検証）…")
-                ok_impl, impl_log = self.site_implementer.implement(
-                    spec,
-                    site_dir,
+                # --- 契約プラン → 作業分岐（BASIC は別シートで LP なら BASIC_LP に寄せる） ---
+                plan_raw = (case.get("contract_plan") or "").strip()
+                plan_info = get_contract_plan_info(plan_raw)
+                work_branch_before_lp = resolve_contract_work_branch(case["contract_plan"])
+                work_branch = resolve_work_branch_with_basic_lp_override(
                     case["contract_plan"],
+                    record_number=str(case.get("record_number") or ""),
+                    partner_name=str(case.get("partner_name") or ""),
+                    lookup_basic_is_landing_page=self.spreadsheet.lookup_basic_is_landing_page,
+                )
+                if (
+                    work_branch_before_lp == ContractWorkBranch.BASIC
+                    and work_branch == ContractWorkBranch.BASIC_LP
+                ):
+                    logger.info(
+                        "BASIC サイトタイプシートにより作業分岐を BASIC LP に変更しました "
+                        "(record=%r)",
+                        case.get("record_number"),
+                    )
+                logger.info(
+                    "契約プラン作業分岐: plan=%r branch=%s resolved_type=%s pages=%s",
+                    plan_raw,
+                    work_branch.value,
+                    plan_info.get("type"),
+                    plan_info.get("pages"),
+                )
+
+                # --- フェーズ2: TEXT_LLM（要望抽出・仕様 dict 生成）---
+                # 引数: hearing_bundle（フェーズ1のヒアリング本文・メモ等） / contract_plan・partner_name（案件メタ）
+                #       work_branch（BASIC_LP 等。プラン別パイプライン選択に使用）
+                # 処理: modules.llm.text_llm_stage が work_branch で if/elif 分岐し、対応する Gemini TEXT パイプラインを実行
+                # 出力: requirements_result（要望まとめ）, spec（フェーズ3の generate_site・raw 保存などの入力）
+                logger.info("【フェーズ2】TEXT_LLM … branch=%s", work_branch.value)
+                requirements_result, spec = run_text_llm_stage(
+                    hearing_bundle,
+                    contract_plan=case["contract_plan"],
+                    partner_name=case["partner_name"],
+                    record_number=str(case.get("record_number") or ""),
                     work_branch=work_branch,
                 )
-                if not ok_impl:
-                    raise RuntimeError(
-                        "サイト実装または npm build に失敗しました。ログ末尾: "
-                        + (impl_log[-2000:] if impl_log else "")
-                    )
-            elif SITE_BUILD_ENABLED:
-                logger.info("› 実装はスキップ — npm build で検証のみ…")
-                ok_b, blog = verify_site_build(site_dir)
-                blog = blog or ""
-                if not ok_b:
-                    raise RuntimeError(
-                        "npm build に失敗: " + (blog[-2000:] if blog else "")
-                    )
 
-            # --- GitHub: Manus が URL を返した場合はローカル push をスキップし、その URL で Vercel デプロイ ---
-            fallback_repo_name = sanitize_github_repo_name(
-                case["partner_name"], str(case["record_number"])
-            )
-            manus_git = (spec.get("manus_deploy_github_url") or "").strip()
-            if manus_git:
-                logger.info(
-                    "› GitHub: Manus が push したリポジトリ URL を使用（ローカルからの push をスキップ）…"
+                site_name = f"{case['partner_name']}-{case['record_number']}"
+                # 引数: フェーズ2の spec / requirements（generate_site 前に必ずディスクへ）
+                # 処理: output/phase2_complete/…（sites の削除・フェーズ3成否に依存しない）
+                # 出力: ログに絶対パス（output は .gitignore のためリポジトリには載らない）
+                write_llm_raw_artifacts_phase2_snapshot(
+                    site_name=site_name,
+                    spec=spec,
+                    requirements_result=requirements_result,
+                    work_branch=work_branch,
                 )
-                github_url = manus_git.rstrip("/")
-                if not github_url.lower().endswith(".git"):
-                    github_url = f"{github_url}.git"
-                try:
-                    _, vercel_project_name = github_owner_repo_from_clone_url(github_url)
-                except ValueError:
-                    logger.warning(
-                        "Manus の GitHub URL から owner/repo を解釈できません。"
-                        " Vercel プロジェクト名に従来の sanitize 名を使います: %s",
-                        manus_git,
+
+                # --- フェーズ3: ディスク上のサイト出力先（output/sites/<名前>/） ---
+                logger.info(
+                    "【フェーズ3】出力先準備・LLM 正本の保存・検証・Git push / デプロイ…"
+                )
+                logger.info("› Gemini 出力の適用先ディレクトリを用意（テンプレは使わない）…")
+                site_dir = self.site_generator.generate_site(spec, [], site_name)
+
+                # LLM の生出力を llm_raw_output/ に残す（追跡・デバッグ用。コミットに含まれる）
+                raw_n = write_llm_raw_artifacts(
+                    site_dir,
+                    spec=spec,
+                    requirements_result=requirements_result,
+                    work_branch=work_branch,
+                )
+                manus_snap = write_manus_only_style_run_artifacts(
+                    site_dir,
+                    spec=spec,
+                    work_branch=work_branch,
+                    partner_name=str(case.get("partner_name") or ""),
+                    record_number=str(case.get("record_number") or ""),
+                )
+                if manus_snap is not None:
+                    logger.info(
+                        "› Manus 工程テスト互換: %s",
+                        manus_snap.relative_to(site_dir.resolve()),
+                    )
+                logger.info(
+                    "› LLM 正本: llm_raw_output/ に %s ファイル（形式を強制せずそのまま保存・必ず push）",
+                    raw_n,
+                )
+
+                # Manus が末尾 URL のみ有効で本文にフェンスが無い場合の救済用（フェンス適用より前に参照）
+                manus_git_for_fallback = (spec.get("manus_deploy_github_url") or "").strip()
+
+                # spec 内マークダウンのフェンス → app/ 等へファイル書き込み
+                n_gen = apply_contract_outputs_to_site_dir(
+                    spec, site_dir, work_branch=work_branch
+                )
+                if n_gen:
+                    logger.info(
+                        "› フェンス解析でサイトに %s ファイル反映（分岐 %s）",
+                        n_gen,
+                        work_branch.value,
+                    )
+                if (
+                    work_branch
+                    in (
+                        ContractWorkBranch.BASIC_LP,
+                        ContractWorkBranch.BASIC,
+                        ContractWorkBranch.STANDARD,
+                        ContractWorkBranch.ADVANCE,
+                    )
+                    and n_gen == 0
+                    and (
+                        gemini_manual_enabled_for_branch(work_branch)
+                        or manus_git_for_fallback
+                    )
+                ):
+                    if manus_git_for_fallback:
+                        # 引数: manus_git_for_fallback（Manus が push 済みの clone URL） / site_dir（llm_raw_output 保持）
+                        # 処理: GitHub を shallow clone し app 等を site_dir にマージ（作業ログだけの返答でもビルド可能にする）
+                        # 出力: site_dir に package.json 等が揃い、後続の build / Vercel と同一パスへ進む
+                        logger.warning(
+                            "フェンスからファイル 0 件だが manus_deploy_github_url があるため "
+                            "GitHub を shallow clone して続行します: %s",
+                            manus_git_for_fallback,
+                        )
+                        self.github_client.shallow_clone_repo_into_site_dir(
+                            manus_git_for_fallback, site_dir
+                        )
+                    else:
+                        raise RuntimeError(
+                            "生成マークダウンからサイトファイルを1件も適用できませんでした。"
+                            " 該当プランの Gemini マニュアルとリファクタ出力が spec に入っているか確認してください。"
+                        )
+
+                # ビルドをかけるなら package.json はフェンス出力に必須
+                if SITE_BUILD_ENABLED or SITE_IMPLEMENTATION_ENABLED:
+                    pkg = site_dir / "package.json"
+                    if not pkg.is_file():
+                        raise RuntimeError(
+                            "package.json がありません。実装は Gemini のマークダウン（フェンス）のみとするため、"
+                            "出力に `package.json` を含めてください（Next.js 依存関係・スクリプトの完全な定義）。"
+                        )
+
+                # site_implementer = 実装パス + npm build。SITE_BUILD_ENABLED のみ = build のみ（軽い方）
+                if SITE_IMPLEMENTATION_ENABLED:
+                    logger.info("› サイト実装を実行（npm build 検証）…")
+                    ok_impl, impl_log = self.site_implementer.implement(
+                        spec,
+                        site_dir,
+                        case["contract_plan"],
+                        work_branch=work_branch,
+                    )
+                    if not ok_impl:
+                        raise RuntimeError(
+                            "サイト実装または npm build に失敗しました。ログ末尾: "
+                            + (impl_log[-2000:] if impl_log else "")
+                        )
+                elif SITE_BUILD_ENABLED:
+                    logger.info("› 実装はスキップ — npm build で検証のみ…")
+                    ok_b, blog = verify_site_build(site_dir)
+                    blog = blog or ""
+                    if not ok_b:
+                        raise RuntimeError(
+                            "npm build に失敗: " + (blog[-2000:] if blog else "")
+                        )
+
+                # --- GitHub: Manus が URL を返した場合はローカル push をスキップし、その URL で Vercel デプロイ ---
+                fallback_repo_name = sanitize_github_repo_name(
+                    case["partner_name"], str(case["record_number"])
+                )
+                manus_git = (spec.get("manus_deploy_github_url") or "").strip()
+                if manus_git:
+                    logger.info(
+                        "› GitHub: Manus が push したリポジトリ URL を使用（ローカルからの push をスキップ）…"
+                    )
+                    github_url = manus_git.rstrip("/")
+                    if not github_url.lower().endswith(".git"):
+                        github_url = f"{github_url}.git"
+                    try:
+                        _, vercel_project_name = github_owner_repo_from_clone_url(github_url)
+                    except ValueError:
+                        logger.warning(
+                            "Manus の GitHub URL から owner/repo を解釈できません。"
+                            " Vercel プロジェクト名に従来の sanitize 名を使います: %s",
+                            manus_git,
+                        )
+                        vercel_project_name = fallback_repo_name
+                else:
+                    logger.info("› GitHub にソースコードを push…")
+                    github_url = self.github_client.push_to_github(
+                        site_dir,
+                        fallback_repo_name,
+                        "test",
                     )
                     vercel_project_name = fallback_repo_name
-            else:
-                logger.info("› GitHub にソースコードを push…")
-                github_url = self.github_client.push_to_github(
-                    site_dir,
-                    fallback_repo_name,
-                    "test",
+
+                vercel_name_for_api = sanitize_vercel_project_name(vercel_project_name)
+                logger.info(
+                    "› Vercel にデプロイ…（git=%s project=%s）",
+                    github_url,
+                    vercel_name_for_api,
                 )
-                vercel_project_name = fallback_repo_name
+                deployment = self.vercel_client.deploy_from_github(
+                    github_url, vercel_project_name
+                )
+                deploy_url = deployment["url"]
 
-            vercel_name_for_api = sanitize_vercel_project_name(vercel_project_name)
-            logger.info(
-                "› Vercel にデプロイ…（git=%s project=%s）",
-                github_url,
-                vercel_name_for_api,
-            )
-            deployment = self.vercel_client.deploy_from_github(
-                github_url, vercel_project_name
-            )
-            deploy_url = deployment["url"]
+                logger.info("› デプロイ URL が開けるか確認…")
+                if not self.vercel_client.verify_deployment_url(deploy_url):
+                    logger.warning("デプロイURLが閲覧できません: %s", deploy_url)
 
-            logger.info("› デプロイ URL が開けるか確認…")
-            if not self.vercel_client.verify_deployment_url(deploy_url):
-                logger.warning("デプロイURLが閲覧できません: %s", deploy_url)
+                logger.info("› スプレッドシートを更新…")
+                # 引数: deploy_url（公開 URL） / row（案件行）
+                # 処理: AW と AV（完了）を 1 回の batchUpdate で更新（片方だけ成功しないよう揃える）
+                # 出力: シート上でデモ URL と mac-mini 完了が同時に確定
+                self.spreadsheet.update_deploy_url_and_complete_status(
+                    case["row_number"], deploy_url
+                )
 
-            logger.info("› スプレッドシートを更新…")
-            # 引数: deploy_url（公開 URL） / row（案件行）
-            # 処理: AW と AV（完了）を 1 回の batchUpdate で更新（片方だけ成功しないよう揃える）
-            # 出力: シート上でデモ URL と mac-mini 完了が同時に確定
-            self.spreadsheet.update_deploy_url_and_complete_status(
-                case["row_number"], deploy_url
-            )
+                logger.info("✓ 案件完了 — 公開 URL: %s", deploy_url)
+                return deploy_url
 
-            logger.info("✓ 案件完了 — 公開 URL: %s", deploy_url)
-            return deploy_url
-
+            finally:
+                end_case_llm_trace()
         # 失敗: ログ → AV に短いエラー → 例外を再送出（run() は次の案件へ続行可）
         except Exception as e:
             logger.error(

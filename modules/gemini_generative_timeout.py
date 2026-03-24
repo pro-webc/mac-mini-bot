@@ -101,3 +101,7 @@ def ensure_gemini_rpc_patch_from_config() -> None:
         timeout_sec=float(GEMINI_RPC_TIMEOUT_SEC),
         deadline_retries=int(GEMINI_RPC_DEADLINE_RETRIES),
     )
+    # タイムアウトラッパーの外側に連鎖（案件トレース有効時のみ output/<record>/llm_steps/ へ保存）
+    from modules.llm.llm_step_trace import install_generative_model_trace_wrap
+
+    install_generative_model_trace_wrap()
