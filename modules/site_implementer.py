@@ -5,7 +5,12 @@ import logging
 import re
 from pathlib import Path
 
-from config.config import OUTPUT_DIR, SITE_BUILD_ENABLED, SITE_IMPLEMENTATION_ENABLED
+from config.config import (
+    OUTPUT_DIR,
+    SITE_BUILD_ENABLED,
+    SITE_IMPLEMENTATION_ENABLED,
+    get_contract_plan_info,
+)
 
 from modules.contract_workflow import ContractWorkBranch
 from modules.site_build import _ensure_package_json, verify_site_build
@@ -73,7 +78,14 @@ class SiteImplementer:
             logger.info("SITE_BUILD_ENABLED=false のためビルド検証をスキップ")
             return True, "build_skipped"
 
-        ok, blog = verify_site_build(site_dir, skip_install=False)
+        # 引数: contract_plan（契約プラン名） / site_dir
+        # 処理: プランの契約ページ数を取得し、page.tsx 本数上限チェックに渡す（modules.site_build.verify_site_build）
+        # 出力: 超過時は npm 前に失敗
+        pi = get_contract_plan_info((contract_plan or "").strip())
+        contract_max_pages = int(pi.get("pages") or 1)
+        ok, blog = verify_site_build(
+            site_dir, skip_install=False, contract_max_pages=contract_max_pages
+        )
         if ok:
             logger.info("ビルド検証成功")
             return True, blog or ""

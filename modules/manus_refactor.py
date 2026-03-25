@@ -86,9 +86,9 @@ def infer_manus_github_clone_url(
         if len(hits) > 1:
             return hits[-1]
 
-    # 本番命名 test-run-{record}。互換: bot-{record}-*、demo-{record}-*
+    # 本番命名 BotRun-{partner}。互換: test-run-{record}、bot-{record}-*、demo-{record}-*
     pref_urls = [
-        u for u in uniq if "test-run-" in u.lower() or "bot-" in u.lower()
+        u for u in uniq if "botrun-" in u.lower() or "test-run-" in u.lower() or "bot-" in u.lower()
     ]
     if len(pref_urls) == 1:
         return pref_urls[0]
@@ -165,6 +165,8 @@ def run_manus_refactor_stage(
     preface_dir: Path | None = None,
     partner_name: str | None = None,
     record_number: str | None = None,
+    hearing_reference_block: str | None = None,
+    contract_max_pages: int | None = None,
 ) -> str:
     """
     Manus にリファクタ用プロンプトを渡し、完了までポーリングして本文を返す。
@@ -177,6 +179,8 @@ def run_manus_refactor_stage(
         preface_dir=preface_dir,
         partner_name=partner_name,
         record_number=record_number,
+        hearing_reference_block=hearing_reference_block,
+        contract_max_pages=contract_max_pages,
     )
     from modules.llm.llm_step_trace import record_llm_turn
 
@@ -248,6 +252,7 @@ def run_manus_refactor_stage(
 
         # GET /v1/tasks/{id} は Create の task_id と manus.im URL のスラッグが一致しないと 404 になることがある。
         # スラッグを優先し、404 のときは task_id にフォールバックする。
+        # 全候補が 404 でもタスク作成直後の伝播遅延を許容してリトライする。
         poll_candidates: list[str] = []
         if task_url_slug:
             poll_candidates.append(task_url_slug)
@@ -259,6 +264,9 @@ def run_manus_refactor_stage(
         poll_id = poll_candidates[poll_idx]
         deadline = time.monotonic() + float(MANUS_REFACTOR_TIMEOUT_SEC)
         last_status = ""
+        _max_404_rounds = 5
+        _404_round = 0
+        _404_backoff = 3.0
         while time.monotonic() < deadline:
             url_get = f"{base}/v1/tasks/{poll_id}"
             gr = requests.get(url_get, headers=_headers(), timeout=60)
@@ -270,6 +278,23 @@ def run_manus_refactor_stage(
                     poll_id,
                 )
                 time.sleep(min(2.0, float(MANUS_REFACTOR_POLL_INTERVAL_SEC)))
+                continue
+            if gr.status_code == 404:
+                _404_round += 1
+                if _404_round >= _max_404_rounds:
+                    raise RuntimeError(
+                        f"Manus GetTask 失敗 HTTP 404（{_404_round} 回リトライ後）: {(gr.text or '')[:800]}"
+                    )
+                wait = min(_404_backoff * _404_round, 15.0)
+                logger.warning(
+                    "Manus GetTask 404 — 伝播待ちリトライ %d/%d（%.0fs 後に再試行）",
+                    _404_round,
+                    _max_404_rounds,
+                    wait,
+                )
+                poll_idx = 0
+                poll_id = poll_candidates[poll_idx]
+                time.sleep(wait)
                 continue
             if gr.status_code != 200:
                 raise RuntimeError(

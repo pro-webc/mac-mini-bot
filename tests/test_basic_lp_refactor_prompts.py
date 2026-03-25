@@ -5,6 +5,7 @@ from modules.basic_lp_refactor_gemini import (
     ADVANCE_CP_REFACTOR_PREFACE_DIR,
     BASIC_CP_REFACTOR_PREFACE_DIR,
     STANDARD_CP_REFACTOR_PREFACE_DIR,
+    _normalize_canvas_source_for_manus,
     build_basic_lp_refactor_user_prompt,
 )
 
@@ -46,7 +47,7 @@ def test_refactor_prompt_repo_name_and_description_in_orchestration() -> None:
         partner_name="テスト商事",
         record_number="",
     )
-    assert "test-run-0" in p
+    assert "BotRun-テスト商事" in p
     assert "テスト商事" in p
     assert "{{MANUS_REPO_NAME}}" not in p
     assert "{{MANUS_REPO_DESCRIPTION}}" not in p
@@ -58,13 +59,72 @@ def test_refactor_prompt_record_number_in_repo_name() -> None:
         partner_name="ACME株式会社",
         record_number="12345",
     )
-    assert "test-run-12345" in p
-    assert "ACME株式会社" in p
+    assert "BotRun-ACME株式会社" in p
+    assert "12345-ACME株式会社" in p
 
 
 def test_refactor_prompt_empty_raises() -> None:
     with pytest.raises(RuntimeError, match="空"):
         build_basic_lp_refactor_user_prompt("  \n  ")
+
+
+def test_refactor_prompt_includes_hearing_reference_when_passed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(refactor_mod, "MANUS_PROVIDES_DEPLOY_GITHUB_URL", False)
+    p = build_basic_lp_refactor_user_prompt(
+        "const x = 1",
+        hearing_reference_block="【再掲】参考 https://example.com/ シンプル希望",
+    )
+    assert "【再掲】参考" in p
+    assert "BEGIN_CANVAS_SOURCE" in p
+
+
+def test_refactor_prompt_includes_contract_pages_when_passed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(refactor_mod, "MANUS_PROVIDES_DEPLOY_GITHUB_URL", False)
+    p = build_basic_lp_refactor_user_prompt(
+        "const x = 1",
+        contract_max_pages=6,
+    )
+    assert "契約ページ数（厳守）: 6" in p
+    assert "app/privacy/page.tsx" in p
+
+
+def test_normalize_canvas_source_extracts_tsx_block_from_prose() -> None:
+    src = """
+最初の説明文です。
+
+```tsx
+import React from 'react';
+
+export default function Page() {
+  return <main className="w-full">ok</main>;
+}
+```
+"""
+    out = _normalize_canvas_source_for_manus(src)
+    assert "最初の説明文" not in out
+    assert "export default function Page()" in out
+
+
+def test_refactor_prompt_wraps_normalized_canvas_source_in_fence(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(refactor_mod, "MANUS_PROVIDES_DEPLOY_GITHUB_URL", False)
+    p = build_basic_lp_refactor_user_prompt(
+        """
+説明文
+
+```tsx
+export default function X() { return <main className="x" /> }
+```
+""",
+    )
+    assert "説明文" not in p.split("===== BEGIN_CANVAS_SOURCE =====", 1)[1]
+    assert "以下がリファクタリング元の `canvas_code.txt` 相当です。" in p
+    assert "```tsx\nexport default function X()" in p
 
 
 def test_cp_preface_dir_ignored_same_as_handwork(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -48,6 +48,7 @@ def test_subst_step_8_1_fills_design_and_wire_placeholders() -> None:
     t = _MANUAL.joinpath("step_8_1.txt").read_text(encoding="utf-8")
     out = _subst(
         t,
+        HEARING_REFERENCE_DESIGN_BLOCK="（テスト用再掲）参考サイトの雰囲気",
         STEP_7_OUTPUT="デザイン指示書本文",
         STEP_4_OUTPUT="手順4ワイヤー原稿本文",
     )
@@ -60,6 +61,7 @@ def test_subst_step_6_fills_design_and_structure_placeholders() -> None:
     t = _MANUAL.joinpath("step_6.txt").read_text(encoding="utf-8")
     out = _subst(
         t,
+        HEARING_REFERENCE_DESIGN_BLOCK="（テスト用再掲）デザイン希望",
         HEARING_1_3_OUTPUT="ヒアリング本文",
         STEP_4_OUTPUT="ワイヤー構成本文",
         STEP_5_OUTPUT="手順5デザイン3点本文",

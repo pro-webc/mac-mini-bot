@@ -1,5 +1,7 @@
 **【手順.8-1】**
 
+{{HEARING_REFERENCE_DESIGN_BLOCK}}
+
 ---
 デザイン指示書をペースト(手順7の出力）(タブ④の出力結果)
 {{STEP_7_OUTPUT}}

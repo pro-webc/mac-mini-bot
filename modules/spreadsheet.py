@@ -555,10 +555,17 @@ class SpreadsheetClient:
                 continue
             cases.append(case)
 
-        cases.sort(key=lambda c: int(c["row_number"]))
+        _far_future = date(9999, 12, 31)
+        cases.sort(
+            key=lambda c: (
+                parse_spreadsheet_phase_deadline_cell(c.get("phase_deadline", ""))
+                or _far_future,
+                int(c["row_number"]),
+            )
+        )
         logger.info(
-            "処理対象案件を %s 件取得（上から順・行番号昇順）target_ai_status=%r "
-            "require_empty_test_site_url=%s ball_holder_required=%r min_phase_deadline=%s 行一覧=%s",
+            "処理対象案件を %s 件取得（期限日昇順・同日は行番号昇順）target_ai_status=%r "
+            "require_empty_test_site_url=%s ball_holder_required=%r min_phase_deadline=%s 一覧=%s",
             len(cases),
             SPREADSHEET_TARGET_AI_STATUS,
             SPREADSHEET_BOT_REQUIRE_EMPTY_TEST_SITE_URL,
@@ -566,7 +573,10 @@ class SpreadsheetClient:
             SPREADSHEET_MIN_PHASE_DEADLINE.isoformat()
             if SPREADSHEET_MIN_PHASE_DEADLINE
             else "(なし)",
-            [c["row_number"] for c in cases],
+            [
+                f"row{c['row_number']}={c.get('record_number','?')}(T={c.get('phase_deadline','')[:10]})"
+                for c in cases
+            ],
         )
         return cases
 
@@ -688,6 +698,43 @@ class SpreadsheetClient:
                         _adc_quota_project_help("update_deploy_url_and_complete_status")
                     ) from e
             raise
+
+    def get_ai_status_cell(self, row_number: int, sheet_name: str | None = None) -> str:
+        """
+        AV（mac-mini）列の表示値を 1 セルだけ取得する。
+
+        複数プロセスで ``main.py`` を並列起動するとき、着手直前に呼び出し
+        他ワーカーが既に「処理中」にしていないか確認する用途。
+        """
+        sheet = sheet_name or self.sheet_name
+        col_letter = SPREADSHEET_COLUMNS["ai_status"]
+        range_name = a1_range(sheet, f"{col_letter}{row_number}")
+        try:
+            result = (
+                self.service.spreadsheets()
+                .values()
+                .get(spreadsheetId=self.spreadsheet_id, range=range_name)
+                .execute()
+            )
+        except HttpError as e:
+            logger.error(
+                "mac-mini 列の取得に失敗しました sheet=%s row=%s range=%r %s",
+                sheet,
+                row_number,
+                range_name,
+                _http_error_detail(e),
+                exc_info=True,
+            )
+            if GOOGLE_SHEETS_AUTH_MODE == "application_default":
+                if _is_insufficient_sheets_scope_error(e):
+                    raise RuntimeError(_adc_sheets_scope_help("get_ai_status_cell")) from e
+                if _is_adc_quota_project_error(e):
+                    raise RuntimeError(_adc_quota_project_help("get_ai_status_cell")) from e
+            raise
+        values = result.get("values") or []
+        if not values or not values[0]:
+            return ""
+        return str(values[0][0] or "").strip()
 
     def update_ai_status(
         self, row_number: int, status: str, sheet_name: str | None = None

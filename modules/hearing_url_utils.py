@@ -48,3 +48,77 @@ def existing_site_url_guess_from_hearing(text: str) -> str:
     if len(t) >= HEARING_PASTE_BODY_MIN_LEN:
         return ""
     return first_http_url_in_text(t)
+
+
+# 参考サイト・デザイン希望など「下流で再掲」する行の抽出用（単独の「サイト」は誤爆しやすいので避ける）
+_REF_LINE_HINT_RE = re.compile(
+    r"(参考サイト|参考URL|参考に|デザイン|配色|トーン|雰囲気|モチーフ|おしゃれ|"
+    r"シンプル|モダン|クール|高級|リファレンス|ビジュアル|トンマナ|レイアウト|イメージ|"
+    r"https?://|希望する[^\n]{0,40}サイト|好みの[^\n]{0,20}サイト)",
+    re.IGNORECASE,
+)
+
+
+def hearing_reference_design_excerpt(text: str, *, max_chars: int = 4500) -> str:
+    """
+    ヒアリング全文から、参考サイト・デザイン・雰囲気に関係しそうな行を拾い、
+    前後1行の文脈付きで連結する（長文コピペでも下流に渡しやすいよう短くする）。
+
+    マッチが無いときは ``reference_site_url_from_hearing`` の URL 周辺、
+    それも無ければ先頭から ``max_chars`` までを返す。
+    """
+    t = (text or "").strip()
+    if not t:
+        return ""
+    lines = t.splitlines()
+    picked: set[int] = set()
+    for i, line in enumerate(lines):
+        if _REF_LINE_HINT_RE.search(line):
+            for j in range(max(0, i - 1), min(len(lines), i + 2)):
+                picked.add(j)
+    if picked:
+        merged: list[str] = []
+        prev: str | None = None
+        for idx in sorted(picked):
+            ln = lines[idx]
+            if ln != prev:
+                merged.append(ln)
+            prev = ln
+        out = "\n".join(merged).strip()
+        if len(out) > max_chars:
+            return out[: max_chars - 12].rstrip() + "\n…（以降省略）"
+        return out
+    url = reference_site_url_from_hearing(t)
+    if url:
+        pos = t.find(url)
+        if pos >= 0:
+            half = max(800, max_chars // 2)
+            start = max(0, pos - half // 2)
+            end = min(len(t), pos + len(url) + half)
+            chunk = t[start:end].strip()
+            if start > 0:
+                chunk = "…\n" + chunk
+            if end < len(t):
+                chunk = chunk + "\n…"
+            if len(chunk) > max_chars:
+                return chunk[: max_chars - 12].rstrip() + "\n…（以降省略）"
+            return chunk
+    if len(t) <= max_chars:
+        return t
+    return t[: max_chars - 12].rstrip() + "\n…（以降省略）"
+
+
+def hearing_reference_design_block_for_prompt(text: str, *, max_chars: int = 4500) -> str:
+    """
+    マニュアル手順6・7-1 や Manus 向けに、そのまま差し込めるブロック文字列。
+
+    ヒアリング本文が空のときは「再掲なし」の一文のみ（プレースホルダ未置換を防ぐ）。
+    """
+    t = (text or "").strip()
+    if not t:
+        return "（ヒアリング原文の再掲なし。手順1-3 と手順4 の出力を参照すること。）"
+    body = hearing_reference_design_excerpt(t, max_chars=max_chars)
+    return (
+        "【ヒアリング原文・参考サイト・デザイン関連（下流でも必ず反映すること）】\n"
+        + body
+    )

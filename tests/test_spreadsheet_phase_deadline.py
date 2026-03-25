@@ -26,7 +26,8 @@ def test_parse_spreadsheet_phase_deadline_cell(raw: str, expected: date | None) 
     assert parse_spreadsheet_phase_deadline_cell(raw) == expected
 
 
-def test_config_default_min_phase_deadline() -> None:
+def test_config_default_min_phase_deadline_is_disabled() -> None:
+    """未設定時はフィルタ無効（None）。ハードコード日付で正しい案件を除外しないことを保証。"""
     from config import config as cfg
 
-    assert cfg.SPREADSHEET_MIN_PHASE_DEADLINE == date(2026, 3, 27)
+    assert cfg.SPREADSHEET_MIN_PHASE_DEADLINE is None

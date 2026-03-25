@@ -128,6 +128,61 @@ def test_run_manus_refactor_stage_omits_connectors_when_empty(
     assert "connectors" not in (captured.get("json") or {})
 
 
+def test_run_manus_refactor_stage_retries_on_initial_404(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(cfg, "MANUS_API_KEY", "test-key")
+
+    class _Resp:
+        def __init__(self, status_code: int, payload: dict[str, Any] | None, text: str = "") -> None:
+            self.status_code = status_code
+            self._payload = payload or {}
+            self.text = text
+
+        def json(self) -> dict[str, Any]:
+            return self._payload
+
+    def fake_post(
+        url: str,
+        headers: dict[str, str],
+        json: dict[str, Any] | None = None,
+        timeout: float | None = None,
+    ) -> _OkJson:
+        return _OkJson({"task_id": "api-task-id", "task_url": "https://manus.im/app/slug-task"})
+
+    get_n = {"i": 0}
+
+    def fake_get(
+        url: str,
+        headers: dict[str, str],
+        timeout: float | None = None,
+    ) -> _Resp:
+        get_n["i"] += 1
+        if get_n["i"] <= 2:
+            return _Resp(404, None, '{"code":5,"message":"task not found"}')
+        return _Resp(
+            200,
+            {
+                "status": "completed",
+                "output": [
+                    {
+                        "role": "assistant",
+                        "content": [{"type": "output_text", "text": "ok"}],
+                    }
+                ],
+            },
+        )
+
+    monkeypatch.setattr("modules.manus_refactor.requests.post", fake_post)
+    monkeypatch.setattr("modules.manus_refactor.requests.get", fake_get)
+
+    import modules.manus_refactor as mr
+
+    out = mr.run_manus_refactor_stage(canvas_source_code="export default function Page() { return null }")
+    assert out == "ok"
+    assert get_n["i"] >= 3
+
+
 def test_split_manus_response_deploy_url() -> None:
     from modules.manus_refactor import split_manus_response_deploy_url
 
@@ -257,10 +312,10 @@ def test_infer_manus_github_clone_url_by_record_bot_prefix() -> None:
 def test_infer_manus_github_clone_url_by_record_test_run_prefix() -> None:
     from modules.manus_refactor import infer_manus_github_clone_url
 
-    prose = "push 済み https://github.com/propagate-webcreation/test-run-9408.git です"
+    prose = "push 済み https://github.com/propagate-webcreation/BotRun-志田洋二.git です"
     assert (
         infer_manus_github_clone_url(prose, record_number="9408")
-        == "https://github.com/propagate-webcreation/test-run-9408.git"
+        == "https://github.com/propagate-webcreation/BotRun-志田洋二.git"
     )
 
 

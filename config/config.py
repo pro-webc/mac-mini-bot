@@ -89,9 +89,10 @@ SPREADSHEET_REQUIRE_HEARING_BODY_NOT_URL = os.getenv(
     "SPREADSHEET_REQUIRE_HEARING_BODY_NOT_URL", "true"
 ).strip().lower() in ("1", "true", "yes")
 
-# フェーズ期限日（T 列）がこの日付「以降」の行のみ着手。未設定時は 2026-03-27。
-# false / off / 0 で無効（他条件のみでキュー化）
-_raw_min_phase = (os.getenv("SPREADSHEET_MIN_PHASE_DEADLINE") or "2026-03-27").strip()
+# フェーズ期限日（T 列）がこの日付「以降」の行のみ着手。
+# 未設定時は無効（他条件のみでキュー化）。YYYY-MM-DD で明示指定すると有効化。
+# false / off / 0 でも無効。
+_raw_min_phase = (os.getenv("SPREADSHEET_MIN_PHASE_DEADLINE") or "false").strip()
 if _raw_min_phase.lower() in ("false", "off", "0"):
     SPREADSHEET_MIN_PHASE_DEADLINE: date | None = None
 else:
@@ -101,7 +102,7 @@ else:
         ).date()
     except ValueError as e:
         raise ValueError(
-            "SPREADSHEET_MIN_PHASE_DEADLINE は YYYY-MM-DD で指定してください（例: 2026-03-27）。"
+            "SPREADSHEET_MIN_PHASE_DEADLINE は YYYY-MM-DD で指定してください（例: 2026-03-26）。"
             f" 現在の値: {_raw_min_phase!r}"
         ) from e
 
@@ -267,6 +268,10 @@ SITE_IMPLEMENTATION_ENABLED = os.getenv("SITE_IMPLEMENTATION_ENABLED", "true").s
     "true",
     "yes",
 )
+# npm build 前に `app/**/page.tsx`（および `src/app/**/page.tsx`）の本数が契約ページ数を超えないか検証する
+SITE_BUILD_ENFORCE_CONTRACT_PAGE_TSX_COUNT = os.getenv(
+    "SITE_BUILD_ENFORCE_CONTRACT_PAGE_TSX_COUNT", "true"
+).strip().lower() in ("1", "true", "yes")
 
 # GitHub設定
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN", "")

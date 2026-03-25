@@ -49,6 +49,7 @@ from modules.gemini_generative_timeout import ensure_gemini_rpc_patch_from_confi
 from modules.llm.llm_raw_output import write_pre_manus_llm_checkpoint
 from modules.hearing_url_utils import (
     existing_site_url_guess_from_hearing,
+    hearing_reference_design_block_for_prompt,
     reference_site_url_from_hearing,
 )
 from modules.llm.llm_pipeline_common import MIN_SITE_BUILD_PROMPT_CHARS, finalize_plain_prompt
@@ -297,6 +298,31 @@ def build_standard_cp_gemini_prompt_step_5(
         STEP_4_OUTPUT=step_4_output,
         HEARING_1_3_OUTPUT=step_1_3_output,
         STEP_2_OUTPUT=step_2_output,
+    )
+
+
+def build_standard_cp_gemini_prompt_step_6(*, hearing_sheet_content: str) -> str:
+    """手順6（タブ⑤・API 11/15）に渡すプロンプト全文。参考サイト・デザイン原文を再掲する。"""
+    return _subst(
+        _load_step("step_6.txt"),
+        HEARING_REFERENCE_DESIGN_BLOCK=hearing_reference_design_block_for_prompt(
+            hearing_sheet_content
+        ),
+    )
+
+
+def build_standard_cp_gemini_prompt_step_7_1(
+    *,
+    step_6_output: str,
+    hearing_sheet_content: str,
+) -> str:
+    """手順7-1（タブ⑥・API 12/15）に渡すプロンプト全文。新規チャットのためヒアリング再掲あり。"""
+    return _subst(
+        _load_step("step_7_1.txt"),
+        STEP_6_OUTPUT=(step_6_output or "").strip(),
+        HEARING_REFERENCE_DESIGN_BLOCK=hearing_reference_design_block_for_prompt(
+            hearing_sheet_content
+        ),
     )
 
 
@@ -764,6 +790,7 @@ def run_standard_cp_gemini_api_call_11_of_15(
     step_4_response: str,
     step_5_prompt: str,
     step_5_response: str,
+    hearing_sheet_content: str = "",
 ) -> tuple[str, str]:
     """
     STANDARD-CP マニュアル chain の **Gemini 11/15**（タブ⑤の3通目・手順6）。
@@ -784,7 +811,9 @@ def run_standard_cp_gemini_api_call_11_of_15(
         safety_settings=_SAFETY,
     )
     gcfg = _gen_config()
-    prompt = _load_step("step_6.txt")
+    prompt = build_standard_cp_gemini_prompt_step_6(
+        hearing_sheet_content=hearing_sheet_content
+    )
     hist = _standard_cp_tab4_history_from_user_model_pairs(
         [
             (step_4_prompt, step_4_response),
@@ -800,6 +829,7 @@ def run_standard_cp_gemini_api_call_11_of_15(
 def run_standard_cp_gemini_api_call_12_of_15(
     *,
     step_6_output: str,
+    hearing_sheet_content: str = "",
 ) -> tuple[str, str]:
     """
     STANDARD-CP マニュアル chain の **Gemini 12/15**（新規チャット・手順7-1・タブ⑥の1通目）。
@@ -820,9 +850,9 @@ def run_standard_cp_gemini_api_call_12_of_15(
         safety_settings=_SAFETY,
     )
     gcfg = _gen_config()
-    prompt = _subst(
-        _load_step("step_7_1.txt"),
-        STEP_6_OUTPUT=(step_6_output or "").strip(),
+    prompt = build_standard_cp_gemini_prompt_step_7_1(
+        step_6_output=step_6_output,
+        hearing_sheet_content=hearing_sheet_content,
     )
     logger.info("STANDARD-CP Gemini: 手順7-1のみ（段階テスト・API 12/15・タブ⑥）…")
     chat6 = model.start_chat(history=[])
@@ -1080,7 +1110,9 @@ def run_standard_cp_gemini_manual_pipeline(
     p4 = build_standard_cp_gemini_prompt_step_4(
         hearing_sheet_content=hearing_sheet_content,
     )
-    p6 = _load_step("step_6.txt")
+    p6 = build_standard_cp_gemini_prompt_step_6(
+        hearing_sheet_content=hearing_sheet_content,
+    )
 
     logger.info("STANDARD-CP Gemini: 手順4〜6（タブ⑤）…")
     chat5 = model.start_chat(history=[])
@@ -1112,7 +1144,10 @@ def run_standard_cp_gemini_manual_pipeline(
         + outs.step_3_5
     )
 
-    p71 = _subst(_load_step("step_7_1.txt"), STEP_6_OUTPUT=outs.step_6)
+    p71 = build_standard_cp_gemini_prompt_step_7_1(
+        step_6_output=outs.step_6,
+        hearing_sheet_content=hearing_sheet_content,
+    )
     p72 = _subst(
         _load_step("step_7_2.txt"),
         STEP_3_1_OUTPUT=outs.step_3_1,
@@ -1141,6 +1176,9 @@ def run_standard_cp_gemini_manual_pipeline(
 
     canvas_final = (outs.step_7_4 or "").strip() or outs.step_7_3
 
+    _ref_plan = get_contract_plan_info(contract_plan)
+    _manus_contract_pages = int(_ref_plan.get("pages") or 6)
+
     manus_deploy_github_url: str | None = None
     if STANDARD_CP_REFACTOR_AFTER_MANUAL:
         write_pre_manus_llm_checkpoint(
@@ -1154,24 +1192,33 @@ def run_standard_cp_gemini_manual_pipeline(
             partner_name=partner_name,
             record_number=record_number,
         )
+        _hr = hearing_reference_design_block_for_prompt(hearing_sheet_content)
         outs.raw_prompts["manus_refactor_task"] = build_basic_lp_refactor_user_prompt(
             canvas_final,
             preface_dir=STANDARD_CP_REFACTOR_PREFACE_DIR,
             partner_name=partner_name,
             record_number=record_number,
+            hearing_reference_block=_hr,
+            contract_max_pages=_manus_contract_pages,
         )
         md, manus_deploy_github_url = run_basic_lp_refactor_stage(
             canvas_source_code=canvas_final,
             preface_dir=STANDARD_CP_REFACTOR_PREFACE_DIR,
             partner_name=partner_name,
             record_number=record_number,
+            hearing_reference_block=_hr,
+            contract_max_pages=_manus_contract_pages,
         )
         outs.step_refactor = md
         outs.raw["step_refactor"] = md
         outs.raw["step_refactor_deploy_github_url"] = manus_deploy_github_url or ""
 
-    combined = _build_site_build_prompt_from_steps(outs, partner_name=partner_name)
-    plan_info = get_contract_plan_info(contract_plan)
+    combined = _build_site_build_prompt_from_steps(
+        outs,
+        partner_name=partner_name,
+        hearing_sheet_content=hearing_sheet_content,
+    )
+    plan_info = _ref_plan
     max_pages = int(plan_info.get("pages") or 6)
     if len(combined.strip()) < MIN_SITE_BUILD_PROMPT_CHARS:
         raise RuntimeError(
@@ -1216,6 +1263,7 @@ def _build_site_build_prompt_from_steps(
     outs: StandardCpManualGeminiOutputs,
     *,
     partner_name: str,
+    hearing_sheet_content: str = "",
 ) -> str:
     parts: list[str] = [
         f"【STANDARD-CP / Gemini マニュアル結合ログ】パートナー: {partner_name}\n",
@@ -1238,4 +1286,11 @@ def _build_site_build_prompt_from_steps(
         "\n\n=== 手順6 デザイン指示書 ===\n\n",
         outs.step_6,
     ]
+    if (hearing_sheet_content or "").strip():
+        parts.extend(
+            [
+                "\n\n=== ヒアリング・参考サイト・デザイン（原文抜粋・再掲） ===\n\n",
+                hearing_reference_design_block_for_prompt(hearing_sheet_content),
+            ]
+        )
     return "".join(parts)

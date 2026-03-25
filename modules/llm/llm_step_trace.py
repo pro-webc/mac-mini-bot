@@ -91,6 +91,16 @@ def record_llm_turn(
             _write_text_file(step_dir / "error.txt", error_text)
         elif output_text is not None:
             _write_text_file(step_dir / "output.md", output_text)
+        try:
+            from config.config import OUTPUT_DIR
+
+            rel = step_dir.resolve().relative_to(OUTPUT_DIR.resolve())
+        except ValueError:
+            rel = step_dir
+        logger.info(
+            "LLM トレース保存（1 呼び出しにつき 1 ディレクトリ）: %s",
+            rel,
+        )
     except Exception:
         logger.exception(
             "modules.llm.llm_step_trace: LLM トレース保存に失敗しました（本処理は継続）"

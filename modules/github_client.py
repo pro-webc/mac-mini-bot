@@ -44,20 +44,19 @@ def authenticated_https_clone_url(
 
 def sanitize_github_repo_name(partner_name: str, record_number: str) -> str:
     """
-    GitHub リポジトリ名: ``test-run-{レコード番号}``（レコードは英数字のみ抽出）。
+    GitHub リポジトリ名: ``BotRun-{パートナー名}``（GitHub 向けに正規化）。
 
-    ``partner_name`` は呼び出し互換のため残すがリポジトリ名には使わない。
+    ``record_number`` は呼び出し互換のため残すがリポジトリ名には使わない。
     Manus が作成する名前と揃える（ローカル push フォールバック用）。
     GitHub の名前長上限（100）に収める。
     """
-    _ = partner_name
-    rec = re.sub(r"[^a-zA-Z0-9]", "", str(record_number).strip()) or "0"
-    prefix = "test-run-"
-    name = f"{prefix}{rec}"
+    _ = record_number
+    pn = re.sub(r"[^a-zA-Z0-9\u3000-\u9FFF\uF900-\uFAFF]", "-", (partner_name or "").strip()) or "unknown"
+    pn = re.sub(r"-{2,}", "-", pn).strip("-")
+    prefix = "BotRun-"
+    name = f"{prefix}{pn}"
     if len(name) > 100:
-        max_rec = max(1, 100 - len(prefix))
-        rec = rec[:max_rec]
-        name = f"{prefix}{rec}"
+        name = name[:100].rstrip("-")
     return name
 
 

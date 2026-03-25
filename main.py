@@ -65,7 +65,11 @@ from modules.site_build import verify_site_build
 from modules.site_generator import SiteGenerator
 from modules.site_implementer import SiteImplementer
 from modules.spec_generator import SpecGenerator
-from modules.spreadsheet import SpreadsheetClient, missing_required_case_fields
+from modules.spreadsheet import (
+    SpreadsheetClient,
+    ai_cell_excludes_from_pending_queue,
+    missing_required_case_fields,
+)
 from modules.vercel_client import (
     VercelClient,
     github_owner_repo_from_clone_url,
@@ -165,7 +169,8 @@ class WebsiteBot:
                 )
                 return None
 
-            # --- 案件開始ログ + AV を「処理中」に ---
+            # --- AV を「処理中」に（ログより先。複数プロセス並列時も他ワーカー着手を優先反映） ---
+            self.spreadsheet.update_ai_status(case["row_number"], "処理中")
             _tty_color = stream_supports_color(sys.stdout)
             logger.info(
                 case_start_banner(
@@ -175,8 +180,6 @@ class WebsiteBot:
                     use_color=_tty_color,
                 )
             )
-
-            self.spreadsheet.update_ai_status(case["row_number"], "処理中")
             trace_root = begin_case_llm_trace(str(case.get("record_number") or ""))
             logger.info(
                 "LLM 入出力トレース: %s/llm_steps/ （Gemini・Manus 各呼び出し）",
@@ -356,7 +359,13 @@ class WebsiteBot:
                         )
                 elif SITE_BUILD_ENABLED:
                     logger.info("› 実装はスキップ — npm build で検証のみ…")
-                    ok_b, blog = verify_site_build(site_dir)
+                    # 引数: plan_info（フェーズ3直前までに解決済み） / site_dir
+                    # 処理: 契約ページ数と App Router の page.tsx 本数を突合（modules.site_build）
+                    # 出力: 超過時はビルド前に失敗
+                    _cap = int(plan_info.get("pages") or 1)
+                    ok_b, blog = verify_site_build(
+                        site_dir, contract_max_pages=_cap
+                    )
                     blog = blog or ""
                     if not ok_b:
                         raise RuntimeError(
@@ -446,7 +455,11 @@ class WebsiteBot:
             raise
 
     def run(self) -> None:
-        """スプレッドシートから対象行を取り、各行を process_case で順に処理する。"""
+        """スプレッドシートから対象行を取り、各行を process_case で順に処理する。
+
+        複数ターミナルで ``python main.py`` を同時起動する場合、各イテレーションで
+        AV 列を再読して他プロセスが既に「処理中」にした行はスキップする（重複着手の抑止）。
+        """
         try:
             _uc = stream_supports_color(sys.stdout)
             logger.info(startup_title(use_color=_uc))
@@ -495,6 +508,17 @@ class WebsiteBot:
             # 1 件失敗してもループは続ける（各 process_case が例外を投げうる）
             for case in cases:
                 try:
+                    row_n = int(case["row_number"])
+                    av_now = self.spreadsheet.get_ai_status_cell(row_n)
+                    if ai_cell_excludes_from_pending_queue(av_now):
+                        logger.info(
+                            "スキップ（他プロセスが着手済み、または AV が終端状態） "
+                            "row=%s record=%s AV=%r",
+                            case.get("row_number"),
+                            case.get("record_number"),
+                            av_now[:120] if av_now else "",
+                        )
+                        continue
                     self.process_case(case)
                 except Exception as e:
                     # process_case 内で既に exc_info 付きログ済みのため、ここは要約のみ

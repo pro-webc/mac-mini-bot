@@ -19,6 +19,8 @@ from modules.standard_cp_gemini_manual import (
     build_standard_cp_gemini_prompt_step_3_5,
     build_standard_cp_gemini_prompt_step_4,
     build_standard_cp_gemini_prompt_step_5,
+    build_standard_cp_gemini_prompt_step_6,
+    build_standard_cp_gemini_prompt_step_7_1,
 )
 
 _MANUAL = (
@@ -124,6 +126,25 @@ def test_build_standard_cp_gemini_prompt_step_5_substitutes() -> None:
     assert "手順4デザイン3点ブロック" in out
     assert "お客様情報ブロック" in out
     assert "サイト構成ブロック" in out
+
+
+def test_build_standard_cp_gemini_prompt_step_6_substitutes() -> None:
+    out = build_standard_cp_gemini_prompt_step_6(
+        hearing_sheet_content="参考サイトは https://a.example.com です。デザインはシンプル希望。",
+    )
+    assert "{{" not in out
+    assert "【手順6】" in out
+    assert "参考サイト" in out or "https://a.example.com" in out
+
+
+def test_build_standard_cp_gemini_prompt_step_7_1_substitutes() -> None:
+    out = build_standard_cp_gemini_prompt_step_7_1(
+        step_6_output="# デザイン生成指示書\n…",
+        hearing_sheet_content="配色はブルー系希望",
+    )
+    assert "{{" not in out
+    assert "# デザイン生成指示書" in out
+    assert "配色" in out
 
 
 def test_tab4_chat_history_after_step_3_1_shape() -> None:

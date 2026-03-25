@@ -7,6 +7,8 @@ import shutil
 import subprocess
 from pathlib import Path
 
+from config.config import SITE_BUILD_ENFORCE_CONTRACT_PAGE_TSX_COUNT
+
 logger = logging.getLogger(__name__)
 
 
@@ -86,6 +88,28 @@ def run_npm_build(site_dir: Path, timeout_sec: int = 900) -> tuple[bool, str]:
         return False, str(e)
 
 
+def count_app_router_page_tsx_files(site_dir: Path) -> tuple[int, list[str]]:
+    """App Router の `page.tsx` 本数と相対パス一覧（契約ページ数との突合せ用）。
+
+    `app/` と `src/app/` の両方を走査する。node_modules は除外。
+    """
+    paths: list[str] = []
+    site_dir = site_dir.resolve()
+    for base in ("app", "src/app"):
+        root = site_dir / base
+        if not root.is_dir():
+            continue
+        for p in sorted(root.rglob("page.tsx")):
+            if "node_modules" in p.parts:
+                continue
+            try:
+                rel = p.relative_to(site_dir)
+            except ValueError:
+                rel = p
+            paths.append(str(rel).replace("\\", "/"))
+    return len(paths), paths
+
+
 def run_npm_lint(site_dir: Path, timeout_sec: int = 300) -> tuple[bool, str]:
     """next lint（失敗してもビルド優先のため呼び出し側で任意）"""
     npm = shutil.which("npm")
@@ -106,12 +130,36 @@ def run_npm_lint(site_dir: Path, timeout_sec: int = 300) -> tuple[bool, str]:
         return False, str(e)
 
 
-def verify_site_build(site_dir: Path, skip_install: bool = False) -> tuple[bool, str]:
+def verify_site_build(
+    site_dir: Path,
+    skip_install: bool = False,
+    *,
+    contract_max_pages: int | None = None,
+) -> tuple[bool, str]:
     """install → build を連続実行（skip_install=True で node_modules 既存時の再ビルドのみ）。
 
     ソースは変更しない（ビルド失敗時も自動パッチは行わない）。
+
+    contract_max_pages:
+        指定かつ ``SITE_BUILD_ENFORCE_CONTRACT_PAGE_TSX_COUNT`` が真のとき、
+        App Router の ``page.tsx`` 本数がこれを超えたらビルド前に失敗する。
     """
     _ensure_package_json(site_dir)
+    if (
+        SITE_BUILD_ENFORCE_CONTRACT_PAGE_TSX_COUNT
+        and contract_max_pages is not None
+        and int(contract_max_pages) >= 1
+    ):
+        n, rels = count_app_router_page_tsx_files(site_dir)
+        cap = int(contract_max_pages)
+        if n > cap:
+            msg = (
+                f"契約ページ数（{cap}）を超える App Router の page.tsx が {n} 本あります。"
+                f" 余分なルート（例: /privacy）を増やさないでください。"
+                f" 検出: {', '.join(rels)}"
+            )
+            logger.error(msg)
+            return False, msg
     if not skip_install:
         ok, log = run_npm_install(site_dir)
         if not ok:

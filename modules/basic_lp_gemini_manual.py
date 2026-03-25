@@ -55,6 +55,7 @@ from modules.llm.llm_raw_output import write_pre_manus_llm_checkpoint
 from modules.gemini_generative_timeout import ensure_gemini_rpc_patch_from_config
 from modules.hearing_url_utils import (
     existing_site_url_guess_from_hearing,
+    hearing_reference_design_block_for_prompt,
     reference_site_url_from_hearing,
 )
 from modules.llm.basic_lp_spec import build_basic_lp_spec_dict
@@ -296,7 +297,11 @@ def run_basic_lp_gemini_manual_pipeline(
         MOOD_CLIENT=mood_c,
         REFERENCE_URL_BLOCK=_reference_url_block(hear),
     )
-    p7 = _load_step("step_7.txt")
+    _hr_block = hearing_reference_design_block_for_prompt(hearing_sheet_content)
+    p7 = _subst(
+        _load_step("step_7.txt"),
+        HEARING_REFERENCE_DESIGN_BLOCK=_hr_block,
+    )
 
     logger.info("BASIC LP Gemini: 手順5〜7（タブ4・同一チャット）…")
     chat4 = model.start_chat(history=[])
@@ -309,6 +314,7 @@ def run_basic_lp_gemini_manual_pipeline(
         HEARING_1_3_OUTPUT=outs.step_1_3,
         STEP_4_OUTPUT=outs.step_4,
         STEP_5_OUTPUT=outs.step_5,
+        HEARING_REFERENCE_DESIGN_BLOCK=_hr_block,
     )
     r6 = chat4.send_message(p6, generation_config=gcfg)
     outs.step_6_assistant_ack = _response_text(r6)
@@ -323,6 +329,7 @@ def run_basic_lp_gemini_manual_pipeline(
         _load_step("step_8_1.txt"),
         STEP_7_OUTPUT=outs.step_7,
         STEP_4_OUTPUT=outs.step_4,
+        HEARING_REFERENCE_DESIGN_BLOCK=_hr_block,
     )
     p82 = _subst(
         _load_step("step_8_2.txt"),
@@ -345,6 +352,9 @@ def run_basic_lp_gemini_manual_pipeline(
     outs.raw["step_8_3"] = outs.step_8_3
     outs.raw_prompts["step_8_3"] = p83
 
+    _ref_plan = get_contract_plan_info(contract_plan)
+    _manus_contract_pages = int(_ref_plan.get("pages") or 1)
+
     manus_deploy_github_url: str | None = None
     if BASIC_LP_REFACTOR_AFTER_MANUAL:
         write_pre_manus_llm_checkpoint(
@@ -362,18 +372,26 @@ def run_basic_lp_gemini_manual_pipeline(
             outs.step_8_3,
             partner_name=partner_name,
             record_number=record_number,
+            hearing_reference_block=_hr_block,
+            contract_max_pages=_manus_contract_pages,
         )
         md, manus_deploy_github_url = run_basic_lp_refactor_stage(
             canvas_source_code=outs.step_8_3,
             partner_name=partner_name,
             record_number=record_number,
+            hearing_reference_block=_hr_block,
+            contract_max_pages=_manus_contract_pages,
         )
         outs.step_refactor = md
         outs.raw["step_refactor"] = md
         outs.raw["step_refactor_deploy_github_url"] = manus_deploy_github_url or ""
 
-    combined = _build_site_build_prompt_from_steps(outs, partner_name=partner_name)
-    plan_info = get_contract_plan_info(contract_plan)
+    combined = _build_site_build_prompt_from_steps(
+        outs,
+        partner_name=partner_name,
+        hearing_sheet_content=hearing_sheet_content,
+    )
+    plan_info = _ref_plan
     max_pages = int(plan_info.get("pages") or 1)
     if len(combined.strip()) < MIN_SITE_BUILD_PROMPT_CHARS:
         raise RuntimeError(
@@ -416,6 +434,7 @@ def _build_site_build_prompt_from_steps(
     outs: BasicLpManualGeminiOutputs,
     *,
     partner_name: str,
+    hearing_sheet_content: str = "",
 ) -> str:
     parts: list[str] = [
         f"【BASIC LP / Gemini マニュアル全手順の結合ログ】パートナー: {partner_name}\n",
@@ -434,4 +453,11 @@ def _build_site_build_prompt_from_steps(
         "\n\n=== 手順7 デザイン指示書 ===\n\n",
         outs.step_7,
     ]
+    if (hearing_sheet_content or "").strip():
+        parts.extend(
+            [
+                "\n\n=== ヒアリング・参考サイト・デザイン（原文抜粋・再掲） ===\n\n",
+                hearing_reference_design_block_for_prompt(hearing_sheet_content),
+            ]
+        )
     return "".join(parts)

@@ -22,6 +22,17 @@
 
 ## 1 案件あたりのパス
 
+### フェーズ2中: LLM 1 回ごとのトレース（`sites` より先にできる）
+
+```
+output/<レコード番号>/llm_steps/<NNN>_gemini_generate_content/
+output/<レコード番号>/llm_steps/<NNN>_manus_…/   （Manus 呼び出し時）
+```
+
+`main.py` が `begin_case_llm_trace` したあと、**Gemini の `generate_content` が終わるたび**に `001_` `002_` … と増える（`input.md` / `output.md`）。**`output/sites/` はまだ無い時間帯でも、ここには書き込まれる。**
+
+### フェーズ3以降: サイト本体
+
 ```
 output/sites/<パートナー名>-<レコード番号>/
 ```

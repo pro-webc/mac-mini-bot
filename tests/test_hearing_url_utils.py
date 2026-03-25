@@ -35,3 +35,20 @@ def test_existing_site_short_cell_finds_url() -> None:
         u.existing_site_url_guess_from_hearing("old site: https://old.example.jp/")
         == "https://old.example.jp/"
     )
+
+
+def test_hearing_reference_design_excerpt_prefers_keyword_lines() -> None:
+    body = (
+        "会社名\n株式会社テスト\n\n"
+        "希望する雰囲気のサイトのURLを教えてください。\n"
+        "https://example.com/ref\n\n"
+        "備考\nその他の行\n"
+    )
+    ex = u.hearing_reference_design_excerpt(body)
+    assert "https://example.com/ref" in ex
+    assert "希望する雰囲気" in ex
+
+
+def test_hearing_reference_design_block_non_empty_when_hearing_empty() -> None:
+    assert "再掲なし" in u.hearing_reference_design_block_for_prompt("")
+    assert "下流でも必ず反映" in u.hearing_reference_design_block_for_prompt("配色は赤")

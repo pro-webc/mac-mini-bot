@@ -16,6 +16,7 @@
 | 1 | スプレッドシート読込・必須列チェック | `modules/spreadsheet.py`, `config/config.py`（列定義） |
 | 2 | ヒアリング抽出 | `modules/case_extraction.py`, `modules/spec_generator.py`（シート取得） |
 | 3 | TEXT_LLM（プラン別・フェーズ2） | `modules/llm/text_llm_stage.py`（`if/elif` → 各 `*_gemini_manual.py`） |
+| 3a | **各 LLM 呼び出しごとの入出力**（Gemini / Manus） | `modules/llm/llm_step_trace.py` → `output/<レコード番号>/llm_steps/<NNN>_<種別>/`（`input.md`・`output.md` 等）。**`output/sites/` より先**にここへ都度増える |
 | 4 | 出力先ディレクトリ準備 | `modules/site_generator.py` → `output/sites/<案件名>/` |
 | 5 | LLM 正本の保存 | `modules/llm/llm_raw_output.py` → 同一案件の `llm_raw_output/` |
 | 6 | 生成マークダウン → サイトファイル反映 | `modules/basic_lp_generated_apply.py` |
@@ -63,6 +64,9 @@ mac-mini-bot/
 
 ## 実行時の `output/`（git 対象外）
 
-案件ごとに `output/sites/<パートナー名>-<レコード番号>/` ができます。中身の意味は **`docs/OUTPUT_LAYOUT.md`**。
+- **フェーズ2（TEXT_LLM）中**: `begin_case_llm_trace` で `output/<レコード番号>/llm_steps/` を用意し、**Gemini の `generate_content` が返るたび**に `001_gemini_generate_content/` … のように **1 呼び出し＝1 サブフォルダ**が増える（Manus も `record_llm_turn` で同様）。ここを見れば「LLM に渡した／返った」が追える。
+- **フェーズ3以降**: 案件ごとに `output/sites/<パートナー名>-<レコード番号>/` ができます。
+
+詳細は **`docs/OUTPUT_LAYOUT.md`**。
 
 工程テストで `pipeline_test_runs/...` に溜めた **preflight / phase1 / work_branch / phase2 / gemini_step** の説明・コマンド・検証知見は **`PIPELINE_TESTING.md`**（リポジトリ直下）。
