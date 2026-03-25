@@ -84,6 +84,7 @@ def test_run_manus_refactor_stage_polls_until_completed(monkeypatch: pytest.Monk
     assert captured["json"].get("connectors") == [
         "bbb0df76-66bd-4a24-ae4f-2aac4750d90b"
     ]
+    assert captured["json"].get("interactiveMode") is False
 
 
 def test_run_manus_refactor_stage_omits_connectors_when_empty(
@@ -395,3 +396,116 @@ def test_extract_assistant_markdown_direct_text_fallback() -> None:
         ],
     }
     assert _extract_assistant_markdown(task) == "direct text"
+
+
+def test_interactive_mode_false_sent_in_body(monkeypatch: pytest.MonkeyPatch) -> None:
+    """MANUS_INTERACTIVE_MODE=false が API リクエストボディに含まれる。"""
+    monkeypatch.setattr(cfg, "MANUS_API_KEY", "test-key")
+    monkeypatch.setattr(cfg, "MANUS_INTERACTIVE_MODE", False)
+    captured: dict[str, Any] = {}
+
+    def fake_post(
+        url: str,
+        headers: dict[str, str],
+        json: dict[str, Any] | None = None,
+        timeout: float | None = None,
+    ) -> _OkJson:
+        captured["json"] = json
+        return _OkJson({"task_id": "t-im", "task_url": "https://example/manus/t-im"})
+
+    def fake_get(
+        url: str, headers: dict[str, str], timeout: float | None = None
+    ) -> _OkJson:
+        return _OkJson(
+            {
+                "status": "completed",
+                "output": [
+                    {
+                        "role": "assistant",
+                        "content": [{"type": "output_text", "text": "ok"}],
+                    }
+                ],
+            }
+        )
+
+    monkeypatch.setattr("modules.manus_refactor.requests.post", fake_post)
+    monkeypatch.setattr("modules.manus_refactor.requests.get", fake_get)
+
+    import modules.manus_refactor as mr
+
+    mr.run_manus_refactor_stage(canvas_source_code="x")
+    assert captured["json"]["interactiveMode"] is False
+
+
+def test_interactive_mode_true_sent_in_body(monkeypatch: pytest.MonkeyPatch) -> None:
+    """MANUS_INTERACTIVE_MODE=true のとき API ボディに True が入る。"""
+    monkeypatch.setattr(cfg, "MANUS_API_KEY", "test-key")
+    captured: dict[str, Any] = {}
+
+    def fake_post(
+        url: str,
+        headers: dict[str, str],
+        json: dict[str, Any] | None = None,
+        timeout: float | None = None,
+    ) -> _OkJson:
+        captured["json"] = json
+        return _OkJson({"task_id": "t-im2", "task_url": "https://example/manus/t-im2"})
+
+    def fake_get(
+        url: str, headers: dict[str, str], timeout: float | None = None
+    ) -> _OkJson:
+        return _OkJson(
+            {
+                "status": "completed",
+                "output": [
+                    {
+                        "role": "assistant",
+                        "content": [{"type": "output_text", "text": "ok"}],
+                    }
+                ],
+            }
+        )
+
+    monkeypatch.setattr("modules.manus_refactor.requests.post", fake_post)
+    monkeypatch.setattr("modules.manus_refactor.requests.get", fake_get)
+
+    import modules.manus_refactor as mr
+
+    monkeypatch.setattr(mr, "MANUS_INTERACTIVE_MODE", True)
+    mr.run_manus_refactor_stage(canvas_source_code="x")
+    assert captured["json"]["interactiveMode"] is True
+
+
+def test_pending_hang_detection(monkeypatch: pytest.MonkeyPatch) -> None:
+    """interactiveMode=false かつ pending が閾値を超えると早期打ち切り。"""
+    monkeypatch.setattr(cfg, "MANUS_API_KEY", "test-key")
+    monkeypatch.setattr(cfg, "MANUS_INTERACTIVE_MODE", False)
+    monkeypatch.setattr(cfg, "MANUS_REFACTOR_POLL_INTERVAL_SEC", 0.001)
+    monkeypatch.setattr(cfg, "MANUS_REFACTOR_TIMEOUT_SEC", 60.0)
+
+    def fake_post(
+        url: str,
+        headers: dict[str, str],
+        json: dict[str, Any] | None = None,
+        timeout: float | None = None,
+    ) -> _OkJson:
+        return _OkJson({"task_id": "t-hang", "task_url": "https://example/manus/t-hang"})
+
+    call_count = {"i": 0}
+
+    def fake_get(
+        url: str, headers: dict[str, str], timeout: float | None = None
+    ) -> _OkJson:
+        call_count["i"] += 1
+        if call_count["i"] == 1:
+            return _OkJson({"status": "running", "output": []})
+        return _OkJson({"status": "pending", "output": []})
+
+    monkeypatch.setattr("modules.manus_refactor.requests.post", fake_post)
+    monkeypatch.setattr("modules.manus_refactor.requests.get", fake_get)
+
+    import modules.manus_refactor as mr
+
+    monkeypatch.setattr(mr, "_PENDING_HANG_THRESHOLD", 0.01)
+    with pytest.raises(RuntimeError, match="pending のまま"):
+        mr.run_manus_refactor_stage(canvas_source_code="x")

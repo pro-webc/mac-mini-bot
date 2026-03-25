@@ -133,6 +133,12 @@ except ValueError:
 # 未処理キューのうちこのレコード番号（B列 record_id の表示値と完全一致）だけ処理。空で無効
 BOT_ONLY_RECORD_NUMBER = (os.getenv("BOT_ONLY_RECORD_NUMBER") or "").strip()
 
+# Gemini 15ステップをスキップし、保存済み Canvas から Manus 以降のみ再実行する。
+# BOT_ONLY_RECORD_NUMBER と併用必須。R列のステータスに関係なく対象案件を取得する。
+BOT_RESUME_FROM_MANUS = os.getenv(
+    "BOT_RESUME_FROM_MANUS", "false"
+).strip().lower() in ("1", "true", "yes")
+
 # mac-mini（AV）列のエラー表示の最大文字数（「エラー: 」を除く本文側の上限に近い挙動。50〜500）
 _raw_ai_err = os.getenv("SPREADSHEET_AI_STATUS_ERROR_MAX_LEN", "200").strip()
 try:
@@ -224,6 +230,10 @@ MANUS_AGENT_PROFILE = (
     os.getenv("MANUS_AGENT_PROFILE", "manus-1.6") or "manus-1.6"
 ).strip()
 MANUS_TASK_MODE = (os.getenv("MANUS_TASK_MODE", "agent") or "agent").strip()
+# false（既定）: Create Task の interactiveMode オフ＝自走向け。true にすると Manus がフォローアップ質問のため pending になりやすい。
+MANUS_INTERACTIVE_MODE = os.getenv(
+    "MANUS_INTERACTIVE_MODE", "false"
+).strip().lower() in ("1", "true", "yes")
 # POST /v1/tasks の connectors（公式: https://open.manus.im/docs/connectors ）。OAuth は manus.im で事前連携必須。
 # 未設定時は GitHub のみ（UUID は公式ドキュメント記載値）。空文字で指定すると connectors を送らない。
 _MANUS_CONNECTOR_UUID_GITHUB = "bbb0df76-66bd-4a24-ae4f-2aac4750d90b"

@@ -93,6 +93,63 @@ def test_apply_empty_markdown_returns_zero(tmp_path: Path) -> None:
     assert apply_basic_lp_generated_markdown(site_dir=site, markdown="# だけ") == 0
 
 
+def test_single_unnamed_fence_falls_back_to_page_tsx(tmp_path: Path) -> None:
+    """Gemini manual_gemini_final の典型出力: パスなし単一 tsx フェンス。"""
+    site = tmp_path / "site"
+    site.mkdir()
+    md = """ご提示いただいた要件に基づきコンポーネントを作成しました。
+
+```tsx
+"use client";
+
+import React from 'react';
+
+export default function LandingPage() {
+  return (
+    <div className="min-h-screen">
+      <h1>テスト</h1>
+    </div>
+  );
+}
+```
+"""
+    m = collect_generated_files_from_markdown(md)
+    assert "app/page.tsx" in m
+    assert '"use client"' in m["app/page.tsx"]
+
+    n = apply_basic_lp_generated_markdown(site_dir=site, markdown=md)
+    assert n == 1
+    assert (site / "app" / "page.tsx").is_file()
+
+
+def test_single_unnamed_fence_too_short_ignored() -> None:
+    """短いフェンスは app/page.tsx に割り当てない（説明用コード片の可能性）。"""
+    md = """例:
+```tsx
+const x = 1;
+```
+"""
+    m = collect_generated_files_from_markdown(md)
+    assert not m
+
+
+def test_multiple_unnamed_fences_not_mapped() -> None:
+    """複数のパスなしフェンスは曖昧なのでマッピングしない。"""
+    md = """
+```tsx
+export default function A() { return null; }
+""" + "x" * 200 + """
+```
+
+```tsx
+export default function B() { return null; }
+""" + "x" * 200 + """
+```
+"""
+    m = collect_generated_files_from_markdown(md)
+    assert not m
+
+
 def test_collect_marker_file_blocks(tmp_path: Path) -> None:
     site = tmp_path / "site"
     site.mkdir()

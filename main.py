@@ -29,6 +29,8 @@ configure_logging()
 from config.config import (
     BOT_MAX_CASES,
     BOT_ONLY_RECORD_NUMBER,
+    BOT_RESUME_FROM_MANUS,
+    OUTPUT_DIR,
     SITE_BUILD_ENABLED,
     SITE_IMPLEMENTATION_ENABLED,
     SPREADSHEET_AI_STATUS_ERROR_MAX_LEN,
@@ -77,6 +79,78 @@ from modules.vercel_client import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Manus 再開モード: 保存済み Canvas から Gemini をスキップして Manus 以降を実行
+# ---------------------------------------------------------------------------
+
+_BRANCH_SPEC_KEYS: dict[ContractWorkBranch, tuple[str, str]] = {
+    ContractWorkBranch.BASIC_LP: ("basic_lp_refactored_source_markdown", "basic_lp_manual_gemini_final"),
+    ContractWorkBranch.BASIC: ("basic_refactored_source_markdown", "basic_manual_gemini_final"),
+    ContractWorkBranch.STANDARD: ("standard_refactored_source_markdown", "standard_manual_gemini_final"),
+    ContractWorkBranch.ADVANCE: ("advance_refactored_source_markdown", "advance_manual_gemini_final"),
+}
+
+
+def _resume_from_manus(
+    *,
+    record_number: str,
+    partner_name: str,
+    hearing_sheet_content: str,
+    appo_memo: str,
+    sales_notes: str,
+    work_branch: ContractWorkBranch,
+    contract_max_pages: int,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """保存済み Gemini Canvas を読み込み、Manus リファクタ以降のみ実行して spec を返す。
+
+    引数: record_number（出力ディレクトリの特定）/ hearing 情報（Manus プロンプト内の参考ブロック用）
+          / work_branch・contract_max_pages（プラン別制御）
+    処理: output/{record}/llm_steps/015_gemini_generate_content/output.md を読み、
+          run_basic_lp_refactor_stage で Manus のみ実行
+    出力: (requirements_result, spec) — process_case のフェーズ3 以降が使う最低限のキーを格納
+    """
+    from modules.basic_lp_refactor_gemini import run_basic_lp_refactor_stage
+    from modules.hearing_url_utils import hearing_reference_design_block_for_prompt
+
+    trace_dir = OUTPUT_DIR / record_number / "llm_steps" / "015_gemini_generate_content"
+    canvas_path = trace_dir / "output.md"
+    if not canvas_path.is_file():
+        raise FileNotFoundError(
+            f"Gemini 最終出力が見つかりません（Manus 再開には前回の Gemini 完走が必要）: {canvas_path}"
+        )
+    canvas = canvas_path.read_text(encoding="utf-8")
+    logger.info(
+        "Manus 再開: 保存済み Canvas を読み込みました (%s chars) path=%s",
+        len(canvas), canvas_path,
+    )
+
+    extras = [s for s in (appo_memo, sales_notes) if (s or "").strip()]
+    hr = hearing_reference_design_block_for_prompt(hearing_sheet_content, extra_texts=extras)
+
+    md, manus_deploy_github_url = run_basic_lp_refactor_stage(
+        canvas_source_code=canvas,
+        partner_name=partner_name,
+        record_number=record_number,
+        hearing_reference_block=hr,
+        contract_max_pages=contract_max_pages,
+    )
+
+    refactor_key, canvas_key = _BRANCH_SPEC_KEYS[work_branch]
+    requirements_result: dict[str, Any] = {
+        "plan_type": work_branch.value,
+        "site_build_prompt": f"[Manus再開] Canvas {len(canvas)} chars → refactor {len(md)} chars",
+    }
+    spec: dict[str, Any] = {
+        canvas_key: canvas,
+        refactor_key: md,
+    }
+    if manus_deploy_github_url:
+        spec["manus_deploy_github_url"] = manus_deploy_github_url.strip()
+
+    return requirements_result, spec
+
 
 # ---------------------------------------------------------------------------
 # スプレッドシート R 列用のエラー文言短縮（セル幅・可読性のため）
@@ -239,15 +313,31 @@ class WebsiteBot:
                 # 引数: hearing_bundle（フェーズ1のヒアリング本文・メモ等） / contract_plan・partner_name（案件メタ）
                 #       work_branch（BASIC_LP 等。プラン別パイプライン選択に使用）
                 # 処理: modules.llm.text_llm_stage が work_branch で if/elif 分岐し、対応する Gemini TEXT パイプラインを実行
+                #       BOT_RESUME_FROM_MANUS=1 のとき Gemini をスキップし保存済み Canvas から Manus のみ再実行
                 # 出力: requirements_result（要望まとめ）, spec（フェーズ3の generate_site・raw 保存などの入力）
-                logger.info("【フェーズ2】TEXT_LLM … branch=%s", work_branch.value)
-                requirements_result, spec = run_text_llm_stage(
-                    hearing_bundle,
-                    contract_plan=case["contract_plan"],
-                    partner_name=case["partner_name"],
-                    record_number=str(case.get("record_number") or ""),
-                    work_branch=work_branch,
-                )
+                if BOT_RESUME_FROM_MANUS:
+                    logger.info(
+                        "【フェーズ2・Manus再開】Gemini スキップ → Manus のみ実行 branch=%s",
+                        work_branch.value,
+                    )
+                    requirements_result, spec = _resume_from_manus(
+                        record_number=str(case.get("record_number") or ""),
+                        partner_name=case["partner_name"],
+                        hearing_sheet_content=hearing_bundle.hearing_sheet_content,
+                        appo_memo=hearing_bundle.appo_memo,
+                        sales_notes=hearing_bundle.sales_notes,
+                        work_branch=work_branch,
+                        contract_max_pages=int(plan_info.get("pages") or 1),
+                    )
+                else:
+                    logger.info("【フェーズ2】TEXT_LLM … branch=%s", work_branch.value)
+                    requirements_result, spec = run_text_llm_stage(
+                        hearing_bundle,
+                        contract_plan=case["contract_plan"],
+                        partner_name=case["partner_name"],
+                        record_number=str(case.get("record_number") or ""),
+                        work_branch=work_branch,
+                    )
 
                 site_name = f"{case['partner_name']}-{case['record_number']}"
                 # 引数: フェーズ2の spec / requirements（generate_site 前に必ずディスクへ）
@@ -466,34 +556,55 @@ class WebsiteBot:
             _uc = stream_supports_color(sys.stdout)
             logger.info(startup_title(use_color=_uc))
 
-            # SPREADSHEET_TARGET_AI_STATUS 等の条件でフィルタ済みのキュー
-            cases = self.spreadsheet.get_pending_cases()
-
-            if not cases:
-                logger.info(idle_banner(use_color=_uc))
-                return
-
-            if BOT_ONLY_RECORD_NUMBER:
-                want = BOT_ONLY_RECORD_NUMBER
-                filtered = [
-                    c
-                    for c in cases
-                    if str(c.get("record_number") or "").strip() == want
-                ]
-                if not filtered:
-                    logger.warning(
-                        "BOT_ONLY_RECORD_NUMBER=%r に一致する未処理案件がありません（キュー内 %s 件）",
-                        want,
-                        len(cases),
+            # --- Manus 再開モード: R列の状態を無視してレコード番号で直接取得 ---
+            if BOT_RESUME_FROM_MANUS:
+                if not BOT_ONLY_RECORD_NUMBER:
+                    logger.error(
+                        "BOT_RESUME_FROM_MANUS=true には BOT_ONLY_RECORD_NUMBER が必須です"
                     )
+                    return
+                c = self.spreadsheet.get_case_by_record_number(BOT_ONLY_RECORD_NUMBER)
+                if c is None:
+                    logger.error(
+                        "BOT_RESUME_FROM_MANUS: レコード番号 %r がシートに見つかりません",
+                        BOT_ONLY_RECORD_NUMBER,
+                    )
+                    return
+                cases = [c]
+                logger.info(
+                    "Manus 再開モード: record=%r row=%s を R 列の状態に関係なく取得",
+                    BOT_ONLY_RECORD_NUMBER,
+                    c.get("row_number"),
+                )
+            else:
+                # SPREADSHEET_TARGET_AI_STATUS 等の条件でフィルタ済みのキュー
+                cases = self.spreadsheet.get_pending_cases()
+
+                if not cases:
                     logger.info(idle_banner(use_color=_uc))
                     return
-                cases = filtered
-                logger.info(
-                    "BOT_ONLY_RECORD_NUMBER により %s 件に絞り込み record=%r",
-                    len(cases),
-                    want,
-                )
+
+                if BOT_ONLY_RECORD_NUMBER:
+                    want = BOT_ONLY_RECORD_NUMBER
+                    filtered = [
+                        c
+                        for c in cases
+                        if str(c.get("record_number") or "").strip() == want
+                    ]
+                    if not filtered:
+                        logger.warning(
+                            "BOT_ONLY_RECORD_NUMBER=%r に一致する未処理案件がありません（キュー内 %s 件）",
+                            want,
+                            len(cases),
+                        )
+                        logger.info(idle_banner(use_color=_uc))
+                        return
+                    cases = filtered
+                    logger.info(
+                        "BOT_ONLY_RECORD_NUMBER により %s 件に絞り込み record=%r",
+                        len(cases),
+                        want,
+                    )
 
             # テスト用: 先頭 N 件だけ処理（未設定なら全件）
             if BOT_MAX_CASES:
@@ -512,7 +623,7 @@ class WebsiteBot:
                 try:
                     row_n = int(case["row_number"])
                     r_now = self.spreadsheet.get_ai_status_cell(row_n)
-                    if ai_cell_excludes_from_pending_queue(r_now):
+                    if not BOT_RESUME_FROM_MANUS and ai_cell_excludes_from_pending_queue(r_now):
                         logger.info(
                             "スキップ（他プロセスが着手済み、R 列が非空） "
                             "row=%s record=%s R=%r",

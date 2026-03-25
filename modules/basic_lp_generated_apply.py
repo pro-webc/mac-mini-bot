@@ -155,12 +155,42 @@ def _parse_fence_markdown_to_files(markdown: str) -> dict[str, str]:
     return files
 
 
+_SINGLE_FENCE_DEFAULT_PATH = "app/page.tsx"
+_SINGLE_FENCE_MIN_CHARS = 100
+
+
+def _extract_unnamed_fence_bodies(markdown: str) -> list[str]:
+    """パス判定に関わらず、すべてのコードフェンスの本文を取り出す。"""
+    text = (markdown or "").lstrip("\ufeff")
+    lines = text.split("\n")
+    bodies: list[str] = []
+    i = 0
+    while i < len(lines):
+        stripped = lines[i].strip()
+        if not stripped.startswith("```"):
+            i += 1
+            continue
+        i += 1
+        body: list[str] = []
+        while i < len(lines):
+            if lines[i].strip() == "```":
+                i += 1
+                break
+            body.append(lines[i])
+            i += 1
+        content = "\n".join(body).rstrip()
+        if content:
+            bodies.append(content + "\n")
+    return bodies
+
+
 def collect_generated_files_from_markdown(markdown: str) -> dict[str, str]:
     """
     生成物マークダウンから (相対パス -> 本文) を集める。
 
     1. フェンス（パス行付き ``` ブロック）
     2. 0 件なら ``<<<FILE>>>`` / ``<file>`` 等（``parse_llm_file_blocks``）
+    3. それでも 0 件で、パスなしの単一フェンスがあれば ``app/page.tsx`` として扱う
 
     0 件のままなら ``main.process_case`` が ``manus_deploy_github_url`` で shallow clone する。
     """
@@ -174,7 +204,18 @@ def collect_generated_files_from_markdown(markdown: str) -> dict[str, str]:
         norm = _normalize_path_candidate(raw_path)
         if _is_allowed_relpath(norm):
             out[norm] = body
-    return out
+    if out:
+        return out
+
+    bodies = _extract_unnamed_fence_bodies(markdown)
+    if len(bodies) == 1 and len(bodies[0]) >= _SINGLE_FENCE_MIN_CHARS:
+        logger.info(
+            "collect: パス未指定の単一フェンス(%d chars)を %s として適用",
+            len(bodies[0]),
+            _SINGLE_FENCE_DEFAULT_PATH,
+        )
+        return {_SINGLE_FENCE_DEFAULT_PATH: bodies[0]}
+    return {}
 
 
 def apply_basic_lp_generated_markdown(
@@ -240,7 +281,15 @@ def apply_contract_outputs_to_site_dir(
     for k in keys:
         md = (spec.get(k) or "").strip()
         if md:
-            return apply_basic_lp_generated_markdown(site_dir=site_dir, markdown=md)
+            n = apply_basic_lp_generated_markdown(site_dir=site_dir, markdown=md)
+            if n:
+                return n
+            logger.warning(
+                "apply_contract_outputs: キー %r は非空(%d chars)だがファイル 0 件"
+                " — 次のキーへフォールスルー",
+                k,
+                len(md),
+            )
     return 0
 
 

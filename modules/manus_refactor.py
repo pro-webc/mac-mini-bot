@@ -11,11 +11,13 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import unquote, urlparse
 
+import signal
 import requests
 from config.config import (
     MANUS_AGENT_PROFILE,
     MANUS_API_BASE,
     MANUS_API_KEY,
+    MANUS_INTERACTIVE_MODE,
     MANUS_REFACTOR_POLL_INTERVAL_SEC,
     MANUS_REFACTOR_TIMEOUT_SEC,
     MANUS_TASK_CONNECTOR_IDS,
@@ -23,6 +25,9 @@ from config.config import (
 )
 
 logger = logging.getLogger(__name__)
+
+# running→pending 遷移後、この秒数 pending が続いたらハングと判定して早期打ち切り
+_PENDING_HANG_THRESHOLD = 600.0
 
 _BOT_DEPLOY_LINE_KEY = "bot_deploy_github_url"
 # 本文走査用（.git 省略・マークダウンリンク内の URL も search で拾う）
@@ -225,6 +230,7 @@ def run_manus_refactor_stage(
     body: dict[str, Any] = {
         "prompt": prompt,
         "agentProfile": MANUS_AGENT_PROFILE,
+        "interactiveMode": MANUS_INTERACTIVE_MODE,
     }
     if MANUS_TASK_MODE:
         body["taskMode"] = MANUS_TASK_MODE
@@ -232,10 +238,11 @@ def run_manus_refactor_stage(
         body["connectors"] = list(MANUS_TASK_CONNECTOR_IDS)
 
     logger.warning(
-        "%s Manus: 最終リファクタ タスク作成… agentProfile=%s taskMode=%s connectors=%s",
+        "%s Manus: 最終リファクタ タスク作成… agentProfile=%s taskMode=%s interactiveMode=%s connectors=%s",
         _branch,
         MANUS_AGENT_PROFILE,
         MANUS_TASK_MODE or "(default)",
+        MANUS_INTERACTIVE_MODE,
         len(MANUS_TASK_CONNECTOR_IDS) if MANUS_TASK_CONNECTOR_IDS else 0,
     )
     try:
@@ -299,72 +306,114 @@ def run_manus_refactor_stage(
         _max_404_rounds = 5
         _404_round = 0
         _404_backoff = 3.0
-        while time.monotonic() < deadline:
-            url_get = f"{base}/v1/tasks/{poll_id}"
-            gr = requests.get(url_get, headers=_headers(), timeout=60)
-            if gr.status_code == 404 and poll_idx + 1 < len(poll_candidates):
-                poll_idx += 1
-                poll_id = poll_candidates[poll_idx]
-                logger.warning(
-                    "Manus GetTask 404 のため別 ID でポーリングします → %s",
-                    poll_id,
-                )
-                time.sleep(min(2.0, float(MANUS_REFACTOR_POLL_INTERVAL_SEC)))
-                continue
-            if gr.status_code == 404:
-                _404_round += 1
-                if _404_round >= _max_404_rounds:
-                    raise RuntimeError(
-                        f"Manus GetTask 失敗 HTTP 404（{_404_round} 回リトライ後）: {(gr.text or '')[:800]}"
-                    )
-                wait = min(_404_backoff * _404_round, 15.0)
-                logger.warning(
-                    "Manus GetTask 404 — 伝播待ちリトライ %d/%d（%.0fs 後に再試行）",
-                    _404_round,
-                    _max_404_rounds,
-                    wait,
-                )
-                poll_idx = 0
-                poll_id = poll_candidates[poll_idx]
-                time.sleep(wait)
-                continue
-            if gr.status_code != 200:
-                raise RuntimeError(
-                    f"Manus GetTask 失敗 HTTP {gr.status_code}: {(gr.text or '')[:800]}"
-                )
-            task = gr.json()
-            status = (task or {}).get("status") or ""
-            if status != last_status:
-                logger.warning("Manus タスク %s status=%s", poll_id, status)
-                last_status = status
-            if status == "completed":
-                text = _extract_assistant_markdown(task)
-                if not text.strip():
-                    raise RuntimeError(
-                        "Manus タスクは completed ですが output_text が空です。"
-                        f" metadata={task.get('metadata')!r}"
-                    )
-                record_llm_turn(
-                    kind="manus_refactor",
-                    input_text=prompt,
-                    output_text=text,
-                )
-                logger.warning(
-                    "%s Manus: リファクタ完了 task_id=%s chars=%s",
-                    _branch,
-                    poll_id,
-                    len(text),
-                )
-                return text
-            if status == "failed":
-                err = (task or {}).get("error") or (task or {}).get("incomplete_details")
-                raise RuntimeError(f"Manus タスク失敗: {err!r}")
-            time.sleep(float(MANUS_REFACTOR_POLL_INTERVAL_SEC))
 
-        raise RuntimeError(
-            f"Manus タスクがタイムアウトしました（{MANUS_REFACTOR_TIMEOUT_SEC}s）"
-            f" task={poll_id} last_status={last_status!r}"
-        )
+        _pending_since: float | None = None
+
+        # SIGTERM/SIGINT でもトレースを残すためのハンドラ
+        _interrupted = False
+        _prev_sigterm = signal.getsignal(signal.SIGTERM)
+        _prev_sigint = signal.getsignal(signal.SIGINT)
+
+        def _on_signal(signum: int, _frame: Any) -> None:
+            nonlocal _interrupted
+            _interrupted = True
+
+        signal.signal(signal.SIGTERM, _on_signal)
+        signal.signal(signal.SIGINT, _on_signal)
+
+        try:
+            while time.monotonic() < deadline:
+                if _interrupted:
+                    raise RuntimeError(
+                        f"Manus ポーリング中にシグナルを受信しました"
+                        f" task={poll_id} last_status={last_status!r}"
+                    )
+                url_get = f"{base}/v1/tasks/{poll_id}"
+                gr = requests.get(url_get, headers=_headers(), timeout=60)
+                if gr.status_code == 404 and poll_idx + 1 < len(poll_candidates):
+                    poll_idx += 1
+                    poll_id = poll_candidates[poll_idx]
+                    logger.warning(
+                        "Manus GetTask 404 のため別 ID でポーリングします → %s",
+                        poll_id,
+                    )
+                    time.sleep(min(2.0, float(MANUS_REFACTOR_POLL_INTERVAL_SEC)))
+                    continue
+                if gr.status_code == 404:
+                    _404_round += 1
+                    if _404_round >= _max_404_rounds:
+                        raise RuntimeError(
+                            f"Manus GetTask 失敗 HTTP 404（{_404_round} 回リトライ後）: {(gr.text or '')[:800]}"
+                        )
+                    wait = min(_404_backoff * _404_round, 15.0)
+                    logger.warning(
+                        "Manus GetTask 404 — 伝播待ちリトライ %d/%d（%.0fs 後に再試行）",
+                        _404_round,
+                        _max_404_rounds,
+                        wait,
+                    )
+                    poll_idx = 0
+                    poll_id = poll_candidates[poll_idx]
+                    time.sleep(wait)
+                    continue
+                if gr.status_code != 200:
+                    raise RuntimeError(
+                        f"Manus GetTask 失敗 HTTP {gr.status_code}: {(gr.text or '')[:800]}"
+                    )
+                task = gr.json()
+                status = (task or {}).get("status") or ""
+                if status != last_status:
+                    logger.warning("Manus タスク %s status=%s", poll_id, status)
+                    last_status = status
+                if status == "completed":
+                    text = _extract_assistant_markdown(task)
+                    if not text.strip():
+                        raise RuntimeError(
+                            "Manus タスクは completed ですが output_text が空です。"
+                            f" metadata={task.get('metadata')!r}"
+                        )
+                    record_llm_turn(
+                        kind="manus_refactor",
+                        input_text=prompt,
+                        output_text=text,
+                    )
+                    logger.warning(
+                        "%s Manus: リファクタ完了 task_id=%s chars=%s",
+                        _branch,
+                        poll_id,
+                        len(text),
+                    )
+                    return text
+                if status == "failed":
+                    err = (task or {}).get("error") or (task or {}).get("incomplete_details")
+                    raise RuntimeError(f"Manus タスク失敗: {err!r}")
+
+                # running→pending 遷移の検出: interactiveMode=false なのに pending が続く場合はハング
+                if status == "pending":
+                    if _pending_since is None:
+                        _pending_since = time.monotonic()
+                    elif (
+                        not MANUS_INTERACTIVE_MODE
+                        and time.monotonic() - _pending_since > _PENDING_HANG_THRESHOLD
+                    ):
+                        elapsed_pending = time.monotonic() - _pending_since
+                        raise RuntimeError(
+                            f"Manus タスクが pending のまま {elapsed_pending:.0f}s 経過しました"
+                            f"（interactiveMode=false なのにユーザー入力待ちの可能性）。"
+                            f" task={poll_id}"
+                        )
+                else:
+                    _pending_since = None
+
+                time.sleep(float(MANUS_REFACTOR_POLL_INTERVAL_SEC))
+
+            raise RuntimeError(
+                f"Manus タスクがタイムアウトしました（{MANUS_REFACTOR_TIMEOUT_SEC}s）"
+                f" task={poll_id} last_status={last_status!r}"
+            )
+        finally:
+            signal.signal(signal.SIGTERM, _prev_sigterm)
+            signal.signal(signal.SIGINT, _prev_sigint)
     except BaseException as e:
         record_llm_turn(
             kind="manus_refactor",

@@ -631,6 +631,27 @@ class SpreadsheetClient:
         )
         return cases
 
+    def get_case_by_record_number(
+        self, record_number: str, *, sheet_name: str | None = None,
+    ) -> dict | None:
+        """R 列の状態に関係なく、レコード番号で 1 件だけ取得する（再開用）。"""
+        sheet = sheet_name or self.sheet_name
+        range_name = a1_range(sheet, f"A:{self._data_range_end}")
+        result = (
+            self.service.spreadsheets()
+            .values()
+            .get(spreadsheetId=self.spreadsheet_id, range=range_name)
+            .execute()
+        )
+        values = result.get("values", [])
+        want = str(record_number).strip()
+        rec_col = SPREADSHEET_COLUMNS["record_number"]
+        for row_index, row in enumerate(values[1:], start=2):
+            cell = self._cell(row, rec_col).strip()
+            if cell == want:
+                return self._parse_row(row, row_index)
+        return None
+
     def _cell(self, row: list, col_letter: str) -> str:
         idx = column_letter_to_index(col_letter)
         return row[idx] if len(row) > idx else ""
