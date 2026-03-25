@@ -1,7 +1,29 @@
-# プラン共通の技術要件
+# プラン共通の技術要件（品質ガードレール）
 
 実装・仕様書生成の際は `config.config.COMMON_TECHNICAL_SPEC` および `get_common_technical_spec_prompt_block()` と同一内容を遵守してください。  
 LLM へ渡す文言の正本は **`config/prompts/common/technical_spec_prompt_block.txt`**（UTF-8 プレーンテキスト）です。
+
+## このファイルの位置づけ
+
+`technical_spec_prompt_block.txt` は全プランの Gemini 多段チェーン最終段に注入される**品質ガードレール**であり、**過去の案件で発見された品質問題から蒸留されたルール集**です。
+
+### 運用サイクル
+
+1. **案件実行** → 全入出力が `output/<レコード番号>/llm_steps/` に記録される
+2. **人間がレビュー** → 生成サイトの品質問題（絵文字混入、影の乱用、セクション薄化、ダミーテキスト等）を発見
+3. **ルール追加** → `technical_spec_prompt_block.txt` に禁止・制約を 1 行追加
+4. **次回以降の全案件に反映** → コード変更なしに全プランのガードレールが強化される
+
+### ルールの具体例と背景
+
+| ルール | 背景にある品質問題 |
+|--------|-------------------|
+| Unicode 絵文字の絶対禁止 | LLM が装飾目的で見出し・ボタンに絵文字を挿入する傾向 |
+| `shadow-2xl` 以上のドロップシャドウ禁止 | LLM が過剰な立体装飾を好む傾向 |
+| セクション薄化禁止（見出し+1 行で終えない） | LLM がテキスト量を減らして短文化する傾向 |
+| Lorem ipsum 等のダミー本文禁止 | LLM がコンテンツ生成を省略するフォールバック癖 |
+| `/public/` を `src` に含めない | Next.js のパス解決に関する頻出バグ |
+| プライバシーポリシーに独立 `page.tsx` を作らない | 契約ページ数との不整合 |
 
 ## 技術スタック
 
@@ -51,3 +73,13 @@ LLM へ渡す文言の正本は **`config/prompts/common/technical_spec_prompt_b
 
 - 世界観の一貫性、セクションリズム、カードの階層（`shadow-sm`〜`md` / `ring`）、ホバー・スクロール入場（`motion-safe:` / `prefers-reduced-motion`）。濃すぎる `shadow-2xl` 級やネオン glow は避ける。
 - 詳細は正本の **【没入感・世界観・現代的UI】** を参照。
+
+## ガードレールの改善方法
+
+品質問題を発見した場合の対応手順:
+
+1. `output/<レコード番号>/llm_steps/` で**問題が発生したステップを特定**する
+2. そのステップの `input.md`（プロンプト）と `output.md`（応答）を確認し、**プロンプトの不足か LLM の傾向か**を判断する
+3. **全プラン共通の問題**なら `config/prompts/common/technical_spec_prompt_block.txt` にルールを追加
+4. **特定ステップの問題**なら `config/prompts/*_manual/step_*.txt` を編集
+5. **工程スナップショット**（`scripts/phase2_from_phase1_snapshot.py`）で同じ入力に対して改善効果を検証

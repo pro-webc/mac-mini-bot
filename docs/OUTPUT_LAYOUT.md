@@ -1,8 +1,66 @@
-# 実行時の `output/` の見方（工程テスト用）
+# 実行時の `output/` の見方
 
-`OUTPUT_DIR`（既定: リポジトリ直下の `output/`）は **`.gitignore` 対象**です。ここにだけ生成物が溜まります。
+`OUTPUT_DIR`（既定: リポジトリ直下の `output/`）は **`.gitignore` 対象**です。ここに LLM の全入出力と生成物が蓄積されます。
+
+**`output/` はこのシステムの自己改善サイクルの根幹**です。全案件の全 LLM 呼び出しが記録されており、プロンプト改善の根拠データとして機能します。
 
 **工程テスト**（preflight〜gemini_step のフォルダ説明・コマンド・検証知見）は **[`PIPELINE_TESTING.md`](../PIPELINE_TESTING.md)**（リポジトリ直下）。本書はサイト出力や従来レイアウトに重点。
+
+## 記録の 3 層構造
+
+このシステムは LLM の入出力を **3 つの粒度** で保存し、品質改善の異なる観点を支えている。
+
+### 第 1 層: リアルタイムステップトレース（`llm_step_trace`）
+
+**目的**: 全 LLM 呼び出しの入出力を 1 回ごとに自動保存し、「どのステップで何が起きたか」を追跡可能にする。
+
+```
+output/<レコード番号>/llm_steps/
+├── 001_gemini_generate_content/   ← API 呼び出し #1
+│   ├── input.md                    ← 送ったプロンプト全文
+│   └── output.md                   ← LLM の応答全文
+├── 002_gemini_generate_content/   ← API 呼び出し #2
+│   ├── input.md
+│   └── output.md
+├── ...
+├── 011_manus_refactor/            ← Manus への入力と応答
+│   ├── input.md
+│   └── output.md（または error.txt）
+└── 016_manus_refactor/            ← 最終リファクタ
+```
+
+`GenerativeModel.generate_content` をモンキーパッチでラップしているため、**コードに手を入れずに全 Gemini 呼び出しが自動記録**される。Manus は `record_llm_turn` で明示呼び出し。**失敗時は `error.txt`** に例外メッセージが保存される。
+
+**品質改善での使い方**: 特定ステップ（例: `003_` = ページ構成）の `output.md` を案件横断で比較し、プロンプトの効果を検証する。
+
+### 第 2 層: チェックポイント（`llm_raw_output`）
+
+**目的**: LLM の生出力を**加工前の原文のまま**保存し、後工程の不具合（パーサ・ビルド）と LLM の出力品質の問題を切り分ける。
+
+```
+output/phase2_llm_checkpoints/<site_name>/pre_manus/   ← Gemini 完了〜Manus 開始前
+output/phase2_complete/<site_name>/llm_raw_output/      ← フェーズ2完了直後
+output/sites/<site_name>/llm_raw_output/                ← フェーズ3完了後の正本
+```
+
+`llm_raw_output.py` の冒頭 docstring に設計意図が明記されている: **「パーサやビルドが失敗しても、ここに残したテキストが AI の答えの記録になる」**。Manus が長時間ブロックしても Gemini 分は `pre_manus/` に退避済み。
+
+### 第 3 層: 構造化メタデータ
+
+**目的**: 案件・プラン・モデル・文字数などを機械可読な形で残し、傾向分析を可能にする。
+
+- `spec.yaml` / `requirements_result.yaml` — LLM 出力の構造化正本
+- `00_checkpoint.json` — タイムスタンプ・プラン・モデル名・文字数
+- `02_summary.json` — Manus リファクタの結果メタ
+
+### 自己改善サイクルでの活用
+
+| 改善の観点 | 参照する記録 | 具体例 |
+|------------|-------------|--------|
+| 特定ステップの品質 | 第 1 層の `NNN_*/output.md` | 「ステップ 2（ページ構成）でセクションが薄い」→ `step_2.txt` を改善 |
+| Gemini vs Manus の切り分け | 第 1 層の最終 Gemini と Manus の両方 | 「Gemini の tsx は良いが Manus の分割で壊れる」→ `refactoring_instruction_handwork.txt` を改善 |
+| 全体傾向の把握 | 第 3 層の `spec.yaml` / `summary.json` | 「STANDARD プランで文字数が少ない案件が多い」→ コンテンツ生成ステップを強化 |
+| パーサ vs LLM の切り分け | 第 2 層の raw output vs `app/` | 「raw に正しいコードがあるのに `app/` に反映されない」→ パーサ側のバグ |
 
 ## 工程テストを 1 フォルダにまとめる
 

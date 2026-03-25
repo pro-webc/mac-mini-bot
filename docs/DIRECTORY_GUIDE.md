@@ -1,6 +1,10 @@
-# リポジトリの見方（工程対応つき）
+# リポジトリの見方
 
-`main.py` の `WebsiteBot.process_case` の並びと対応させた目次です。工程ごとのテストでは **左の工程 → 右のフォルダ／モジュール** を追うと迷いにくいです。
+このシステムは **LLM の全入出力を記録し、プロンプトの反復改善で生成品質を上げ続ける半 AI ワークフロー**です。リポジトリの構成は以下の 3 つの軸で理解すると迷いにくいです:
+
+1. **制御する** — `modules/` と `main.py` が多段 LLM チェーンを実行
+2. **記録する** — `output/` に全 LLM 入出力を自動保存
+3. **改善する** — `config/prompts/` のテキストを編集してプロンプトを改善
 
 ## 開発ルール（設計原則・AI 向け）
 
@@ -29,44 +33,63 @@ TEXT_LLM だけをフェーズ1成果物から再実行する場合は **`script
 
 詳細な LLM 割当は **`docs/LLM_PIPELINE.md`**。
 
-## ルート直下（よく触るもの）
+## ルート直下（3 つの軸で分類）
 
 ```
 mac-mini-bot/
-├── main.py                 # エントリ・案件ループ
-├── run.sh                  # 実行用ショートカット（あれば）
-├── .env                    # 実キー（git 対象外）
-├── .env.example            # 変数テンプレート
-├── config/                 # 設定・列定義・プロンプト群
-├── modules/                # パイプライン実装（一覧は modules/README.md）
-├── docs/                   # 本ファイル・LLM_PIPELINE・TECH_REQUIREMENTS 等
-├── scripts/                # gcloud / 工程テスト・検証用シェル
-├── tests/                  # pytest
-└── output/                 # 実行時生成（既定・git 対象外）
+│
+│ ── 制御する ──────────────────────────────────
+├── main.py                   # エントリ・案件ループ
+├── modules/                  # パイプライン実装（一覧は modules/README.md）
+│   └── llm/                  #   LLM チェーン制御・トレース・正本保存
+│
+│ ── 改善する ──────────────────────────────────
+├── config/
+│   ├── config.py             #   環境変数・列定義・プラン情報
+│   └── prompts/              #   ← プロンプト改善はここを編集
+│       ├── common/           #     全プラン共通ガードレール
+│       ├── *_manual/         #     プラン別ステップファイル
+│       └── manus/            #     Manus リファクタ指示
+│
+│ ── 記録する ──────────────────────────────────
+├── output/                   # ← 自己改善の根拠データ（git 対象外）
+│   ├── <レコード番号>/       #   案件別 llm_steps/（全入出力）
+│   ├── phase2_*/             #   チェックポイント・スナップショット
+│   └── sites/                #   デプロイ対象サイト
+│
+│ ── その他 ────────────────────────────────────
+├── docs/                     # 本ファイル・LLM_PIPELINE 等
+├── scripts/                  # 工程テスト・スナップショット用
+├── tests/                    # pytest（41 ファイル）
+├── .env / .env.example       # 環境変数（実キーは git 対象外）
+└── run.sh / setup.sh         # 実行用ショートカット
 ```
 
-## `config/` の見方
+## `config/` の見方（プロンプト改善の起点）
 
-| パス | 役割 |
-|------|------|
-| `config/config.py` | 環境変数・スプレッドシート列・OUTPUT_DIR 等 |
-| `config/validation.py` | 起動時チェック |
-| `config/prompts/common/technical_spec_prompt_block.txt` | 技術要件（UTF-8 純テキスト・仕様文に注入） |
-| `config/prompts/*_manual/` | 契約プラン別 **Gemini マニュアル** ステップ（`step_*.txt`） |
-| `config/prompts/manus/` | **Manus** 用（手作業マニュアル相当のテキスト） |
-| `config/prompts/*_refactor/` | ログ用パス（中身の .txt は読まない）。Manus 本文は `manus/` |
+| パス | 役割 | 改善時に編集するか |
+|------|------|--------------------|
+| `config/config.py` | 環境変数・スプレッドシート列・OUTPUT_DIR 等 | まれ（API キー・モデル変更時） |
+| `config/validation.py` | 起動時チェック | まれ |
+| `config/prompts/common/technical_spec_prompt_block.txt` | **全プラン共通の品質ガードレール** | **頻繁**（品質問題発見時にルール追加） |
+| `config/prompts/*_manual/step_*.txt` | **プラン別 Gemini マニュアルのステップファイル** | **頻繁**（特定ステップの品質改善時） |
+| `config/prompts/manus/` | **Manus リファクタ指示** | リファクタ品質の改善時 |
+| `config/prompts/*_refactor/` | ログ用パス（中身の .txt は読まない） | 触らない |
 
-`config/prompts/README.md` に YAML / マニュアルの読み方があります。
+`config/prompts/README.md` にフィードバックループと読み方の詳細があります。
 
 ## `modules/` の見方
 
 工程別のインデックスは **`modules/README.md`** を参照（ファイル数が多いので、そこからジャンプする想定）。
 
-## 実行時の `output/`（git 対象外）
+## 実行時の `output/`（自己改善の根拠データ・git 対象外）
 
-- **フェーズ2（TEXT_LLM）中**: `begin_case_llm_trace` で `output/<レコード番号>/llm_steps/` を用意し、**Gemini の `generate_content` が返るたび**に `001_gemini_generate_content/` … のように **1 呼び出し＝1 サブフォルダ**が増える（Manus も `record_llm_turn` で同様）。ここを見れば「LLM に渡した／返った」が追える。
-- **フェーズ3以降**: 案件ごとに `output/sites/<パートナー名>-<レコード番号>/` ができます。
+`output/` はこのシステムの核心部分であり、**全 LLM 入出力の記録**が蓄積される。
 
-詳細は **`docs/OUTPUT_LAYOUT.md`**。
+- **第 1 層（ステップトレース）**: `output/<レコード番号>/llm_steps/001_gemini_generate_content/` … と、**1 API 呼び出し＝1 サブフォルダ**が自動で増える。`input.md`（送ったプロンプト）と `output.md`（LLM の応答）のペア。失敗時は `error.txt`
+- **第 2 層（チェックポイント）**: `output/phase2_llm_checkpoints/` に Gemini 完了分を退避、`output/phase2_complete/` にフェーズ 2 直後の正本を保存
+- **第 3 層（構造化メタ）**: `spec.yaml`、`requirements_result.yaml`、`00_checkpoint.json` など機械可読なメタデータ
 
-工程テストで `pipeline_test_runs/...` に溜めた **preflight / phase1 / work_branch / phase2 / gemini_step** の説明・コマンド・検証知見は **`PIPELINE_TESTING.md`**（リポジトリ直下）。
+**品質改善の手順**: 特定案件の `llm_steps/` を開き、問題のあるステップの `input.md`（プロンプト）と `output.md`（応答）を比較して、`config/prompts/` のどのファイルを改善すべきかを判断する。
+
+詳細は **`docs/OUTPUT_LAYOUT.md`**（記録の 3 層構造）。工程テストは **`PIPELINE_TESTING.md`**（リポジトリ直下）。
