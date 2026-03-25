@@ -4,21 +4,23 @@ from modules.github_client import sanitize_github_repo_name
 from modules.vercel_client import github_owner_repo_from_clone_url
 
 
-def test_sanitize_github_repo_name_botrun_partner() -> None:
-    assert sanitize_github_repo_name("株式会社TS-hub", "16715") == "BotRun-株式会社TS-hub"
-    assert sanitize_github_repo_name("テスト商事", "42") == "BotRun-テスト商事"
+def test_sanitize_github_repo_name_record_ascii() -> None:
+    assert sanitize_github_repo_name("株式会社TS-hub", "16715") == "16715-TS-hub"
+    assert sanitize_github_repo_name("テスト商事", "42") == "42"
+    assert sanitize_github_repo_name("CREST", "16245") == "16245-CREST"
+    assert sanitize_github_repo_name("志田洋二", "9408") == "9408"
 
 
 def test_sanitize_github_repo_name_strips_invalid_chars() -> None:
-    assert sanitize_github_repo_name("A/B:C", "1") == "BotRun-A-B-C"
+    assert sanitize_github_repo_name("A/B:C", "1") == "1-A-B-C"
 
 
 def test_github_owner_repo_from_clone_url_https_git_suffix() -> None:
     o, r = github_owner_repo_from_clone_url(
-        "https://github.com/propagate-webcreation/BotRun-テスト商事.git"
+        "https://github.com/propagate-webcreation/9408.git"
     )
     assert o == "propagate-webcreation"
-    assert r == "BotRun-テスト商事"
+    assert r == "9408"
 
 
 def test_github_owner_repo_from_clone_url_no_git_suffix() -> None:

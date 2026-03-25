@@ -79,12 +79,12 @@ from modules.vercel_client import (
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# スプレッドシート AV 列用のエラー文言短縮（セル幅・可読性のため）
+# スプレッドシート R 列用のエラー文言短縮（セル幅・可読性のため）
 # ---------------------------------------------------------------------------
 
 
 def _format_ai_status_error(exc: BaseException) -> str:
-    """AV 列向けに例外メッセージを短く整形（モジュールパス連呼を削る）。"""
+    """R 列向けに例外メッセージを短く整形（モジュールパス連呼を削る）。"""
     msg = (str(exc) or type(exc).__name__).strip()
     for noise in (
         "（modules.spec_generator）。",
@@ -151,7 +151,7 @@ class WebsiteBot:
 
         Returns:
             デプロイURL（成功時）。必須項目不足で着手しない場合のみ None。
-            処理中の失敗は AV 列更新後に例外を再送出し、`run()` のバッチはそこで中断される。
+            処理中の失敗は R 列更新後に例外を再送出し、`run()` のバッチはそこで中断される。
         """
         requirements_result: dict[str, Any] | None = None
         spec: dict[str, Any] | None = None
@@ -159,7 +159,7 @@ class WebsiteBot:
         impl_log = ""
 
         try:
-            # --- 着手条件: 必須列が揃わなければ AV も更新せず None ---
+            # --- 着手条件: 必須列が揃わなければ R 列も更新せず None ---
             missing = missing_required_case_fields(case)
             if missing:
                 logger.error(
@@ -169,8 +169,8 @@ class WebsiteBot:
                 )
                 return None
 
-            # --- AV を「処理中」に（ログより先。複数プロセス並列時も他ワーカー着手を優先反映） ---
-            self.spreadsheet.update_ai_status(case["row_number"], "処理中")
+            # --- R 列に "MacBot" を記入（ログより先。複数プロセス並列時も他ワーカー着手を優先反映） ---
+            self.spreadsheet.update_ai_status(case["row_number"], "MacBot")
             _tty_color = stream_supports_color(sys.stdout)
             logger.info(
                 case_start_banner(
@@ -418,11 +418,11 @@ class WebsiteBot:
                     logger.warning("デプロイURLが閲覧できません: %s", deploy_url)
 
                 logger.info("› スプレッドシートを更新…")
-                # 引数: deploy_url（公開 URL） / row（案件行）
-                # 処理: AW と AV（完了）を 1 回の batchUpdate で更新（片方だけ成功しないよう揃える）
-                # 出力: シート上でデモ URL と mac-mini 完了が同時に確定
+                # 引数: deploy_url（公開 URL）/ github_url（リポジトリ URL）/ row（案件行）
+                # 処理: AI（GitHub URL）と AJ（デプロイ URL）を 1 回の batchUpdate で書き込む
+                # 出力: シート上で GitHub リポジトリ URL とデモ URL が同時に確定
                 self.spreadsheet.update_deploy_url_and_complete_status(
-                    case["row_number"], deploy_url
+                    case["row_number"], deploy_url, github_repo_url=github_url,
                 )
 
                 logger.info("✓ 案件完了 — 公開 URL: %s", deploy_url)
@@ -430,7 +430,7 @@ class WebsiteBot:
 
             finally:
                 end_case_llm_trace()
-        # 失敗: ログ → AV に短いエラー → 例外を再送出（run() は次の案件へ続行可）
+        # 失敗: ログ → R 列にエラー → 例外を再送出（run() は次の案件へ続行可）
         except Exception as e:
             logger.error(
                 "案件処理エラー row=%s record=%s partner=%s: %s",
@@ -458,7 +458,7 @@ class WebsiteBot:
         """スプレッドシートから対象行を取り、各行を process_case で順に処理する。
 
         複数ターミナルで ``python main.py`` を同時起動する場合、各イテレーションで
-        AV 列を再読して他プロセスが既に「処理中」にした行はスキップする（重複着手の抑止）。
+        R 列を再読して他プロセスが既に "MacBot" を書き込んだ行はスキップする（重複着手の抑止）。
         """
         try:
             _uc = stream_supports_color(sys.stdout)
@@ -509,14 +509,14 @@ class WebsiteBot:
             for case in cases:
                 try:
                     row_n = int(case["row_number"])
-                    av_now = self.spreadsheet.get_ai_status_cell(row_n)
-                    if ai_cell_excludes_from_pending_queue(av_now):
+                    r_now = self.spreadsheet.get_ai_status_cell(row_n)
+                    if ai_cell_excludes_from_pending_queue(r_now):
                         logger.info(
-                            "スキップ（他プロセスが着手済み、または AV が終端状態） "
-                            "row=%s record=%s AV=%r",
+                            "スキップ（他プロセスが着手済み、R 列が非空） "
+                            "row=%s record=%s R=%r",
                             case.get("row_number"),
                             case.get("record_number"),
-                            av_now[:120] if av_now else "",
+                            r_now[:120] if r_now else "",
                         )
                         continue
                     self.process_case(case)
@@ -573,7 +573,7 @@ def _react_to_spreadsheet_header_issues(issues: list[str], *, to_stdout: bool) -
         if SPREADSHEET_HEADERS_STRICT and issues:
             print(
                 "ERROR: 列見出し不一致のため終了（SPREADSHEET_HEADERS_STRICT=true。"
-                " AV・AW は検証対象外）"
+                " R・AI・AJ は検証対象外）"
             )
             sys.exit(1)
         return
@@ -585,7 +585,7 @@ def _react_to_spreadsheet_header_issues(issues: list[str], *, to_stdout: bool) -
     if SPREADSHEET_HEADERS_STRICT and issues:
         logger.error(
             "列見出し不一致のため起動を中止します。"
-            "config.py の SPREADSHEET_HEADER_LABELS をシート1行目に合わせるか（AV・AW は検証対象外）、"
+            "config.py の SPREADSHEET_HEADER_LABELS をシート1行目に合わせるか（R・AI・AJ は検証対象外）、"
             "SPREADSHEET_HEADERS_STRICT=false で警告のみにしてください。"
         )
         sys.exit(1)

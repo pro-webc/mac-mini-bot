@@ -1,4 +1,4 @@
-"""AV 列のキュー除外判定（表記ゆれ）"""
+"""R 列（Bot 着手フラグ）のキュー除外判定"""
 
 from __future__ import annotations
 
@@ -7,30 +7,23 @@ from unittest.mock import MagicMock
 from modules.spreadsheet import SpreadsheetClient, ai_cell_excludes_from_pending_queue
 
 
-def test_queue_excludes_exact_complete_and_processing() -> None:
+def test_queue_excludes_any_non_empty_value() -> None:
+    assert ai_cell_excludes_from_pending_queue("MacBot")
     assert ai_cell_excludes_from_pending_queue("完了")
     assert ai_cell_excludes_from_pending_queue("処理中")
-
-
-def test_queue_excludes_complete_with_trailing_punctuation() -> None:
-    assert ai_cell_excludes_from_pending_queue("完了！")
-    assert ai_cell_excludes_from_pending_queue("完了。")
-    assert ai_cell_excludes_from_pending_queue("  完了。  ")
-
-
-def test_queue_excludes_error_and_skip_prefix() -> None:
     assert ai_cell_excludes_from_pending_queue("エラー: 失敗")
     assert ai_cell_excludes_from_pending_queue("スキップ: 理由")
+    assert ai_cell_excludes_from_pending_queue("デモサイト制作中")
 
 
-def test_queue_includes_empty_and_non_terminal() -> None:
+def test_queue_includes_empty_and_whitespace_only() -> None:
     assert not ai_cell_excludes_from_pending_queue("")
     assert not ai_cell_excludes_from_pending_queue("   ")
-    assert not ai_cell_excludes_from_pending_queue("デモサイト制作中")
+    assert not ai_cell_excludes_from_pending_queue(None)
 
 
 def test_get_ai_status_cell_returns_trimmed_value(monkeypatch) -> None:
-    """Sheets API の get 応答から AV セル1件を読む。"""
+    """Sheets API の get 応答から R セル1件を読む。"""
     monkeypatch.setattr(
         "modules.spreadsheet.GOOGLE_SHEETS_AUTH_MODE", "service_account", raising=False
     )
@@ -42,7 +35,7 @@ def test_get_ai_status_cell_returns_trimmed_value(monkeypatch) -> None:
 
     fake_values = MagicMock()
     fake_values.execute = MagicMock(
-        return_value={"values": [["  処理中  "]]}
+        return_value={"values": [["  MacBot  "]]}
     )
     fake_get = MagicMock(return_value=fake_values)
     fake_spreadsheets = MagicMock()
@@ -63,4 +56,4 @@ def test_get_ai_status_cell_returns_trimmed_value(monkeypatch) -> None:
     client._max_col_index = max_column_index_for_map(SPREADSHEET_COLUMNS.values())
     client._data_range_end = column_index_to_letters(client._max_col_index)
 
-    assert client.get_ai_status_cell(100) == "処理中"
+    assert client.get_ai_status_cell(100) == "MacBot"

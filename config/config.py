@@ -389,20 +389,21 @@ SPREADSHEET_COLUMNS = {
     "partner_name": "C",   # client_name
     "contract_plan": "D",  # plan_type
     "ball_holder": "Q",  # ボール保持者（着手条件: 既定では「ポリッシュ」のみ）
+    # Bot 着手フラグ（R列）。空欄=未着手、"MacBot"=着手済み。1行目の見出しは検証しない
+    "ai_status": "R",
     # SPREADSHEET_TARGET_AI_STATUS と照合する列（例: overall_status）
     "phase_status": "M",
-    # Bot 専用: 処理中 / 完了 / エラー（業務フェーズ列とは別）。1行目の見出しは不要・検証しない
-    "ai_status": "AV",
     "phase_deadline": "T",  # phase_deadline
     "appo_memo": "AD",     # ap_recording_memo
     "sales_notes": "AE",   # sales_note_pre_demo
     "hearing_sheet_url": "AH",  # hearing_sheet_url
-    "test_site_url": "AJ",      # test_url
-    "deploy_url": "AW",         # 書き込みのみ。1行目の見出しは不要・検証しない
+    "github_repo_url": "AI",    # 最終出力: GitHub リポジトリ URL
+    "test_site_url": "AJ",      # test_url（着手条件の空欄チェック用に読み取り）
+    "deploy_url": "AJ",         # 最終出力: デプロイ済み URL（test_site_url と同一列）
 }
 
 # 1行目に期待する列名（SPREADSHEET_COLUMNS のキーで検証する列のみ）
-# ※ AV（ai_status）・AW（deploy_url）は Bot 書き込み専用のため見出し検証の対象外
+# ※ R（ai_status）・AI（github_repo_url）・AJ（deploy_url）は Bot 書き込み専用のため見出し検証の対象外
 # ※実シートの英語ヘッダーに合わせる（日本語シートの場合は .env で別途調整）
 SPREADSHEET_HEADER_LABELS: dict[str, str] = {
     "record_number": "record_id",

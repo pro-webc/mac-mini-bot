@@ -309,13 +309,13 @@ def test_infer_manus_github_clone_url_by_record_bot_prefix() -> None:
     )
 
 
-def test_infer_manus_github_clone_url_by_record_test_run_prefix() -> None:
+def test_infer_manus_github_clone_url_by_record_botrun_prefix() -> None:
     from modules.manus_refactor import infer_manus_github_clone_url
 
-    prose = "push 済み https://github.com/propagate-webcreation/BotRun-志田洋二.git です"
+    prose = "push 済み https://github.com/propagate-webcreation/BotRun-9408.git です"
     assert (
         infer_manus_github_clone_url(prose, record_number="9408")
-        == "https://github.com/propagate-webcreation/BotRun-志田洋二.git"
+        == "https://github.com/propagate-webcreation/BotRun-9408.git"
     )
 
 
@@ -333,3 +333,65 @@ def test_infer_manus_github_clone_url_ambiguous_returns_none() -> None:
 
     t = "https://github.com/a/x.git と https://github.com/b/y.git"
     assert infer_manus_github_clone_url(t, record_number="") is None
+
+
+def test_split_manus_response_deploy_url_percent_encoded_japanese() -> None:
+    """BOT_DEPLOY 行のリポジトリ名がパーセントエンコードされた日本語でも抽出できる。"""
+    from modules.manus_refactor import split_manus_response_deploy_url
+
+    body, url = split_manus_response_deploy_url(
+        "ok\n\nBOT_DEPLOY_GITHUB_URL: https://github.com/propagate-webcreation/BotRun-%E5%BF%97%E7%94%B0%E6%B4%8B%E4%BA%8C.git\n"
+    )
+    assert url == "https://github.com/propagate-webcreation/BotRun-%E5%BF%97%E7%94%B0%E6%B4%8B%E4%BA%8C.git"
+    assert body.strip() == "ok"
+
+
+def test_infer_manus_github_clone_url_percent_encoded_botrun() -> None:
+    """パーセントエンコードされた BotRun- URL を botrun- プレフィックスで推定できる。"""
+    from modules.manus_refactor import infer_manus_github_clone_url
+
+    prose = "push 済み https://github.com/propagate-webcreation/BotRun-%E5%BF%97%E7%94%B0%E6%B4%8B%E4%BA%8C.git です"
+    assert (
+        infer_manus_github_clone_url(prose, record_number="9408")
+        == "https://github.com/propagate-webcreation/BotRun-%E5%BF%97%E7%94%B0%E6%B4%8B%E4%BA%8C.git"
+    )
+
+
+def test_infer_manus_github_clone_url_new_naming_record_ascii() -> None:
+    """新命名規則 {レコード番号}-{ASCII部分} の URL をレコード番号で推定できる。"""
+    from modules.manus_refactor import infer_manus_github_clone_url
+
+    prose = "push 済み https://github.com/propagate-webcreation/9408-CREST.git です"
+    assert (
+        infer_manus_github_clone_url(prose, record_number="9408")
+        == "https://github.com/propagate-webcreation/9408-CREST.git"
+    )
+
+
+def test_extract_assistant_markdown_text_type_fallback() -> None:
+    """content block の type が 'text' でもテキストを取得できる。"""
+    from modules.manus_refactor import _extract_assistant_markdown
+
+    task = {
+        "status": "completed",
+        "output": [
+            {
+                "role": "assistant",
+                "content": [{"type": "text", "text": "hello world"}],
+            }
+        ],
+    }
+    assert _extract_assistant_markdown(task) == "hello world"
+
+
+def test_extract_assistant_markdown_direct_text_fallback() -> None:
+    """output メッセージに content が無く直接 text がある古い形式。"""
+    from modules.manus_refactor import _extract_assistant_markdown
+
+    task = {
+        "status": "completed",
+        "output": [
+            {"role": "assistant", "text": "direct text"},
+        ],
+    }
+    assert _extract_assistant_markdown(task) == "direct text"

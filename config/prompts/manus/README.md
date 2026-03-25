@@ -6,7 +6,7 @@
 
 **Manus に任せる一連作業**（GitHub 連携前提で、ここまで完了するとリモートに push 済みになる想定）:
 
-1. **Git リポジトリ作成** — `propagate-webcreation` ワークスペース、private、`propagate-webcreation/DefaultSetting` テンプレ。**リポジトリ名**は `BotRun-パートナー名`（パートナー名はスプレッドシートの値を GitHub 向けに正規化。ボットは `build_basic_lp_refactor_user_prompt` で展開）。**ディスクリプション**は `レコード番号-パートナー名`（スプレッドシートそのまま）。工程テスト・本番共通。同名リポジトリが既にあれば**即終了**。
+1. **Git リポジトリ作成** — `propagate-webcreation` ワークスペース、private、`propagate-webcreation/DefaultSetting` テンプレ。**リポジトリ名**は `{レコード番号}-{ASCII部分}`（GitHub は日本語非対応のため、パートナー名の英数字部分のみ付加。ASCII 部分が無ければ `{レコード番号}` のみ。ボットは `build_basic_lp_refactor_user_prompt` で展開）。**ディスクリプション**は `レコード番号 パートナー名`（スプレッドシートそのまま、半角スペース区切り）。工程テスト・本番共通。同名リポジトリが既にあれば**即終了**。
 2. **リファクタリング** — クローンし、リファクタ指示書どおりに単一 Canvas ソースを App Router 構成へ分割。
 3. **画像** — `ImagePlaceholder` 等を洗い出し、nanobananaPro で生成し `/public/images/` に実装、`next/image` へ置換。
 4. **検証と push** — `npm run build`、失敗時は自己修復ループ、成功後に push。

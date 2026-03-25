@@ -45,7 +45,7 @@ def manus_repo_name_for_prompt(
     record_number: str | None,
     partner_name: str | None,
 ) -> str:
-    """Manus 手順1: リポジトリ名 ``BotRun-{パートナー名}``（GitHub 向けに正規化済み）。"""
+    """Manus 手順1: リポジトリ名 ``{レコード番号}-{ASCII部分}``（GitHub 向けに正規化済み）。"""
     return sanitize_github_repo_name(
         (partner_name or "").strip() or "unknown",
         str(record_number or "").strip() or "0",
@@ -56,13 +56,13 @@ def manus_repo_description_for_prompt(
     partner_name: str | None,
     record_number: str | None = None,
 ) -> str:
-    """Manus 手順1: ディスクリプション ``{レコード番号}-{パートナー名}``（スプレッドシートそのまま）。
+    """Manus 手順1: ディスクリプション ``{レコード番号} {パートナー名}``（スプレッドシートそのまま）。
 
     GitHub の description 上限（350 文字）で切り詰める。
     """
     rec = (str(record_number) if record_number else "").strip()
     pn = (partner_name or "").strip() or "先方名未設定"
-    desc = f"{rec}-{pn}" if rec else pn
+    desc = f"{rec} {pn}" if rec else pn
     if len(desc) > 350:
         desc = desc[:350]
     return desc
@@ -175,8 +175,8 @@ def build_basic_lp_refactor_user_prompt(
         + legal
         + hr_block
         + "\n\n===== BEGIN_CANVAS_SOURCE =====\n"
-        + "以下がリファクタリング元の `canvas_code.txt` 相当です。"
-        + " 外部添付ではなく、このブロック内のコードを入力として扱ってください。\n\n"
+        + "以下がリファクタリング元のソースコードです。"
+        + " 外部ファイルの添付や参照ではなく、このブロック内のコードを直接入力として扱ってください。\n\n"
         + "```tsx\n"
         + src
         + "\n```\n===== END_CANVAS_SOURCE =====\n"

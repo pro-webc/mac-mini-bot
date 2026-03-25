@@ -45,9 +45,9 @@ def test_refactor_prompt_repo_name_and_description_in_orchestration() -> None:
     p = build_basic_lp_refactor_user_prompt(
         "export default function X() { return null }",
         partner_name="テスト商事",
-        record_number="",
+        record_number="42",
     )
-    assert "BotRun-テスト商事" in p
+    assert "`42`" in p
     assert "テスト商事" in p
     assert "{{MANUS_REPO_NAME}}" not in p
     assert "{{MANUS_REPO_DESCRIPTION}}" not in p
@@ -59,8 +59,8 @@ def test_refactor_prompt_record_number_in_repo_name() -> None:
         partner_name="ACME株式会社",
         record_number="12345",
     )
-    assert "BotRun-ACME株式会社" in p
-    assert "12345-ACME株式会社" in p
+    assert "12345-ACME" in p
+    assert "12345 ACME株式会社" in p
 
 
 def test_refactor_prompt_empty_raises() -> None:
@@ -123,7 +123,7 @@ export default function X() { return <main className="x" /> }
 """,
     )
     assert "説明文" not in p.split("===== BEGIN_CANVAS_SOURCE =====", 1)[1]
-    assert "以下がリファクタリング元の `canvas_code.txt` 相当です。" in p
+    assert "以下がリファクタリング元のソースコードです。" in p
     assert "```tsx\nexport default function X()" in p
 
 
