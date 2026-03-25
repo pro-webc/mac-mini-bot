@@ -40,9 +40,21 @@ def test_subst_fills_step_1_1_placeholder() -> None:
 
 def test_subst_step_7_2_fills_step_3() -> None:
     t = _MANUAL.joinpath("step_7_2.txt").read_text(encoding="utf-8")
-    out = _subst(t, STEP_3_OUTPUT="構成本文")
+    out = _subst(
+        t,
+        STEP_3_OUTPUT="構成本文",
+        HEARING_FACTUAL_BLOCK="事実抜粋",
+    )
     assert "{{" not in out
     assert "構成本文" in out
+    assert "事実抜粋" in out
+
+
+def test_subst_step_3_hearing_block() -> None:
+    t = _MANUAL.joinpath("step_3.txt").read_text(encoding="utf-8")
+    out = _subst(t, HEARING_BLOCK="料金\n1000円\n")
+    assert "{{" not in out
+    assert "1000円" in out
 
 
 def test_subst_rejects_unfilled_placeholder() -> None:

@@ -28,6 +28,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -54,6 +55,7 @@ from modules.gemini_generative_timeout import ensure_gemini_rpc_patch_from_confi
 from modules.llm.llm_raw_output import write_pre_manus_llm_checkpoint
 from modules.hearing_url_utils import (
     existing_site_url_guess_from_hearing,
+    hearing_factual_data_block_for_prompt,
     hearing_reference_design_block_for_prompt,
     reference_site_url_from_hearing,
 )
@@ -165,8 +167,14 @@ def _client_hp_and_mood_placeholders() -> tuple[str, str]:
     )
 
 
-def _reference_url_block(hearing_sheet_content: str) -> str:
-    u = reference_site_url_from_hearing(hearing_sheet_content or "")
+def _reference_url_block(
+    hearing_sheet_content: str,
+    *,
+    extra_texts: Sequence[str] = (),
+) -> str:
+    u = reference_site_url_from_hearing(
+        hearing_sheet_content or "", extra_texts=extra_texts,
+    )
     if u:
         return u
     return "（参考サイトURLの記載なし。手順1-3およびヒアリング本文を参照）"
@@ -270,7 +278,9 @@ def run_basic_cp_gemini_manual_pipeline(
         _load_step("step_2.txt"),
         STEP_1_3_OUTPUT=outs.step_1_3,
     )
-    p3 = _load_step("step_3.txt")
+    hear = (hearing_sheet_content or "").strip()
+    hb = hear if hear else "（ヒアリング原文の再掲なし。）"
+    p3 = _subst(_load_step("step_3.txt"), HEARING_BLOCK=hb)
 
     logger.info("BASIC-CP Gemini: 手順2〜3（タブ③・同一チャット）…")
     chat3 = model.start_chat(history=[])
@@ -288,12 +298,15 @@ def run_basic_cp_gemini_manual_pipeline(
         _load_step("step_4.txt"),
         HP_COLOR_CLIENT=hp_c,
         MOOD_CLIENT=mood_c,
-        REFERENCE_URL_BLOCK=_reference_url_block(hear),
+        REFERENCE_URL_BLOCK=_reference_url_block(
+            hear, extra_texts=[s for s in (appo_memo, sales_notes) if (s or "").strip()],
+        ),
     )
+    _extras = [s for s in (appo_memo, sales_notes) if (s or "").strip()]
     p6 = _subst(
         _load_step("step_6.txt"),
         HEARING_REFERENCE_DESIGN_BLOCK=hearing_reference_design_block_for_prompt(
-            hearing_sheet_content
+            hearing_sheet_content, extra_texts=_extras,
         ),
     )
 
@@ -322,12 +335,16 @@ def run_basic_cp_gemini_manual_pipeline(
         _load_step("step_7_1.txt"),
         STEP_6_OUTPUT=outs.step_6,
         HEARING_REFERENCE_DESIGN_BLOCK=hearing_reference_design_block_for_prompt(
-            hearing_sheet_content
+            hearing_sheet_content, extra_texts=_extras,
         ),
+    )
+    _factual = hearing_factual_data_block_for_prompt(
+        hearing_sheet_content, extra_texts=_extras,
     )
     p72 = _subst(
         _load_step("step_7_2.txt"),
         STEP_3_OUTPUT=outs.step_3,
+        HEARING_FACTUAL_BLOCK=_factual,
     )
     p73 = _load_step("step_7_3.txt")
 
@@ -362,7 +379,9 @@ def run_basic_cp_gemini_manual_pipeline(
             partner_name=partner_name,
             record_number=record_number,
         )
-        _hr = hearing_reference_design_block_for_prompt(hearing_sheet_content)
+        _hr = hearing_reference_design_block_for_prompt(
+            hearing_sheet_content, extra_texts=_extras,
+        )
         outs.raw_prompts["manus_refactor_task"] = build_basic_lp_refactor_user_prompt(
             outs.step_7_3,
             preface_dir=BASIC_CP_REFACTOR_PREFACE_DIR,
@@ -387,6 +406,8 @@ def run_basic_cp_gemini_manual_pipeline(
         outs,
         partner_name=partner_name,
         hearing_sheet_content=hearing_sheet_content,
+        appo_memo=appo_memo,
+        sales_notes=sales_notes,
     )
     plan_info = _ref_plan
     max_pages = int(plan_info.get("pages") or 1)
@@ -432,6 +453,8 @@ def _build_site_build_prompt_from_steps(
     *,
     partner_name: str,
     hearing_sheet_content: str = "",
+    appo_memo: str = "",
+    sales_notes: str = "",
 ) -> str:
     parts: list[str] = [
         f"【BASIC-CP / Gemini マニュアル全手順の結合ログ】パートナー: {partner_name}\n",
@@ -449,10 +472,17 @@ def _build_site_build_prompt_from_steps(
         outs.step_6,
     ]
     if (hearing_sheet_content or "").strip():
+        _memo_extras = [s for s in (appo_memo, sales_notes) if (s or "").strip()]
         parts.extend(
             [
                 "\n\n=== ヒアリング・参考サイト・デザイン（原文抜粋・再掲） ===\n\n",
-                hearing_reference_design_block_for_prompt(hearing_sheet_content),
+                hearing_reference_design_block_for_prompt(
+                    hearing_sheet_content, extra_texts=_memo_extras,
+                ),
+                "\n\n=== ヒアリング・事実データ（原文抜粋・再掲） ===\n\n",
+                hearing_factual_data_block_for_prompt(
+                    hearing_sheet_content, extra_texts=_memo_extras,
+                ),
             ]
         )
     return "".join(parts)

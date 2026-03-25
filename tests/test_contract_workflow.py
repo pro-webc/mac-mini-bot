@@ -1,13 +1,34 @@
 """契約プラン列 → 作業分岐"""
 from __future__ import annotations
 
+import pytest
+
 import config.config as cfg
+from config.config import _normalize_plan_name
 from modules.contract_workflow import (
     ContractWorkBranch,
     gemini_manual_enabled_for_branch,
     resolve_contract_work_branch,
     resolve_work_branch_with_basic_lp_override,
 )
+
+
+@pytest.mark.parametrize(
+    "raw, expected",
+    [
+        ("BASIC", "BASIC"),
+        ("basic", "BASIC"),
+        ("BASIC(9,800円)", "BASIC"),
+        ("BASIC LP", "BASIC LP"),
+        ("BASIC LP(9,800円)", "BASIC LP"),
+        ("STANDARD(14,800円)", "STANDARD"),
+        ("ADVANCE(29,800円)", "ADVANCE"),
+        ("  BASIC  ", "BASIC"),
+        ("", ""),
+    ],
+)
+def test_normalize_plan_name(raw: str, expected: str) -> None:
+    assert _normalize_plan_name(raw) == expected
 
 
 def test_branch_basic_lp() -> None:
@@ -23,9 +44,24 @@ def test_branch_standard() -> None:
     assert resolve_contract_work_branch("STANDARD") == ContractWorkBranch.STANDARD
 
 
-def test_branch_standard_with_price_suffix_matches_sheet_style() -> None:
-    """スプレッドシートである「STANDARD(14,800円)」表記はキー完全一致しないが STANDARD 情報にフォールバックする。"""
+def test_branch_standard_with_price_suffix() -> None:
+    """スプレッドシートの「STANDARD(14,800円)」表記でも STANDARD に解決される。"""
     assert resolve_contract_work_branch("STANDARD(14,800円)") == ContractWorkBranch.STANDARD
+
+
+def test_branch_basic_with_price_suffix() -> None:
+    """「BASIC(9,800円)」表記でも BASIC に解決される（旧実装では STANDARD フォールバックだった）。"""
+    assert resolve_contract_work_branch("BASIC(9,800円)") == ContractWorkBranch.BASIC
+
+
+def test_branch_advance_with_price_suffix() -> None:
+    """「ADVANCE(29,800円)」表記でも ADVANCE に解決される。"""
+    assert resolve_contract_work_branch("ADVANCE(29,800円)") == ContractWorkBranch.ADVANCE
+
+
+def test_branch_basic_lp_with_price_suffix() -> None:
+    """「BASIC LP(9,800円)」表記でも BASIC_LP に解決される。"""
+    assert resolve_contract_work_branch("BASIC LP(9,800円)") == ContractWorkBranch.BASIC_LP
 
 
 def test_branch_advance() -> None:

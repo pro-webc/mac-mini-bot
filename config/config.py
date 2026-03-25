@@ -459,23 +459,33 @@ CONTRACT_PLANS = {
     }
 }
 
+def _normalize_plan_name(raw: str) -> str:
+    """スプレッドシートの価格接尾辞 ``(9,800円)`` 等を除去して大文字化する。"""
+    s = (raw or "").strip().upper()
+    paren = s.find("(")
+    if paren > 0:
+        s = s[:paren].rstrip()
+    return s
+
+
 def get_contract_plan_info(plan_name: str) -> dict:
     """
     契約プラン情報を取得
-    
+
+    スプレッドシートの ``BASIC(9,800円)`` のような価格接尾辞を除去してからマッチする。
+
     Args:
-        plan_name: 契約プラン名
-        
+        plan_name: 契約プラン名（価格接尾辞付きでも可）
+
     Returns:
         契約プラン情報（見つからない場合はデフォルト）
     """
-    # プラン名の正規化（大文字小文字を無視）
-    plan_name_upper = plan_name.upper() if plan_name else ""
-    
+    normalized = _normalize_plan_name(plan_name)
+
     for key, value in CONTRACT_PLANS.items():
-        if key.upper() == plan_name_upper or value["name"].upper() == plan_name_upper:
+        if key.upper() == normalized or value["name"].upper() == normalized:
             return value
-    
+
     # デフォルト（STANDARD）
     return CONTRACT_PLANS["STANDARD"]
 

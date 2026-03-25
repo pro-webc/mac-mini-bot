@@ -88,12 +88,35 @@ def run_npm_build(site_dir: Path, timeout_sec: int = 900) -> tuple[bool, str]:
         return False, str(e)
 
 
-def count_app_router_page_tsx_files(site_dir: Path) -> tuple[int, list[str]]:
+# コンテンツページではないシステム系ルート（契約ページ数のカウント対象外）。
+# app/ 直下のディレクトリ名で判定する。
+_NON_CONTENT_ROUTE_PREFIXES: frozenset[str] = frozenset({
+    "api",
+    "preview",
+    "_next",
+})
+
+
+def _is_non_content_route(rel_path: str) -> bool:
+    """app/preview/[id]/page.tsx のようなシステム系ルートなら True。"""
+    parts = rel_path.replace("\\", "/").split("/")
+    if len(parts) >= 2:
+        route_dir = parts[1]  # app/{route_dir}/...
+        if route_dir in _NON_CONTENT_ROUTE_PREFIXES or route_dir.startswith("_"):
+            return True
+    return False
+
+
+def count_app_router_page_tsx_files(
+    site_dir: Path,
+) -> tuple[int, list[str]]:
     """App Router の `page.tsx` 本数と相対パス一覧（契約ページ数との突合せ用）。
 
-    `app/` と `src/app/` の両方を走査する。node_modules は除外。
+    `app/` と `src/app/` の両方を走査する。
+    node_modules と、コンテンツページでないシステム系ルート（api, preview 等）は除外。
     """
     paths: list[str] = []
+    excluded: list[str] = []
     site_dir = site_dir.resolve()
     for base in ("app", "src/app"):
         root = site_dir / base
@@ -106,7 +129,15 @@ def count_app_router_page_tsx_files(site_dir: Path) -> tuple[int, list[str]]:
                 rel = p.relative_to(site_dir)
             except ValueError:
                 rel = p
-            paths.append(str(rel).replace("\\", "/"))
+            rel_str = str(rel).replace("\\", "/")
+            if _is_non_content_route(rel_str):
+                excluded.append(rel_str)
+                continue
+            paths.append(rel_str)
+    if excluded:
+        logger.info(
+            "page.tsx カウント対象外（システムルート）: %s", ", ".join(excluded)
+        )
     return len(paths), paths
 
 

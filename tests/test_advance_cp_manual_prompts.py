@@ -51,13 +51,21 @@ def test_step_2_blog_placeholder() -> None:
 
 def test_step_7_3_batch1_placeholder() -> None:
     t = _MANUAL.joinpath("step_7_3.txt").read_text(encoding="utf-8")
-    out = _subst(t, STEP_3_LOWER_BATCH1="下層1群")
+    out = _subst(
+        t,
+        STEP_3_LOWER_BATCH1="下層1群",
+        HEARING_FACTUAL_BLOCK="事実",
+    )
     assert "{{" not in out
     assert "下層1群" in out
 
 
 def test_step_7_4_batch2_placeholder() -> None:
     t = _MANUAL.joinpath("step_7_4.txt").read_text(encoding="utf-8")
-    out = _subst(t, STEP_3_LOWER_BATCH2="下層2群")
+    out = _subst(
+        t,
+        STEP_3_LOWER_BATCH2="下層2群",
+        HEARING_FACTUAL_BLOCK="事実",
+    )
     assert "{{" not in out
     assert "下層2群" in out

@@ -30,6 +30,7 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -126,8 +127,14 @@ def _client_hp_and_mood_placeholders() -> tuple[str, str]:
     )
 
 
-def _reference_url_block(hearing_sheet_content: str) -> str:
-    u = reference_site_url_from_hearing(hearing_sheet_content or "")
+def _reference_url_block(
+    hearing_sheet_content: str,
+    *,
+    extra_texts: Sequence[str] = (),
+) -> str:
+    u = reference_site_url_from_hearing(
+        hearing_sheet_content or "", extra_texts=extra_texts,
+    )
     if u:
         return u
     return "（参考サイトURLの記載なし。手順1-3およびヒアリング本文を参照）"
@@ -295,9 +302,14 @@ def run_basic_lp_gemini_manual_pipeline(
         _load_step("step_5.txt"),
         HP_COLOR_CLIENT=hp_c,
         MOOD_CLIENT=mood_c,
-        REFERENCE_URL_BLOCK=_reference_url_block(hear),
+        REFERENCE_URL_BLOCK=_reference_url_block(
+            hear, extra_texts=[s for s in (appo_memo, sales_notes) if (s or "").strip()],
+        ),
     )
-    _hr_block = hearing_reference_design_block_for_prompt(hearing_sheet_content)
+    _extras = [s for s in (appo_memo, sales_notes) if (s or "").strip()]
+    _hr_block = hearing_reference_design_block_for_prompt(
+        hearing_sheet_content, extra_texts=_extras,
+    )
     p7 = _subst(
         _load_step("step_7.txt"),
         HEARING_REFERENCE_DESIGN_BLOCK=_hr_block,

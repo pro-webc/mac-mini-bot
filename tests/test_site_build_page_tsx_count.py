@@ -5,7 +5,11 @@ from pathlib import Path
 
 import pytest
 
-from modules.site_build import count_app_router_page_tsx_files, verify_site_build
+from modules.site_build import (
+    _is_non_content_route,
+    count_app_router_page_tsx_files,
+    verify_site_build,
+)
 
 
 def test_count_app_router_page_tsx_files(tmp_path: Path) -> None:
@@ -16,6 +20,34 @@ def test_count_app_router_page_tsx_files(tmp_path: Path) -> None:
     assert n == 2
     assert "app/page.tsx" in rels
     assert "app/about/page.tsx" in rels
+
+
+def test_count_excludes_system_routes(tmp_path: Path) -> None:
+    """preview, api 等のシステムルートはカウント対象外。"""
+    for d in ("app", "app/about", "app/preview/[candidateId]", "app/api/contact"):
+        (tmp_path / d).mkdir(parents=True, exist_ok=True)
+    for f in (
+        "app/page.tsx",
+        "app/about/page.tsx",
+        "app/preview/[candidateId]/page.tsx",
+        "app/api/contact/page.tsx",
+    ):
+        (tmp_path / f).write_text("export default function P() {}", encoding="utf-8")
+    n, rels = count_app_router_page_tsx_files(tmp_path)
+    assert n == 2
+    assert "app/page.tsx" in rels
+    assert "app/about/page.tsx" in rels
+    assert "app/preview/[candidateId]/page.tsx" not in rels
+    assert "app/api/contact/page.tsx" not in rels
+
+
+def test_is_non_content_route() -> None:
+    assert _is_non_content_route("app/preview/[candidateId]/page.tsx")
+    assert _is_non_content_route("app/api/contact/page.tsx")
+    assert _is_non_content_route("app/_internal/page.tsx")
+    assert not _is_non_content_route("app/page.tsx")
+    assert not _is_non_content_route("app/about/page.tsx")
+    assert not _is_non_content_route("app/blog/[slug]/page.tsx")
 
 
 def test_verify_site_build_fails_when_page_tsx_exceeds_contract(
@@ -32,6 +64,27 @@ def test_verify_site_build_fails_when_page_tsx_exceeds_contract(
     assert ok is False
     assert "契約ページ数" in log
     assert "page.tsx" in log
+
+
+def test_verify_site_build_passes_when_only_system_routes_exceed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """コンテンツ6ページ + preview 1ルート → 契約6ページ以内として通過。"""
+    monkeypatch.setattr(
+        "modules.site_build.SITE_BUILD_ENFORCE_CONTRACT_PAGE_TSX_COUNT", True
+    )
+    monkeypatch.setattr("modules.site_build.run_npm_build", lambda *_a, **_k: (True, "ok"))
+    (tmp_path / "package.json").write_text('{"scripts":{"build":"echo ok"}}', encoding="utf-8")
+    for d in ("app", "app/a", "app/b", "app/c", "app/d", "app/e", "app/preview/[id]"):
+        (tmp_path / d).mkdir(parents=True, exist_ok=True)
+    for f in (
+        "app/page.tsx", "app/a/page.tsx", "app/b/page.tsx",
+        "app/c/page.tsx", "app/d/page.tsx", "app/e/page.tsx",
+        "app/preview/[id]/page.tsx",
+    ):
+        (tmp_path / f).write_text("export default function P() {}", encoding="utf-8")
+    ok, _ = verify_site_build(tmp_path, skip_install=True, contract_max_pages=6)
+    assert ok is True
 
 
 def test_verify_site_build_skips_count_when_enforcement_off(

@@ -81,6 +81,17 @@ def test_build_standard_cp_gemini_prompt_step_3_1_matches_subst() -> None:
     assert "{{" not in out
     assert "構成案本文" in out
     assert "お客様情報本文" in out
+    assert "ヒアリング原文の再掲なし" in out
+
+
+def test_build_standard_cp_gemini_prompt_step_3_1_hearing_block() -> None:
+    out = build_standard_cp_gemini_prompt_step_3_1(
+        step_2_output="構成",
+        step_1_3_output="顧客",
+        hearing_sheet_content="電話\n090-0000-0000\n",
+    )
+    assert "{{" not in out
+    assert "090-0000-0000" in out
 
 
 def test_build_standard_cp_gemini_prompt_step_3_2_no_placeholders() -> None:
@@ -275,6 +286,11 @@ def test_step_1_2_and_1_3_combined_joins_both_sections() -> None:
 
 def test_step_7_3_subpages_placeholder() -> None:
     t = _MANUAL.joinpath("step_7_3.txt").read_text(encoding="utf-8")
-    out = _subst(t, STEP_3_SUBPAGES_OUTPUT="下層構成")
+    out = _subst(
+        t,
+        STEP_3_SUBPAGES_OUTPUT="下層構成",
+        HEARING_FACTUAL_BLOCK="事実抜粋",
+    )
     assert "{{" not in out
     assert "下層構成" in out
+    assert "事実抜粋" in out

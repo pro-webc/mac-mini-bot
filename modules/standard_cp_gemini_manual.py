@@ -49,6 +49,7 @@ from modules.gemini_generative_timeout import ensure_gemini_rpc_patch_from_confi
 from modules.llm.llm_raw_output import write_pre_manus_llm_checkpoint
 from modules.hearing_url_utils import (
     existing_site_url_guess_from_hearing,
+    hearing_factual_data_block_for_prompt,
     hearing_reference_design_block_for_prompt,
     reference_site_url_from_hearing,
 )
@@ -163,8 +164,14 @@ def _client_hp_and_mood_placeholders() -> tuple[str, str]:
     )
 
 
-def _reference_url_block(hearing_sheet_content: str) -> str:
-    u = reference_site_url_from_hearing(hearing_sheet_content or "")
+def _reference_url_block(
+    hearing_sheet_content: str,
+    *,
+    extra_texts: Sequence[str] = (),
+) -> str:
+    u = reference_site_url_from_hearing(
+        hearing_sheet_content or "", extra_texts=extra_texts,
+    )
     if u:
         return u
     return "（参考サイトURLの記載なし。手順1-3およびヒアリング本文を参照）"
@@ -245,13 +252,23 @@ def build_standard_cp_gemini_prompt_step_2(*, step_1_3_output: str) -> str:
 
 
 def build_standard_cp_gemini_prompt_step_3_1(
-    *, step_2_output: str, step_1_3_output: str
+    *,
+    step_2_output: str,
+    step_1_3_output: str,
+    hearing_sheet_content: str = "",
 ) -> str:
     """手順3-1（タブ④・API 4/15）に渡すプロンプト全文。``send_message`` は呼ばない。"""
+    hear = (hearing_sheet_content or "").strip()
+    block = (
+        hear
+        if hear
+        else "（ヒアリング原文の再掲なし。以下お客様情報のみ参照すること。）"
+    )
     return _subst(
         _load_step("step_3_1.txt"),
         STEP_2_OUTPUT=step_2_output,
         STEP_1_3_OUTPUT=step_1_3_output,
+        HEARING_BLOCK=block,
     )
 
 
@@ -275,14 +292,20 @@ def build_standard_cp_gemini_prompt_step_3_5() -> str:
     return _load_step("step_3_5.txt")
 
 
-def build_standard_cp_gemini_prompt_step_4(*, hearing_sheet_content: str) -> str:
+def build_standard_cp_gemini_prompt_step_4(
+    *,
+    hearing_sheet_content: str,
+    appo_memo: str = "",
+    sales_notes: str = "",
+) -> str:
     """手順4（タブ⑤・API 9/15）に渡すプロンプト全文。``send_message`` は呼ばない。"""
     hp_c, mood_c = _client_hp_and_mood_placeholders()
+    extras = [s for s in (appo_memo, sales_notes) if (s or "").strip()]
     return _subst(
         _load_step("step_4.txt"),
         HP_COLOR_CLIENT=hp_c,
         MOOD_CLIENT=mood_c,
-        REFERENCE_URL_BLOCK=_reference_url_block(hearing_sheet_content),
+        REFERENCE_URL_BLOCK=_reference_url_block(hearing_sheet_content, extra_texts=extras),
     )
 
 
@@ -301,12 +324,18 @@ def build_standard_cp_gemini_prompt_step_5(
     )
 
 
-def build_standard_cp_gemini_prompt_step_6(*, hearing_sheet_content: str) -> str:
+def build_standard_cp_gemini_prompt_step_6(
+    *,
+    hearing_sheet_content: str,
+    appo_memo: str = "",
+    sales_notes: str = "",
+) -> str:
     """手順6（タブ⑤・API 11/15）に渡すプロンプト全文。参考サイト・デザイン原文を再掲する。"""
+    extras = [s for s in (appo_memo, sales_notes) if (s or "").strip()]
     return _subst(
         _load_step("step_6.txt"),
         HEARING_REFERENCE_DESIGN_BLOCK=hearing_reference_design_block_for_prompt(
-            hearing_sheet_content
+            hearing_sheet_content, extra_texts=extras,
         ),
     )
 
@@ -315,13 +344,16 @@ def build_standard_cp_gemini_prompt_step_7_1(
     *,
     step_6_output: str,
     hearing_sheet_content: str,
+    appo_memo: str = "",
+    sales_notes: str = "",
 ) -> str:
     """手順7-1（タブ⑥・API 12/15）に渡すプロンプト全文。新規チャットのためヒアリング再掲あり。"""
+    extras = [s for s in (appo_memo, sales_notes) if (s or "").strip()]
     return _subst(
         _load_step("step_7_1.txt"),
         STEP_6_OUTPUT=(step_6_output or "").strip(),
         HEARING_REFERENCE_DESIGN_BLOCK=hearing_reference_design_block_for_prompt(
-            hearing_sheet_content
+            hearing_sheet_content, extra_texts=extras,
         ),
     )
 
@@ -542,6 +574,7 @@ def run_standard_cp_gemini_api_call_4_of_15(
     prompt = build_standard_cp_gemini_prompt_step_3_1(
         step_2_output=step_2_output,
         step_1_3_output=step_1_3_output,
+        hearing_sheet_content="",
     )
     logger.info("STANDARD-CP Gemini: 手順3-1のみ（段階テスト・API 4/15）…")
     chat4 = model.start_chat(history=[])
@@ -716,6 +749,8 @@ def run_standard_cp_gemini_api_call_8_of_15(
 def run_standard_cp_gemini_api_call_9_of_15(
     *,
     hearing_sheet_content: str,
+    appo_memo: str = "",
+    sales_notes: str = "",
 ) -> tuple[str, str]:
     """
     STANDARD-CP マニュアル chain の **Gemini 9/15**（新規チャット・手順4・タブ⑤の1通目）。
@@ -737,6 +772,8 @@ def run_standard_cp_gemini_api_call_9_of_15(
     gcfg = _gen_config()
     prompt = build_standard_cp_gemini_prompt_step_4(
         hearing_sheet_content=hearing_sheet_content,
+        appo_memo=appo_memo,
+        sales_notes=sales_notes,
     )
     logger.info("STANDARD-CP Gemini: 手順4のみ（段階テスト・API 9/15・タブ⑤）…")
     chat5 = model.start_chat(history=[])
@@ -791,6 +828,8 @@ def run_standard_cp_gemini_api_call_11_of_15(
     step_5_prompt: str,
     step_5_response: str,
     hearing_sheet_content: str = "",
+    appo_memo: str = "",
+    sales_notes: str = "",
 ) -> tuple[str, str]:
     """
     STANDARD-CP マニュアル chain の **Gemini 11/15**（タブ⑤の3通目・手順6）。
@@ -812,7 +851,9 @@ def run_standard_cp_gemini_api_call_11_of_15(
     )
     gcfg = _gen_config()
     prompt = build_standard_cp_gemini_prompt_step_6(
-        hearing_sheet_content=hearing_sheet_content
+        hearing_sheet_content=hearing_sheet_content,
+        appo_memo=appo_memo,
+        sales_notes=sales_notes,
     )
     hist = _standard_cp_tab4_history_from_user_model_pairs(
         [
@@ -830,6 +871,8 @@ def run_standard_cp_gemini_api_call_12_of_15(
     *,
     step_6_output: str,
     hearing_sheet_content: str = "",
+    appo_memo: str = "",
+    sales_notes: str = "",
 ) -> tuple[str, str]:
     """
     STANDARD-CP マニュアル chain の **Gemini 12/15**（新規チャット・手順7-1・タブ⑥の1通目）。
@@ -853,6 +896,8 @@ def run_standard_cp_gemini_api_call_12_of_15(
     prompt = build_standard_cp_gemini_prompt_step_7_1(
         step_6_output=step_6_output,
         hearing_sheet_content=hearing_sheet_content,
+        appo_memo=appo_memo,
+        sales_notes=sales_notes,
     )
     logger.info("STANDARD-CP Gemini: 手順7-1のみ（段階テスト・API 12/15・タブ⑥）…")
     chat6 = model.start_chat(history=[])
@@ -866,6 +911,9 @@ def run_standard_cp_gemini_api_call_13_of_15(
     step_7_1_response: str,
     step_3_1_output: str,
     step_2_output: str,
+    hearing_sheet_content: str = "",
+    appo_memo: str = "",
+    sales_notes: str = "",
 ) -> tuple[str, str]:
     """
     STANDARD-CP マニュアル chain の **Gemini 13/15**（タブ⑥の2通目・手順7-2）。
@@ -886,10 +934,15 @@ def run_standard_cp_gemini_api_call_13_of_15(
         safety_settings=_SAFETY,
     )
     gcfg = _gen_config()
+    _extras = [s for s in (appo_memo, sales_notes) if (s or "").strip()]
+    _factual = hearing_factual_data_block_for_prompt(
+        hearing_sheet_content, extra_texts=_extras,
+    )
     prompt = _subst(
         _load_step("step_7_2.txt"),
         STEP_3_1_OUTPUT=(step_3_1_output or "").strip(),
         STEP_2_OUTPUT=(step_2_output or "").strip(),
+        HEARING_FACTUAL_BLOCK=_factual,
     )
     hist = _standard_cp_tab4_history_from_user_model_pairs(
         [(step_7_1_prompt, step_7_1_response)]
@@ -907,6 +960,9 @@ def run_standard_cp_gemini_api_call_14_of_15(
     step_7_2_prompt: str,
     step_7_2_response: str,
     step_3_subpages_output: str,
+    hearing_sheet_content: str = "",
+    appo_memo: str = "",
+    sales_notes: str = "",
 ) -> tuple[str, str]:
     """
     STANDARD-CP マニュアル chain の **Gemini 14/15**（タブ⑥の3通目・手順7-3）。
@@ -927,9 +983,14 @@ def run_standard_cp_gemini_api_call_14_of_15(
         safety_settings=_SAFETY,
     )
     gcfg = _gen_config()
+    _extras = [s for s in (appo_memo, sales_notes) if (s or "").strip()]
+    _factual = hearing_factual_data_block_for_prompt(
+        hearing_sheet_content, extra_texts=_extras,
+    )
     prompt = _subst(
         _load_step("step_7_3.txt"),
         STEP_3_SUBPAGES_OUTPUT=(step_3_subpages_output or "").strip(),
+        HEARING_FACTUAL_BLOCK=_factual,
     )
     hist = _standard_cp_tab4_history_from_user_model_pairs(
         [
@@ -1081,6 +1142,7 @@ def run_standard_cp_gemini_manual_pipeline(
     p31 = build_standard_cp_gemini_prompt_step_3_1(
         step_2_output=outs.step_2,
         step_1_3_output=outs.step_1_3,
+        hearing_sheet_content=hearing_sheet_content,
     )
     p32 = build_standard_cp_gemini_prompt_step_3_2()
     p33 = build_standard_cp_gemini_prompt_step_3_3()
@@ -1109,9 +1171,13 @@ def run_standard_cp_gemini_manual_pipeline(
 
     p4 = build_standard_cp_gemini_prompt_step_4(
         hearing_sheet_content=hearing_sheet_content,
+        appo_memo=appo_memo,
+        sales_notes=sales_notes,
     )
     p6 = build_standard_cp_gemini_prompt_step_6(
         hearing_sheet_content=hearing_sheet_content,
+        appo_memo=appo_memo,
+        sales_notes=sales_notes,
     )
 
     logger.info("STANDARD-CP Gemini: 手順4〜6（タブ⑤）…")
@@ -1147,15 +1213,23 @@ def run_standard_cp_gemini_manual_pipeline(
     p71 = build_standard_cp_gemini_prompt_step_7_1(
         step_6_output=outs.step_6,
         hearing_sheet_content=hearing_sheet_content,
+        appo_memo=appo_memo,
+        sales_notes=sales_notes,
+    )
+    _tab6_extras = [s for s in (appo_memo, sales_notes) if (s or "").strip()]
+    _factual_block = hearing_factual_data_block_for_prompt(
+        hearing_sheet_content, extra_texts=_tab6_extras,
     )
     p72 = _subst(
         _load_step("step_7_2.txt"),
         STEP_3_1_OUTPUT=outs.step_3_1,
         STEP_2_OUTPUT=outs.step_2,
+        HEARING_FACTUAL_BLOCK=_factual_block,
     )
     p73 = _subst(
         _load_step("step_7_3.txt"),
         STEP_3_SUBPAGES_OUTPUT=subpages,
+        HEARING_FACTUAL_BLOCK=_factual_block,
     )
     p74 = _load_step("step_7_4.txt")
 
@@ -1192,7 +1266,10 @@ def run_standard_cp_gemini_manual_pipeline(
             partner_name=partner_name,
             record_number=record_number,
         )
-        _hr = hearing_reference_design_block_for_prompt(hearing_sheet_content)
+        _extras = [s for s in (appo_memo, sales_notes) if (s or "").strip()]
+        _hr = hearing_reference_design_block_for_prompt(
+            hearing_sheet_content, extra_texts=_extras,
+        )
         outs.raw_prompts["manus_refactor_task"] = build_basic_lp_refactor_user_prompt(
             canvas_final,
             preface_dir=STANDARD_CP_REFACTOR_PREFACE_DIR,
@@ -1217,6 +1294,8 @@ def run_standard_cp_gemini_manual_pipeline(
         outs,
         partner_name=partner_name,
         hearing_sheet_content=hearing_sheet_content,
+        appo_memo=appo_memo,
+        sales_notes=sales_notes,
     )
     plan_info = _ref_plan
     max_pages = int(plan_info.get("pages") or 6)
@@ -1264,6 +1343,8 @@ def _build_site_build_prompt_from_steps(
     *,
     partner_name: str,
     hearing_sheet_content: str = "",
+    appo_memo: str = "",
+    sales_notes: str = "",
 ) -> str:
     parts: list[str] = [
         f"【STANDARD-CP / Gemini マニュアル結合ログ】パートナー: {partner_name}\n",
@@ -1287,10 +1368,17 @@ def _build_site_build_prompt_from_steps(
         outs.step_6,
     ]
     if (hearing_sheet_content or "").strip():
+        _memo_extras = [s for s in (appo_memo, sales_notes) if (s or "").strip()]
         parts.extend(
             [
                 "\n\n=== ヒアリング・参考サイト・デザイン（原文抜粋・再掲） ===\n\n",
-                hearing_reference_design_block_for_prompt(hearing_sheet_content),
+                hearing_reference_design_block_for_prompt(
+                    hearing_sheet_content, extra_texts=_memo_extras,
+                ),
+                "\n\n=== ヒアリング・事実データ（原文抜粋・再掲） ===\n\n",
+                hearing_factual_data_block_for_prompt(
+                    hearing_sheet_content, extra_texts=_memo_extras,
+                ),
             ]
         )
     return "".join(parts)

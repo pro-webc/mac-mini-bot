@@ -8,6 +8,7 @@
 - 図解・表は画像ではなく、マークアップ＋Tailwindでコーディング生成
 - アイコン: 基本は Lucide React（https://lucide.dev/icons で実在する名前のみ import）。`Pipe` 等の存在しない名前は使わない（配管イメージは `Droplets` / `Wrench` / `Cable` 等）。SNSは Simple Icons。アイコンを画像プレースホルダにしない
 - Unsplash・外部ストック URL 禁止。**ヒーロー（メインビジュアル）には必ず画像を用いる**（`next/image` + `public/images/`。**画像なしの単色／CSS模様のみのヒーローは禁止**。オーバーレイのグラデーションは画像の上に重ねてよい）。**ビジュアル（最低 3 意図箇所・ヒーローに必ず 1）は、マニュアル後の最終リファクタ（Gemini・1セッション）で実装**する：`next/image` の `Image` と **`public/images/` 以下の静的ファイル**（同一返答のフェンスで `.svg` 等を出力可。マニュアル段の `ImagePlaceholder` はここで置換）。ボットの別工程による一括画像 API はない。画像上のテキストはオーバーレイで表示
+- **next/image のパスと属性（表示欠け・ビルドエラー防止）**: `Image` の `src` は **`/images/...` のように public ルート直下の相対パス**（先頭 `/`）。**`src` に `/public/` や `public/` を含めない**（`public/images/foo.png` は URL 上は `/images/foo.png`）。参照先ファイルは**フェンス出力またはリポジトリに実在する**こと。**存在しないパスのみを src に書いて終わらせない**。`width` と `height` を数値で渡すか、`fill` を使うときは親に **`relative` と高さまたは `aspect-*` で表示領域を確定**させる。リモート URL を使う場合は `next.config` の `images.remotePatterns`（等）が必須で未設定だとビルド・最適化で失敗し得るため、**本案件ではローカル静的ファイルを既定**とする
 - 所在地: Google Maps 埋め込み。マップエリアに画像・プレースホルダ禁止。対応エリア用の画像・イラストは禁止。所在地が明確ならピン表示
 - 装飾目的の box-shadow（Tailwind の shadow-*）は使わない。区切りは境界線・余白・タイポ階層で行う
 
