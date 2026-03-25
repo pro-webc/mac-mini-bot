@@ -5,7 +5,7 @@
 
 【動き（没入感との両立・必須）】
 - **削除する**: 自動再生・無限ループ・点滅・大きなバウンス・パララックス過多・視認性や操作を妨げる過剰モーション。
-- **残してよい**: ボタン・リンクの `transition-colors` / `duration-200` 程度、フォーカスリング、`motion-safe:` 下の**短い**スクロール入場（opacity または軽い translate）。**`prefers-reduced-motion: reduce` では動きを抑える**（`motion-reduce:transition-none` 等）。
+- **残してよい・強化してよい**: ボタン・リンクの `transition-colors` / `transition-transform` / **`duration-200`〜`300`**、フォーカスリング、**カードの hover リフト（translate）+ 影の変化**、`motion-safe:` 下のスクロール入場（opacity・軽い translate・控えめな scale）、**グリッドの stagger**。**`prefers-reduced-motion: reduce` では動きを抑える**（`motion-reduce:transition-none` / `motion-reduce:translate-y-0` 等）。
 
 ・**見出し・本文・箇条・表・FAQ・ボタン**が、手順4の【テキスト情報】と**同じ情報量**で反映されているか（要約・統合で薄くしていないか）
 ・図解や表は完全に再現されていますか(図解と表はプレースホルダ―禁止)

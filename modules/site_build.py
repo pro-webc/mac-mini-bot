@@ -173,7 +173,8 @@ def verify_site_build(
 
     contract_max_pages:
         指定かつ ``SITE_BUILD_ENFORCE_CONTRACT_PAGE_TSX_COUNT`` が真のとき、
-        App Router の ``page.tsx`` 本数がこれを超えたらビルド前に失敗する。
+        App Router のコンテンツ用 ``page.tsx`` 本数が契約と**一致しなければ**ビルド前に失敗する
+        （超過・不足の両方）。
     """
     _ensure_package_json(site_dir)
     if (
@@ -183,12 +184,19 @@ def verify_site_build(
     ):
         n, rels = count_app_router_page_tsx_files(site_dir)
         cap = int(contract_max_pages)
-        if n > cap:
-            msg = (
-                f"契約ページ数（{cap}）を超える App Router の page.tsx が {n} 本あります。"
-                f" 余分なルート（例: /privacy）を増やさないでください。"
-                f" 検出: {', '.join(rels)}"
-            )
+        if n != cap:
+            if n > cap:
+                msg = (
+                    f"契約ページ数（{cap}）に対し App Router の page.tsx が {n} 本あります（超過）。"
+                    f" 余分なルート（例: /privacy）を増やさないでください。"
+                    f" 検出: {', '.join(rels)}"
+                )
+            else:
+                msg = (
+                    f"契約ページ数は {cap} ですが、コンテンツ用の page.tsx が {n} 本しかありません（不足）。"
+                    f" 単一ページにまとめず、契約どおりの本数にルート分割してください。"
+                    f" 検出: {', '.join(rels) if rels else '(なし)'}"
+                )
             logger.error(msg)
             return False, msg
     if not skip_install:

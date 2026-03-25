@@ -87,6 +87,22 @@ def test_verify_site_build_passes_when_only_system_routes_exceed(
     assert ok is True
 
 
+def test_verify_site_build_fails_when_page_tsx_below_contract(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """STANDARD 等: page.tsx が契約より少ないとビルド前に失敗する。"""
+    monkeypatch.setattr(
+        "modules.site_build.SITE_BUILD_ENFORCE_CONTRACT_PAGE_TSX_COUNT", True
+    )
+    (tmp_path / "package.json").write_text('{"scripts":{"build":"echo ok"}}', encoding="utf-8")
+    (tmp_path / "app").mkdir(parents=True)
+    (tmp_path / "app" / "page.tsx").write_text("export default function H() {}", encoding="utf-8")
+    ok, log = verify_site_build(tmp_path, skip_install=True, contract_max_pages=6)
+    assert ok is False
+    assert "不足" in log
+    assert "6" in log
+
+
 def test_verify_site_build_skips_count_when_enforcement_off(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

@@ -27,10 +27,11 @@ def resolve_contract_work_branch(contract_plan: str) -> ContractWorkBranch:
     未定義のプラン名は STANDARD 相当の情報にフォールバックしたうえで ``STANDARD`` 分岐となる。
     """
     info = get_contract_plan_info((contract_plan or "").strip())
-    if info.get("type") == "landing_page":
-        return ContractWorkBranch.BASIC_LP
     name = (info.get("name") or "").strip().upper()
     pages = int(info.get("pages") or 1)
+    # BASIC LP は type だけでなく name でも確定（plan_info と分岐のずれを防ぐ）
+    if info.get("type") == "landing_page" or name == "BASIC LP":
+        return ContractWorkBranch.BASIC_LP
     if name == "BASIC" and pages == 1:
         return ContractWorkBranch.BASIC
     if name == "ADVANCE":
@@ -51,7 +52,9 @@ def resolve_work_branch_with_basic_lp_override(
     ``main.process_case`` と同じ最終作業分岐。
 
     契約プラン列から ``resolve_contract_work_branch`` したあと、分岐が BASIC のときだけ
-    サイトタイプシート（``lookup_basic_is_landing_page``）で LP なら BASIC_LP に寄せる。
+    サイトタイプシート（B列=パートナー名・G列=``lp``/``cp_basic``）を参照する。
+    ``lookup_basic_is_landing_page`` が ``True`` なら BASIC_LP、``False`` なら BASIC のまま、
+    ``None`` なら上書きしない。
     """
     work_branch = resolve_contract_work_branch(contract_plan)
     if work_branch != ContractWorkBranch.BASIC:

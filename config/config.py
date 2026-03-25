@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import re
 from datetime import date, datetime
 from pathlib import Path
 
@@ -58,13 +59,21 @@ GOOGLE_SHEETS_CREDENTIALS_PATH = os.getenv(
 GOOGLE_SHEETS_SPREADSHEET_ID = os.getenv("GOOGLE_SHEETS_SPREADSHEET_ID", "")
 # 案件取得・更新対象のシート名（タブ名）
 GOOGLE_SHEETS_SHEET_NAME = os.getenv("GOOGLE_SHEETS_SHEET_NAME", "Sheet1").strip() or "Sheet1"
-# メインシートの契約が BASIC のとき、サイトタイプ（LP かどうか）を参照する別スプレッドシート（空なら照会しない）
-GOOGLE_SHEETS_BASIC_SITE_TYPE_SPREADSHEET_ID = os.getenv(
-    "GOOGLE_SHEETS_BASIC_SITE_TYPE_SPREADSHEET_ID", ""
-).strip()
+# メインシートの契約が BASIC のとき、サイトタイプ（G列: lp / cp_basic）を参照する別スプレッドシート。
+# 環境変数が「未設定」のときだけ下記 ID を既定とする（.env に明示した空文字は照会オフ）。
+_BASIC_SITE_TYPE_DEFAULT_ID = "1DTPQvIGjAQWdKF1aBREBGmzKf7WNNHFevG27Ab_Td-s"
+_GOOGLE_SHEETS_BASIC_SITE_TYPE_SPREADSHEET_ID_RAW = os.getenv(
+    "GOOGLE_SHEETS_BASIC_SITE_TYPE_SPREADSHEET_ID"
+)
+if _GOOGLE_SHEETS_BASIC_SITE_TYPE_SPREADSHEET_ID_RAW is None:
+    GOOGLE_SHEETS_BASIC_SITE_TYPE_SPREADSHEET_ID = _BASIC_SITE_TYPE_DEFAULT_ID
+else:
+    GOOGLE_SHEETS_BASIC_SITE_TYPE_SPREADSHEET_ID = str(
+        _GOOGLE_SHEETS_BASIC_SITE_TYPE_SPREADSHEET_ID_RAW
+    ).strip()
 GOOGLE_SHEETS_BASIC_SITE_TYPE_SHEET_NAME = os.getenv(
-    "GOOGLE_SHEETS_BASIC_SITE_TYPE_SHEET_NAME", "Sheet1"
-).strip() or "Sheet1"
+    "GOOGLE_SHEETS_BASIC_SITE_TYPE_SHEET_NAME", "シート1"
+).strip() or "シート1"
 GOOGLE_SHEETS_BASIC_SITE_TYPE_SKIP_HEADER = os.getenv(
     "GOOGLE_SHEETS_BASIC_SITE_TYPE_SKIP_HEADER", "true"
 ).strip().lower() in ("1", "true", "yes")
@@ -268,7 +277,7 @@ SITE_IMPLEMENTATION_ENABLED = os.getenv("SITE_IMPLEMENTATION_ENABLED", "true").s
     "true",
     "yes",
 )
-# npm build 前に `app/**/page.tsx`（および `src/app/**/page.tsx`）の本数が契約ページ数を超えないか検証する
+# npm build 前に `app/**/page.tsx`（および `src/app/**/page.tsx`）の本数が契約ページ数と一致するか検証する（超過・不足の両方）
 SITE_BUILD_ENFORCE_CONTRACT_PAGE_TSX_COUNT = os.getenv(
     "SITE_BUILD_ENFORCE_CONTRACT_PAGE_TSX_COUNT", "true"
 ).strip().lower() in ("1", "true", "yes")
@@ -460,11 +469,15 @@ CONTRACT_PLANS = {
 }
 
 def _normalize_plan_name(raw: str) -> str:
-    """スプレッドシートの価格接尾辞 ``(9,800円)`` 等を除去して大文字化する。"""
+    """スプレッドシートの価格接尾辞 ``(9,800円)`` 等を除去して大文字化する。
+
+    連続空白は1つに畳む（``BASIC  LP`` と ``BASIC LP`` を同一視するため）。
+    """
     s = (raw or "").strip().upper()
     paren = s.find("(")
     if paren > 0:
         s = s[:paren].rstrip()
+    s = re.sub(r"\s+", " ", s.strip())
     return s
 
 
@@ -481,8 +494,17 @@ def get_contract_plan_info(plan_name: str) -> dict:
         契約プラン情報（見つからない場合はデフォルト）
     """
     normalized = _normalize_plan_name(plan_name)
+    # スペース無し・ハイフン表記（プルダウンや手入力のゆれ）
+    if normalized in ("BASICLP", "BASIC-LP"):
+        normalized = "BASIC LP"
 
-    for key, value in CONTRACT_PLANS.items():
+    # 「BASIC」と「BASIC LP」など接頭辞が被るため、長いキーを先に照合する
+    items = sorted(
+        CONTRACT_PLANS.items(),
+        key=lambda kv: len(kv[0]),
+        reverse=True,
+    )
+    for key, value in items:
         if key.upper() == normalized or value["name"].upper() == normalized:
             return value
 
@@ -556,7 +578,7 @@ COMMON_TECHNICAL_SPEC = {
     "immersion_modern_ui": {
         "worldview": "design_spec に沿い世界観・リズム・視線誘導を統一",
         "patterns": "段組・scroll-mt・sticky 目次可、motion-safe と reduced-motion 併用",
-        "motion_limits": "点滅・自動再生・過剰パララックス禁止。shadow 禁止は従来どおり",
+        "motion_limits": "点滅・自動再生・過剰パララックス禁止。カード等は shadow-sm〜md / ring 可。shadow-2xl 級濃影の乱発は避ける",
     },
 }
 

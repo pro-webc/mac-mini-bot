@@ -89,6 +89,8 @@ def test_refactor_prompt_includes_contract_pages_when_passed(
         contract_max_pages=6,
     )
     assert "契約ページ数（厳守）: 6" in p
+    assert "ちょうど 6 本" in p
+    assert "Pattern A" in p
     assert "app/privacy/page.tsx" in p
 
 

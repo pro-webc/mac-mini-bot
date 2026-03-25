@@ -122,13 +122,23 @@ def _manus_contract_pages_and_legal_block(contract_max_pages: int | None) -> str
     if contract_max_pages is None:
         return ""
     cap = int(contract_max_pages)
+    multi = cap > 1
+    multi_line = ""
+    if multi:
+        multi_line = (
+            f"- 契約が複数ページ（{cap}）のときは、元 Canvas に `useState` 等の擬似ページ切替が無くても、"
+            " **Pattern A（`app/page.tsx` のみの縦スクロール単一路線）にしてはならない**。"
+            " 見出し・ナビ・セクション境界・コメントから各論理ページを切り出し、"
+            " **ファイルベースルーティングでちょうど上記本数の `page.tsx` に分配**すること。\n"
+        )
     return (
         "\n\n---\n\n"
         "【契約ページ数・法的情報（必須・最優先の制約）】\n"
         f"- 契約ページ数（厳守）: {cap}。"
-        " App Router の `app/**/page.tsx` および `src/app/**/page.tsx` の合計本数は **"
-        f"{cap} 本以下**とすること。**この上限を超える新規ルートを追加してはならない**。\n"
-        "- プライバシーポリシー・利用規約などの法的情報は **契約ページ数に含めない**。"
+        " コンテンツ用の App Router の `app/**/page.tsx` および `src/app/**/page.tsx` の合計本数は **"
+        f"ちょうど {cap} 本**とすること。**超過も不足も禁止**（パイプラインのビルド検証で不一致は失敗する）。\n"
+        + multi_line
+        + "- プライバシーポリシー・利用規約などの法的情報は **契約ページ数に含めない**。"
         " **独立の `page.tsx`（例: `app/privacy/page.tsx`）を新規作成しない**。\n"
         "- これらは **既存のいずれかのページ上**で `Dialog` / `Sheet` / `Drawer` / `<details>` 等の UI で全文表示する。"
         " フッターからは **同一ページ内で開く `button` またはモーダル起動**とし、**/privacy 等の別 URL への `Link` を新設しない**。\n"

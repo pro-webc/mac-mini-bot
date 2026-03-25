@@ -34,7 +34,8 @@ Unsplash・外部ストック URL は禁止。**マニュアル段**ではビジ
 
 【没入感・現代UI（実装）】
 - 手順7のデザイン指示に沿い、**世界観が一貫する**配色・角丸・余白・段組で仕上げる。単調な縦積みだけにせず、**セクションごとにリズム**（背景トーン、フル幅／カード、`max-w-prose` で読みの芯）を付ける。
-- **現代的UI**: レスポンシブ段組、`scroll-mt-*`、必要なら `sticky` 目次、ホバー／フォーカス用の短い `transition`。**`shadow-*` 禁止・斜め配置禁止**は共通技術要件どおり。動きは `motion-safe:` と `motion-reduce:` を併用。
+- **カードUI**: 料金・特徴・事例・ステップ等は **`border` + `rounded-*` + 均一な `p-*`/`gap-*`** を基本とし、**`shadow-sm`〜`md` または `ring-1 ring-black/5`** で階層を付けてよい。`flex flex-col justify-between` + **`mt-auto`** でカード内の CTA 位置を揃える等、**プロダクト品質の整列**を優先する。
+- **現代的UI・アニメーション**: レスポンシブ段組、`scroll-mt-*`、必要なら `sticky` 目次。ホバー／フォーカスは **`transition-all` または `transition-colors` + `duration-200`〜`300`**。カードは **`hover:-translate-y-0.5`〜`1` + `hover:shadow-md`** 等の軽いリフト、ボタンは **`active:scale-[0.98]`** 程度まで可。スクロール入場は **`motion-safe:`** 内で opacity・軽い translate・**stagger**（`delay-75` 段階）まで可。**主要ブロックの大きな斜め配置は避ける**（装飾バッジ程度の角度は可）。**`motion-reduce:`** で装飾動きを抑える。点滅・自動無限ループ・過剰バウンスは禁止。
 
 【スタイリング要件】
 - Next.js + Tailwind CSSへのリファクタリングを前提とした実装

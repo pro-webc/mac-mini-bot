@@ -81,43 +81,95 @@ def _site_type_row_cell(row: list, idx: int) -> str:
     return row[idx] if len(row) > idx else ""
 
 
+def _normalize_basic_site_type_g_cell(raw: str) -> str:
+    """G列のサイトタイプを比較用に正規化（lp / cp_basic）。"""
+    s = (raw or "").strip().lower().replace("\u3000", " ")
+    s = " ".join(s.split())
+    s = s.replace(" ", "_").replace("-", "_")
+    return s
+
+
 def resolve_basic_lp_from_site_type_rows(
     rows: list[list],
     record_number: str,
     partner_name: str,
     *,
     skip_header: bool,
-) -> tuple[bool, str | None]:
+) -> tuple[bool | None, str | None]:
     """
-    サイトタイプ用シートの行から BASIC LP かを判定する（API なしの純関数）。
+    サイトタイプ用シートの行から BASIC LP か BASIC-CP かを判定する（API なしの純関数）。
 
-    A=レコード番号・B=パートナー名・G=サイトタイプ。A が一致する行のうち B も一致する最初の行を使う。
-    G が（前後空白除き）大文字で LP のとき True。行が見つからない・G 空欄・その他の値は False。
+    **B列=パートナー名**で行を探す（主キー）。同一パートナーが複数行あるときは **A列=レコード番号**
+    で1行に絞る。G列は ``lp`` → LP（True）、``cp_basic`` → コーポレートBASIC（False）。
 
     Returns:
-        (is_lp, mismatch_detail) — B が一致しない A 一致行があったときは mismatch_detail にメッセージ
+        (is_landing_page, mismatch_detail)
+        - ``True`` … BASIC_LP
+        - ``False`` … BASIC（cp_basic）
+        - ``None`` … 行なし・G空欄・未対応の値（呼び出し側は分岐を上書きしない）
     """
     data = rows[1:] if skip_header and rows else list(rows)
-    rec_n = _normalize_site_type_lookup_key(record_number)
     par_n = _normalize_site_type_lookup_key(partner_name)
-    mismatch_note: str | None = None
+    if not par_n:
+        return None, "パートナー名が空のためサイトタイプシートを参照できません"
+
+    b_hits: list[list] = []
     for row in data:
-        a = _normalize_site_type_lookup_key(_site_type_row_cell(row, 0))
-        if a != rec_n:
-            continue
         b = _normalize_site_type_lookup_key(_site_type_row_cell(row, 1))
-        if b != par_n:
-            if mismatch_note is None:
+        if b == par_n:
+            b_hits.append(row)
+
+    if not b_hits:
+        return None, f"パートナー名に一致する行がありません（期待={partner_name!r}）"
+
+    row: list
+    mismatch_note: str | None = None
+    if len(b_hits) == 1:
+        row = b_hits[0]
+    else:
+        rec_n = _normalize_site_type_lookup_key(record_number)
+        if rec_n:
+            rec_hits = [
+                r
+                for r in b_hits
+                if _normalize_site_type_lookup_key(_site_type_row_cell(r, 0)) == rec_n
+            ]
+            if len(rec_hits) == 1:
+                row = rec_hits[0]
+            elif rec_hits:
+                row = rec_hits[0]
                 mismatch_note = (
-                    f"レコード一致だがパートナー名不一致（シートB={_site_type_row_cell(row, 1)!r} "
-                    f"期待={partner_name!r}）"
+                    f"同一パートナー・同一レコードで複数行あり、先頭を使用（record={record_number!r}）"
                 )
-            continue
-        g_raw = (_site_type_row_cell(row, 6) or "").strip()
-        if not g_raw:
-            return False, None
-        return g_raw.upper() == "LP", None
-    return False, mismatch_note
+            else:
+                row = b_hits[0]
+                mismatch_note = (
+                    f"同一パートナーで複数行あり、レコード番号が一致せず先頭行を使用 "
+                    f"（期待record={record_number!r} シートA={_site_type_row_cell(b_hits[0], 0)!r}）"
+                )
+        else:
+            row = b_hits[0]
+            mismatch_note = (
+                "同一パートナーで複数行あり、レコード番号が空のため先頭行を使用"
+            )
+
+    g_raw = (_site_type_row_cell(row, 6) or "").strip()
+    if not g_raw:
+        return None, mismatch_note
+
+    g_norm = _normalize_basic_site_type_g_cell(g_raw)
+    if g_norm == "lp":
+        return True, mismatch_note
+    if g_norm in ("cp_basic", "cpbasic"):
+        return False, mismatch_note
+
+    return (
+        None,
+        (
+            (mismatch_note + " / ") if mismatch_note else ""
+        )
+        + f"G列の値が未対応です: {g_raw!r}（lp または cp_basic を想定）",
+    )
 
 
 # Bot が書き込みしてよい列（R・AI・AJ）。それ以外の列は更新しない。
@@ -297,10 +349,13 @@ class SpreadsheetClient:
 
     def lookup_basic_is_landing_page(self, record_number: str, partner_name: str) -> bool | None:
         """
-        BASIC 契約時に別シートでサイトタイプを参照し、LP なら True。
+        BASIC 契約時に別シート（B列=パートナー名・G列=サイトタイプ）を参照する。
 
-        ``GOOGLE_SHEETS_BASIC_SITE_TYPE_SPREADSHEET_ID`` が空のときは ``None``（呼び出し側は分岐を変えない）。
-        API 失敗時も ``None``。行が見つからない・G 空欄・G が LP 以外は ``False``（BASIC のまま）。
+        - G列が ``lp``（大小・空白のゆれ可）→ ``True``（BASIC_LP）
+        - G列が ``cp_basic`` → ``False``（BASIC・コーポレート1ページ）
+        - 行なし・G空欄・未対応の値・API失敗 → ``None``（分岐を上書きしない＝契約列の BASIC のまま）
+
+        ``GOOGLE_SHEETS_BASIC_SITE_TYPE_SPREADSHEET_ID`` が空のときは ``None``。
         """
         sid = GOOGLE_SHEETS_BASIC_SITE_TYPE_SPREADSHEET_ID
         if not sid:
@@ -343,7 +398,8 @@ class SpreadsheetClient:
         if mismatch:
             logger.warning("BASIC サイトタイプ照合: %s", mismatch)
         logger.info(
-            "BASIC サイトタイプ照合: record=%r partner=%r → is_landing_page=%s",
+            "BASIC サイトタイプ照合: record=%r partner=%r → "
+            "is_landing_page=%s（True=lp / False=cp_basic / None=参照不可・未設定）",
             record_number,
             partner_name,
             is_lp,

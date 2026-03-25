@@ -226,7 +226,9 @@ class WebsiteBot:
                         case.get("record_number"),
                     )
                 logger.info(
-                    "契約プラン作業分岐: plan=%r branch=%s resolved_type=%s pages=%s",
+                    "契約プラン作業分岐: plan=%r branch=%s "
+                    "plan_column_type=%s plan_column_pages=%s "
+                    "（plan_column_* は契約プラン列のみ。BASIC でサイトタイプが LP のとき branch=basic_lp となり type と一致しないことがある）",
                     plan_raw,
                     work_branch.value,
                     plan_info.get("type"),

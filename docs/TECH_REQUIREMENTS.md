@@ -49,5 +49,5 @@ LLM へ渡す文言の正本は **`config/prompts/common/technical_spec_prompt_b
 
 ## 没入感・現代UI（概要）
 
-- 世界観の一貫性、セクションリズム、軽いインタラクション（`motion-safe:` / `prefers-reduced-motion`）。装飾の `shadow-*` 禁止は変わらない。
+- 世界観の一貫性、セクションリズム、カードの階層（`shadow-sm`〜`md` / `ring`）、ホバー・スクロール入場（`motion-safe:` / `prefers-reduced-motion`）。濃すぎる `shadow-2xl` 級やネオン glow は避ける。
 - 詳細は正本の **【没入感・世界観・現代的UI】** を参照。

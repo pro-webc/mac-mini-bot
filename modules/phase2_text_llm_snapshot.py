@@ -275,7 +275,10 @@ def main_argv(argv: list[str] | None = None) -> None:
     parser.add_argument(
         "--use-spreadsheet-fallback",
         action="store_true",
-        help="JSON に行が無いとき Spreadsheet で BASIC→LP 判定（要認証）",
+        help=(
+            "work_branches JSON に当該レコードが無いとき、本番と同様にサイトタイプシートで "
+            "BASIC→BASIC_LP を判定する（要認証。付けないと契約列が BASIC でも常に BASIC-CP 側になる）"
+        ),
     )
     parser.add_argument(
         "--run-dir",

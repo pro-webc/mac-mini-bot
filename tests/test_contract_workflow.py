@@ -20,6 +20,7 @@ from modules.contract_workflow import (
         ("basic", "BASIC"),
         ("BASIC(9,800円)", "BASIC"),
         ("BASIC LP", "BASIC LP"),
+        ("BASIC  LP", "BASIC LP"),
         ("BASIC LP(9,800円)", "BASIC LP"),
         ("STANDARD(14,800円)", "STANDARD"),
         ("ADVANCE(29,800円)", "ADVANCE"),
@@ -62,6 +63,24 @@ def test_branch_advance_with_price_suffix() -> None:
 def test_branch_basic_lp_with_price_suffix() -> None:
     """「BASIC LP(9,800円)」表記でも BASIC_LP に解決される。"""
     assert resolve_contract_work_branch("BASIC LP(9,800円)") == ContractWorkBranch.BASIC_LP
+
+
+def test_branch_basic_lp_no_space_or_hyphen() -> None:
+    """スペース無し・ハイフン表記でも BASIC LP プランとして解決される。"""
+    assert resolve_contract_work_branch("BASICLP") == ContractWorkBranch.BASIC_LP
+    assert resolve_contract_work_branch("basic-lp") == ContractWorkBranch.BASIC_LP
+
+
+def test_get_contract_plan_info_matches_longest_plan_key_first() -> None:
+    """BASIC LP が BASIC より優先してマッチする（キー長ソートの退行防止）。"""
+    from config.config import get_contract_plan_info
+
+    lp = get_contract_plan_info("BASIC LP")
+    assert lp["name"] == "BASIC LP"
+    assert lp["type"] == "landing_page"
+    basic = get_contract_plan_info("BASIC")
+    assert basic["name"] == "BASIC"
+    assert basic["type"] == "website"
 
 
 def test_branch_advance() -> None:
