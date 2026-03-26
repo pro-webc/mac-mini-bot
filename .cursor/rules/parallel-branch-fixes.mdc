@@ -20,7 +20,7 @@ alwaysApply: true
 
 ## 具体例（このリポジトリ）
 
-- `ContractWorkBranch` を増やしたら、**``modules.llm.text_llm_stage.run_text_llm_stage`` の ``if/elif`` に分岐を追加**する（片方だけ更新しない）。
+- `ContractWorkBranch` を増やしたら、**``modules.contract_workflow.BRANCH_REGISTRY`` にエントリを追加**する（片方だけ更新しない）。
 - `SpecGenerator.fetch_hearing_sheet`: 「長文コピペ」と「文中 URL」の扱いを変えたら、**先頭が `http` の分岐**と**セル貼り付け**の両方で前提が矛盾していないか確認する。
 - 同じヒアリング列の解釈は **`modules/hearing_url_utils.py`** に集約し、`*_gemini_manual` の参考URL・既存サイト推定、`spreadsheet_schema` の URL 正規表現、`fetch_hearing_sheet` の閾値を **一箇所の定数・正規表現**で揃える。
 

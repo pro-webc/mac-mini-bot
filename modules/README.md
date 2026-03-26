@@ -24,7 +24,7 @@
 
 | モジュール | 役割 |
 |------------|------|
-| `llm/text_llm_stage.py` | **唯一の分岐入口**（`if/elif` → 各 `*_claude_manual` を直接呼ぶ） |
+| `llm/text_llm_stage.py` | **唯一の分岐入口**（`BRANCH_REGISTRY` から `importlib` で各 `*_claude_manual` を動的ロード） |
 | `llm/llm_step_trace.py` | **自動記録**: `record_llm_turn` で全 Claude CLI 呼び出しの入出力を `output/` に保存 |
 | `llm/llm_raw_output.py` | **正本保存**: LLM 出力を加工前の原文で保存（パーサ失敗時の切り分け用） |
 | `llm/llm_pipeline_common.py` | 要望正規化・仕様組み立て・technical_spec 付与・**出力検証**（空応答・`MAX_TOKENS` 切れ） |

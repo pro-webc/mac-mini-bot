@@ -4,7 +4,7 @@
 
 パイプライン概略:
   1. ヒアリングシート類の抽出（`modules.case_extraction`）
-  2. TEXT_LLM（`modules.llm.text_llm_stage` — プランは ``if/elif`` で分岐。各 ``*_USE_CLAUDE_MANUAL`` と Claude CLI の認証が必要）
+  2. TEXT_LLM（`modules.llm.text_llm_stage` — プランは ``BRANCH_REGISTRY`` で分岐。各 ``*_USE_CLAUDE_MANUAL`` と Claude CLI の認証が必要）
   3. 出力先ディレクトリ準備（テンプレコピーなし）→ `llm_raw_output/` に LLM 生出力を保存
      （Manus 待ちで 3 に進めない間は `output/phase2_llm_checkpoints/…/pre_manus/` に TEXT_LLM（Claude CLI）分のみ先行保存）
   4. フェンス解析で TEXT_LLM 出力のみ `app/` 等へ反映（失敗時は例外）

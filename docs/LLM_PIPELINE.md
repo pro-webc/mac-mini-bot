@@ -61,7 +61,7 @@ TEXT_LLM の出力（単一 Canvas tsx）と Manus のリファクタ結果は**
 
 ## TEXT_LLM（手順 2）の内訳 — 契約プラン分岐
 
-本番は `main.process_case` が `modules.llm.text_llm_stage.run_text_llm_stage` を呼び出す。プラン分岐は `text_llm_stage` 内の `if/elif` のみ。
+本番は `main.process_case` が `modules.llm.text_llm_stage.run_text_llm_stage` を呼び出す。プラン分岐は `modules.contract_workflow.BRANCH_REGISTRY` で一元管理し、`text_llm_stage` は `importlib` で動的にパイプラインをロードする。
 
 | 作業分岐 | 条件 | 実体 | 前提・環境変数（TEXT_LLM） |
 |----------|------|------|------------------------------|
@@ -69,7 +69,7 @@ TEXT_LLM の出力（単一 Canvas tsx）と Manus のリファクタ結果は**
 | BASIC（CP 1P） | `BASIC` | `run_text_llm_stage` → `run_basic_cp_claude_manual_pipeline` | `BASIC_CP_USE_CLAUDE_MANUAL=true` かつ `claude` CLI。モデルは `CLAUDE_BASIC_CP_MODEL`（未設定時は LP と同じ）。未設定時は `RuntimeError` |
 | STANDARD | `STANDARD` | `run_text_llm_stage` → `run_standard_cp_claude_manual_pipeline` | `STANDARD_CP_USE_CLAUDE_MANUAL=true` かつ `claude` CLI。モデルは `CLAUDE_STANDARD_CP_MODEL`。未設定時は `RuntimeError` |
 | ADVANCE | `ADVANCE` | `run_text_llm_stage` → `run_advance_cp_claude_manual_pipeline` | `ADVANCE_CP_USE_CLAUDE_MANUAL=true` かつ `claude` CLI。モデルは `CLAUDE_ADVANCE_CP_MODEL`。未設定時は `RuntimeError` |
-| その他 | 上記以外 | （なし） | `run_text_llm_stage` が `RuntimeError`（`if/elif` を追加して対応） |
+| その他 | 上記以外 | （なし） | `run_text_llm_stage` が `RuntimeError`（`BRANCH_REGISTRY` にエントリを追加して対応） |
 
 **タブ②（各プランの「手順1-2」と「手順1-3」）** は手作業マニュアルに合わせ、**2つのプロンプト本文を連結した1メッセージ**として `ClaudeCLIChat.send_message` する（内部で Claude Code CLI を呼び出し。中間の「読み込みだけ」の応答は保存しない）。BASIC LP だけ 1-3 ファイル名が `step_1_3_nonrecruit.txt`。
 

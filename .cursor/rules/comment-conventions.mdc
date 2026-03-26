@@ -13,7 +13,7 @@ alwaysApply: true
 
 ## 例（このリポジトリ）
 
-- `main.py` のフェーズ2 `run_text_llm_stage` 直上: 引数（`hearing_bundle` / `work_branch` 等）・処理（`modules.llm.text_llm_stage` の `if/elif`）・出力（`requirements_result` / `spec`）を明示する。
+- `main.py` のフェーズ2 `run_text_llm_stage` 直上: 引数（`hearing_bundle` / `work_branch` 等）・処理（`modules.llm.text_llm_stage` の `BRANCH_REGISTRY` 駆動）・出力（`requirements_result` / `spec`）を明示する。
 
 ## 書かないこと
 

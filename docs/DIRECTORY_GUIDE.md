@@ -6,6 +6,10 @@
 2. **記録する** — `output/` に全 LLM 入出力を自動保存
 3. **改善する** — `config/prompts/` のテキストを編集してプロンプトを改善
 
+## AI エージェント向け
+
+コード変更の前に **[`docs/AI_AGENT_GUIDE.md`](./AI_AGENT_GUIDE.md)** を読むと、パイプライン構成・変更パターン・注意事項が一箇所で分かります。
+
 ## 開発ルール（設計原則・AI 向け）
 
 - **SOLID / YAGNI（YANGI 表記ゆれ含む）**: `.cursor/rules/solid-yagni.mdc`
@@ -19,7 +23,7 @@
 |----|------------------------|----------|
 | 1 | スプレッドシート読込・列自動検出 | `modules/spreadsheet.py`（1行目から列位置を自動検出）, `config/spreadsheet_schema.py`（見出し定義） |
 | 2 | ヒアリング抽出 | `modules/case_extraction.py`, `modules/spec_generator.py`（シート取得） |
-| 3 | TEXT_LLM（プラン別・フェーズ2） | `modules/llm/text_llm_stage.py`（`if/elif` → 各 `*_claude_manual.py`） |
+| 3 | TEXT_LLM（プラン別・フェーズ2） | `modules/llm/text_llm_stage.py`（`BRANCH_REGISTRY` → `importlib` で各 `*_claude_manual.py` を動的ロード） |
 | 3a | **各 LLM 呼び出しごとの入出力**（TEXT_LLM / Manus） | `modules/llm/llm_step_trace.py` → `output/<レコード番号>/llm_steps/<NNN>_<種別>/`（`input.md`・`output.md` 等）。**`output/sites/` より先**にここへ都度増える |
 | 4 | 出力先ディレクトリ準備 | `modules/site_generator.py` → `output/sites/<案件名>/` |
 | 5 | LLM 正本の保存 | `modules/llm/llm_raw_output.py` → 同一案件の `llm_raw_output/` |
@@ -60,7 +64,7 @@ mac-mini-bot/
 │ ── その他 ────────────────────────────────────
 ├── docs/                     # 本ファイル・LLM_PIPELINE 等
 ├── scripts/                  # 工程テスト・スナップショット用
-├── tests/                    # pytest（41 ファイル）
+├── tests/                    # pytest（42 ファイル）
 ├── .env / .env.example       # 環境変数（実キーは git 対象外）
 └── run.sh / setup.sh         # 実行用ショートカット
 ```
