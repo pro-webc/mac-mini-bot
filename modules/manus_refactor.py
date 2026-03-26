@@ -237,7 +237,7 @@ def run_manus_refactor_stage(
     if MANUS_TASK_CONNECTOR_IDS:
         body["connectors"] = list(MANUS_TASK_CONNECTOR_IDS)
 
-    logger.warning(
+    logger.info(
         "%s Manus: 最終リファクタ タスク作成… agentProfile=%s taskMode=%s interactiveMode=%s connectors=%s",
         _branch,
         MANUS_AGENT_PROFILE,
@@ -277,7 +277,7 @@ def run_manus_refactor_stage(
         task_id = str(task_id or "").strip()
         task_url_slug: str | None = None
         if task_url:
-            logger.warning("Manus タスク URL: %s", task_url)
+            logger.info("Manus タスク URL: %s", task_url)
             path = (urlparse(str(task_url)).path or "").rstrip("/")
             if path:
                 last = path.split("/")[-1]
@@ -294,7 +294,7 @@ def run_manus_refactor_stage(
             poll_candidates.append(task_id)
         if not poll_candidates:
             raise RuntimeError(f"Manus ポーリング用 ID を決められません: {created!r}")
-        logger.warning(
+        logger.info(
             "Manus ポーリング開始 candidates=%s timeout=%ss",
             poll_candidates,
             MANUS_REFACTOR_TIMEOUT_SEC,
@@ -363,7 +363,7 @@ def run_manus_refactor_stage(
                 task = gr.json()
                 status = (task or {}).get("status") or ""
                 if status != last_status:
-                    logger.warning("Manus タスク %s status=%s", poll_id, status)
+                    logger.info("Manus タスク %s status=%s", poll_id, status)
                     last_status = status
                 if status == "completed":
                     text = _extract_assistant_markdown(task)
@@ -377,7 +377,7 @@ def run_manus_refactor_stage(
                         input_text=prompt,
                         output_text=text,
                     )
-                    logger.warning(
+                    logger.info(
                         "%s Manus: リファクタ完了 task_id=%s chars=%s",
                         _branch,
                         poll_id,

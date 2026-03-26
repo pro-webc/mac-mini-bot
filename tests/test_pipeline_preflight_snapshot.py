@@ -20,8 +20,11 @@ def fake_startup_ok(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 class _FakeSpreadsheet:
-    def validate_header_labels(self) -> list[str]:
-        return []
+    columns: dict[str, str] = {
+        "record_number": "B",
+        "partner_name": "C",
+        "contract_plan": "D",
+    }
 
     def get_pending_cases(self) -> list[dict[str, object]]:
         return [
@@ -67,13 +70,15 @@ def test_snapshot_preflight_writes_files(
 
     assert out.is_dir()
     assert (out / "01_startup_validation.json").is_file()
-    assert (out / "02_header_issues.json").is_file()
+    assert (out / "02_resolved_columns.json").is_file()
     assert (out / "03_pending_cases_summary.json").is_file()
     assert (out / "04_pending_cases.json").is_file()
     assert (out / "README.txt").is_file()
 
     startup = json.loads((out / "01_startup_validation.json").read_text(encoding="utf-8"))
     assert startup["ok"] is True
+    cols = json.loads((out / "02_resolved_columns.json").read_text(encoding="utf-8"))
+    assert "columns" in cols
     summary = json.loads((out / "03_pending_cases_summary.json").read_text(encoding="utf-8"))
     assert summary["fetched_count"] == 2
     assert summary["after_bot_max_cases"] == 1

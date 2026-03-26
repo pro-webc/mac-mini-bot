@@ -78,12 +78,6 @@ GOOGLE_SHEETS_BASIC_SITE_TYPE_SKIP_HEADER = os.getenv(
 ).strip().lower() in ("1", "true", "yes")
 # ADC 利用時のクォータプロジェクト（任意・未設定だと UserWarning が出る場合あり）
 GOOGLE_CLOUD_PROJECT = os.getenv("GOOGLE_CLOUD_PROJECT", "").strip()
-# 1行目の列見出しが期待と異なるとき、true なら起動失敗（false は警告のみ）
-SPREADSHEET_HEADERS_STRICT = os.getenv("SPREADSHEET_HEADERS_STRICT", "true").strip().lower() in (
-    "1",
-    "true",
-    "yes",
-)
 # Bot が処理する行の条件（1）AI統合ステータス列は「フェーズ」用。次の値と完全一致する行のみ。
 SPREADSHEET_TARGET_AI_STATUS = os.getenv(
     "SPREADSHEET_TARGET_AI_STATUS", "デモサイト制作中"
@@ -286,6 +280,20 @@ SITE_PROVISION_API_URL = (
     os.getenv("SITE_PROVISION_API_URL", "").strip().rstrip("/")
 )
 SITE_PROVISION_API_KEY = os.getenv("SITE_PROVISION_API_KEY", "").strip()
+# API とフロントエンドが別ドメインのため、共有 URL 構築に使うベース URL
+SITE_ANNOTATOR_FRONTEND_URL = (
+    os.getenv("SITE_ANNOTATOR_FRONTEND_URL", "https://www.propagate-annotator.com")
+    .strip().rstrip("/")
+)
+
+# --- GA4 トラッキング ---
+# GA4_MEASUREMENT_ID 設定時は測定IDごと注入する。
+# GA4_INJECT_TRACKING=true なら ID なしでもトラッキングタグだけ注入（後から ID を追加可能）。
+GA4_MEASUREMENT_ID = (os.getenv("GA4_MEASUREMENT_ID", "") or "").strip()
+GA4_INJECT_TRACKING = (
+    os.getenv("GA4_INJECT_TRACKING", "").strip().lower() in ("1", "true", "yes")
+    or bool(GA4_MEASUREMENT_ID)
+)
 
 # その他設定
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
@@ -380,7 +388,7 @@ def latest_phase1_snapshot_dir(*, run_root: Path | None = None) -> Path | None:
 
 # スプレッドシート列定義（config/spreadsheet_schema.py から re-export）
 from config.spreadsheet_schema import (  # noqa: F401, E402, I001
-    SPREADSHEET_COLUMNS,
+    SPREADSHEET_COLUMN_ALIASES,
     SPREADSHEET_HEADER_LABELS,
     SPREADSHEET_REQUIRED_CASE_FIELDS,
 )

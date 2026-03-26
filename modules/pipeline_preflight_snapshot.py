@@ -9,7 +9,6 @@ from typing import Any
 
 from config.config import (
     BOT_MAX_CASES,
-    SPREADSHEET_HEADERS_STRICT,
     pipeline_preflight_snapshots_base,
 )
 from config.logging_setup import configure_logging
@@ -20,8 +19,6 @@ configure_logging()
 from main import (
     WebsiteBot,
     _emit_startup_validation,
-    _react_to_spreadsheet_header_issues,
-    _spreadsheet_header_issues,
 )
 
 
@@ -48,14 +45,14 @@ def snapshot_preflight_before_process_case(
     output_root: Path | None = None,
 ) -> Path:
     """
-    起動検証 → ``WebsiteBot`` → 列見出し → ``get_pending_cases`` → ``main.run()`` と同じ
+    起動検証 → ``WebsiteBot`` → 列自動検出 → ``get_pending_cases`` → ``main.run()`` と同じ
     ``BOT_MAX_CASES`` による先頭 N 件切り詰めまで実行し、各結果を JSON で保存する。
     ``process_case`` は呼ばない。
 
     本番で 1 件実行する場合とキューを揃えるには、実行時に ``BOT_MAX_CASES=1`` を付ける（または
     ``.env`` に同値を設定する）。
 
-    本番と同じ失敗時挙動（設定 NG・列厳格で不一致なら ``sys.exit(1)``）。
+    本番と同じ失敗時挙動（設定 NG・列検出失敗なら例外→ ``sys.exit(1)``）。
 
     Returns:
         保存先ディレクトリ
@@ -78,15 +75,12 @@ def snapshot_preflight_before_process_case(
         sys.exit(1)
 
     bot = WebsiteBot()
-    header_issues = _spreadsheet_header_issues(bot.spreadsheet)
     _write_json(
-        out / "02_header_issues.json",
+        out / "02_resolved_columns.json",
         {
-            "issues": list(header_issues),
-            "spreadsheet_headers_strict": SPREADSHEET_HEADERS_STRICT,
+            "columns": dict(sorted(bot.spreadsheet.columns.items())),
         },
     )
-    _react_to_spreadsheet_header_issues(header_issues, to_stdout=False)
 
     cases = bot.spreadsheet.get_pending_cases()
     original_count = len(cases)
@@ -109,7 +103,7 @@ def snapshot_preflight_before_process_case(
                 "preflight スナップショット（process_case 直前まで）",
                 "",
                 "01_startup_validation.json — validate_startup_config の結果",
-                "02_header_issues.json — validate_header_labels のメッセージ一覧",
+                "02_resolved_columns.json — 1行目の見出しから自動検出した列位置マッピング",
                 "03_pending_cases_summary.json — get_pending_cases の件数と BOT_MAX_CASES",
                 "04_pending_cases.json — BOT_MAX_CASES 適用後の案件（main.run() がループするリストと同じ）",
                 "",

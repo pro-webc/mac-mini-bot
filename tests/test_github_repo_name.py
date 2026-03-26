@@ -6,9 +6,21 @@ from modules.vercel_client import github_owner_repo_from_clone_url
 
 def test_sanitize_github_repo_name_record_ascii() -> None:
     assert sanitize_github_repo_name("株式会社TS-hub", "16715") == "16715-TS-hub"
-    assert sanitize_github_repo_name("テスト商事", "42") == "42"
     assert sanitize_github_repo_name("CREST", "16245") == "16245-CREST"
-    assert sanitize_github_repo_name("志田洋二", "9408") == "9408"
+
+
+def test_sanitize_github_repo_name_romanize_japanese() -> None:
+    name = sanitize_github_repo_name("株式会社グレードテック", "16218")
+    assert name.startswith("16218-")
+    assert "gureedotekku" in name.lower()
+
+    name2 = sanitize_github_repo_name("テスト商事", "42")
+    assert name2.startswith("42-")
+    assert len(name2) > 3
+
+    name3 = sanitize_github_repo_name("志田洋二", "9408")
+    assert name3.startswith("9408-")
+    assert len(name3) > 5
 
 
 def test_sanitize_github_repo_name_strips_invalid_chars() -> None:

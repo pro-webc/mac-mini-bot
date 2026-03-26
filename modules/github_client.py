@@ -42,18 +42,48 @@ def authenticated_https_clone_url(
     )
 
 
+_COMPANY_SUFFIX_RE = re.compile(
+    r"^(株式会社|有限会社|合同会社|合資会社|合名会社|一般社団法人|一般財団法人|医療法人|社会福祉法人)\s*"
+    r"|"
+    r"\s*(株式会社|有限会社|合同会社|合資会社|合名会社|一般社団法人|一般財団法人|医療法人|社会福祉法人)$"
+)
+
+
+def _romanize_japanese(text: str) -> str:
+    """日本語テキストをヘボン式ローマ字に変換する。ASCII のみならそのまま返す。"""
+    if not text or text.isascii():
+        return text
+    try:
+        import pykakasi
+    except ImportError:
+        return ""
+    kks = pykakasi.kakasi()
+    parts = [item["hepburn"] for item in kks.convert(text) if item["hepburn"].strip()]
+    return "-".join(parts)
+
+
 def sanitize_github_repo_name(partner_name: str, record_number: str) -> str:
     """
-    GitHub リポジトリ名: ``{レコード番号}-{ASCII部分}``。
+    GitHub リポジトリ名: ``{レコード番号}-{名前部分}``。
 
-    GitHub はリポジトリ名に日本語を受け付けないため、パートナー名から
-    ASCII 英数字部分だけを抽出して付加する。ASCII 部分が無い場合は
-    ``{レコード番号}`` のみ。
+    パートナー名から「株式会社」等を除去し、ASCII 英数字部分を抽出。
+    ASCII 部分が無い（全角日本語のみ）場合は pykakasi でローマ字化する。
     GitHub の名前長上限（100）に収める。
     """
     rec = re.sub(r"\D", "", (record_number or "").strip()) or "0"
-    ascii_part = re.sub(r"[^a-zA-Z0-9]", "-", (partner_name or "").strip())
+    raw_name = (partner_name or "").strip()
+    stripped = _COMPANY_SUFFIX_RE.sub("", raw_name).strip()
+    if not stripped:
+        stripped = raw_name
+
+    ascii_part = re.sub(r"[^a-zA-Z0-9]", "-", stripped)
     ascii_part = re.sub(r"-{2,}", "-", ascii_part).strip("-")
+
+    if not ascii_part:
+        romaji = _romanize_japanese(stripped)
+        ascii_part = re.sub(r"[^a-zA-Z0-9]", "-", romaji)
+        ascii_part = re.sub(r"-{2,}", "-", ascii_part).strip("-")
+
     if ascii_part:
         name = f"{rec}-{ascii_part}"
     else:

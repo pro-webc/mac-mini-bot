@@ -1,7 +1,7 @@
 """ヒアリング列（AH）の本文・URL 解釈を `spec_generator` / マニュアル / スキーマで共有する。
 
-長文のフォーム回答コピペでは、文中の「参考サイト」設問付近の URL を優先し、
-先頭に現れる無関係な URL や添付パスに引っ張られないようにする。
+参考サイト URL の抽出は LLM 工程（``claude_manual_common.run_reference_url_extraction``）に
+移行済み。本モジュールにはフェッチ前段の閾値定数・既存サイト推定・デザイン関連行抽出が残る。
 """
 from __future__ import annotations
 
@@ -19,71 +19,6 @@ def first_http_url_in_text(text: str) -> str:
     """文中の最初の http(s) URL（末尾の句読点のみ除去）。"""
     m = HEARING_HTTP_URL_RE.search(text or "")
     return m.group(0).rstrip(".,;") if m else ""
-
-
-def reference_site_url_from_hearing(
-    text: str,
-    *,
-    extra_texts: Sequence[str] = (),
-) -> str:
-    """
-    マニュアルの「参考サイトURL」プレースホルダ用。
-
-    短文セルでは先頭 URL。長文では設問「希望する雰囲気のサイトのURL」直後などを優先。
-    *extra_texts* にアポメモ・営業メモなどを渡すと、ヒアリング本文に URL がない場合に
-    追加テキストからも参考サイト URL を探す。
-    """
-    t = (text or "").strip()
-    if len(t) < HEARING_PASTE_BODY_MIN_LEN:
-        u = first_http_url_in_text(t)
-        if u:
-            return u
-        for et in extra_texts:
-            u = first_http_url_in_text(et)
-            if u:
-                return u
-        return ""
-    patterns = (
-        r"希望する雰囲気のサイトのURL[^\n]*\n\s*(https?://[^\s\]<>\")]+)",
-        r"希望する[^\n]{0,40}サイト[^\n]{0,20}URL[^\n]*\n\s*(https?://[^\s\]<>\")]+)",
-    )
-    for p in patterns:
-        m = re.search(p, t, flags=re.IGNORECASE | re.MULTILINE)
-        if m:
-            url_candidate = m.group(1).rstrip(".,;")
-            if not _is_placeholder_answer(t, m.start()):
-                return url_candidate
-    u = first_http_url_in_text(t)
-    if u:
-        return u
-    for et in extra_texts:
-        u = _reference_url_from_extra(et)
-        if u:
-            return u
-    return ""
-
-
-def _is_placeholder_answer(text: str, match_pos: int) -> bool:
-    """「記入しない」「なし」等の回答の直後に別の URL がある場合を検出しない。"""
-    return False
-
-
-_EXTRA_REF_PATTERNS = (
-    r"参考サイト[^\n]{0,30}(https?://[^\s\]<>\")]+)",
-    r"(https?://[^\s\]<>\")]+)[^\n]{0,30}(?:参考|寄せ|ベース|もとに)",
-)
-
-
-def _reference_url_from_extra(text: str) -> str:
-    """営業メモ・アポメモ等から参考サイト URL を抽出する。"""
-    t = (text or "").strip()
-    if not t:
-        return ""
-    for p in _EXTRA_REF_PATTERNS:
-        m = re.search(p, t, flags=re.IGNORECASE | re.MULTILINE)
-        if m:
-            return m.group(1).rstrip(".,;")
-    return first_http_url_in_text(t)
 
 
 def existing_site_url_guess_from_hearing(text: str) -> str:
@@ -116,9 +51,7 @@ def hearing_reference_design_excerpt(
     前後1行の文脈付きで連結する（長文コピペでも下流に渡しやすいよう短くする）。
 
     *extra_texts* にアポメモ・営業メモ等を渡すと、デザイン関連行として追加される。
-
-    マッチが無いときは ``reference_site_url_from_hearing`` の URL 周辺、
-    それも無ければ先頭から ``max_chars`` までを返す。
+    キーワード行が無いときは先頭から ``max_chars`` までを返す。
     """
     combined = (text or "").strip()
     extra_design_lines: list[str] = []
@@ -157,33 +90,6 @@ def hearing_reference_design_excerpt(
         if len(out) > max_chars:
             return out[: max_chars - 12].rstrip() + "\n…（以降省略）"
         return out
-    url = reference_site_url_from_hearing(t, extra_texts=extra_texts)
-    if url:
-        pos = t.find(url)
-        if pos >= 0:
-            half = max(800, max_chars // 2)
-            start = max(0, pos - half // 2)
-            end = min(len(t), pos + len(url) + half)
-            chunk = t[start:end].strip()
-            if start > 0:
-                chunk = "…\n" + chunk
-            if end < len(t):
-                chunk = chunk + "\n…"
-            if extra_design_lines:
-                chunk += "\n\n【営業メモ・アポメモからのデザイン関連情報】\n"
-                chunk += "\n".join(extra_design_lines)
-            if len(chunk) > max_chars:
-                return chunk[: max_chars - 12].rstrip() + "\n…（以降省略）"
-            return chunk
-        for et in extra_texts:
-            if url in (et or ""):
-                base = (et or "").strip()
-                if extra_design_lines:
-                    base += "\n\n【営業メモ・アポメモからのデザイン関連情報】\n"
-                    base += "\n".join(extra_design_lines)
-                if len(base) > max_chars:
-                    return base[: max_chars - 12].rstrip() + "\n…（以降省略）"
-                return base
     result = t
     if extra_design_lines:
         result += "\n\n【営業メモ・アポメモからのデザイン関連情報】\n"

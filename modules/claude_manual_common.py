@@ -18,11 +18,10 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from modules.contract_workflow import ContractWorkBranch
 
+import re as _re
+
 from config.config import CLAUDE_CLI_TIMEOUT_SEC
-from modules.hearing_url_utils import (
-    existing_site_url_guess_from_hearing,
-    reference_site_url_from_hearing,
-)
+from modules.hearing_url_utils import existing_site_url_guess_from_hearing
 
 logger = logging.getLogger(__name__)
 
@@ -257,13 +256,124 @@ def reference_url_block(
     *,
     extra_texts: Sequence[str] = (),
 ) -> str:
-    u = reference_site_url_from_hearing(
-        hearing_sheet_content or "",
-        extra_texts=extra_texts,
-    )
-    if u:
-        return u
+    """後方互換用。LLM 抽出版 ``reference_url_block_from_extracted`` を使うこと。"""
     return "（参考サイトURLの記載なし。手順1-3およびヒアリング本文を参照）"
+
+
+# ---------------------------------------------------------------------------
+# LLM による参考サイト URL 抽出（Python 正規表現に代わる新工程）
+# ---------------------------------------------------------------------------
+
+_COMMON_PROMPT_DIR = Path(__file__).resolve().parent.parent / "config" / "prompts" / "common"
+_URL_EXTRACT_PROMPT_FILE = "extract_reference_urls.txt"
+
+
+def _load_url_extract_template(*, module_name: str = "") -> str:
+    return load_step(_COMMON_PROMPT_DIR, _URL_EXTRACT_PROMPT_FILE, module_name=module_name)
+
+
+def _parse_url_extraction_response(text: str) -> list[dict[str, str]]:
+    """LLM 応答から JSON 配列を抽出しパース。失敗時は空リスト。"""
+    m = _re.search(r"\[.*\]", text, _re.DOTALL)
+    if not m:
+        return []
+    try:
+        data = json.loads(m.group(0))
+    except json.JSONDecodeError:
+        return []
+    if not isinstance(data, list):
+        return []
+    return [
+        {
+            "url": str(item.get("url", "")).strip(),
+            "design_intent": str(item.get("design_intent", "参考サイト")).strip(),
+        }
+        for item in data
+        if isinstance(item, dict) and str(item.get("url", "")).strip()
+    ]
+
+
+def extract_reference_urls_from_source(
+    source_text: str,
+    *,
+    source_label: str,
+    model: str,
+    module_name: str = "",
+) -> tuple[list[dict[str, str]], str, str]:
+    """1 ソースから参考サイト URL を LLM で抽出する。
+
+    引数: source_text — ヒアリング本文/アポメモ/営業メモ等のテキスト
+          source_label — プロンプトに埋め込むソース名
+          model — Claude CLI の --model 値
+    処理: プロンプトテンプレートに SOURCE_LABEL・SOURCE_TEXT を埋め込み、
+          Claude CLI 単発で呼び出して JSON をパース
+    出力: (parsed_urls, raw_output, prompt) — パース済みリスト・生出力・使用プロンプト
+    """
+    tmpl = _load_url_extract_template(module_name=module_name)
+    prompt = subst(
+        tmpl,
+        module_name=module_name,
+        SOURCE_LABEL=source_label,
+        SOURCE_TEXT=source_text,
+    )
+    raw_output = generate_text(prompt, model=model, module_name=module_name)
+    urls = _parse_url_extraction_response(raw_output)
+    return urls, raw_output, prompt
+
+
+def run_reference_url_extraction(
+    *,
+    hearing_text: str,
+    appo_memo: str,
+    sales_notes: str,
+    model: str,
+    module_name: str = "",
+) -> tuple[str, list[dict[str, str]], dict[str, str], dict[str, str]]:
+    """3 ソースから参考サイト URL を逐次抽出し、プロンプト用ブロック文字列を返す。
+
+    引数: hearing_text / appo_memo / sales_notes — 各ソーステキスト
+          model — Claude CLI の --model
+    処理: 非空のソースごとに extract_reference_urls_from_source を逐次呼び出し
+    出力: (block_text, all_urls, raw_outputs, raw_prompts)
+          raw_outputs / raw_prompts のキー: step_url_hearing / step_url_appo / step_url_sales
+    """
+    all_urls: list[dict[str, str]] = []
+    raw_outputs: dict[str, str] = {}
+    raw_prompts: dict[str, str] = {}
+
+    sources = [
+        ("step_url_hearing", hearing_text, "ヒアリングシート"),
+        ("step_url_appo", appo_memo, "アポ録画メモ"),
+        ("step_url_sales", sales_notes, "営業共有事項"),
+    ]
+    for key, text, label in sources:
+        if not (text or "").strip():
+            continue
+        logger.info("%s 参考サイトURL抽出（%s）…", module_name, label)
+        urls, raw, prompt = extract_reference_urls_from_source(
+            text, source_label=label, model=model, module_name=module_name,
+        )
+        all_urls.extend(urls)
+        raw_outputs[key] = raw
+        raw_prompts[key] = prompt
+
+    return reference_url_block_from_extracted(all_urls), all_urls, raw_outputs, raw_prompts
+
+
+def reference_url_block_from_extracted(urls: list[dict[str, str]]) -> str:
+    """LLM 抽出済み URL リストをプロンプト埋め込み用テキストに整形。"""
+    if not urls:
+        return "（参考サイトURLの記載なし。手順1-3およびヒアリング本文を参照）"
+    seen: set[str] = set()
+    lines: list[str] = []
+    for item in urls:
+        u = item["url"]
+        if u in seen:
+            continue
+        seen.add(u)
+        intent = item.get("design_intent", "参考サイト")
+        lines.append(f"- {u}（{intent}）")
+    return "\n".join(lines)
 
 
 # ---------------------------------------------------------------------------

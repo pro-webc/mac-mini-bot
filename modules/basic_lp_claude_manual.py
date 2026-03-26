@@ -59,7 +59,7 @@ from modules.claude_manual_common import (
     hearing_block as _hearing_block_impl,
     existing_site_url_block as _existing_site_url_block,
     client_hp_and_mood_placeholders as _client_hp_and_mood_placeholders,
-    reference_url_block as _reference_url_block,
+    run_reference_url_extraction as _run_reference_url_extraction,
     load_step as _load_step_impl,
     subst as _subst_impl,
 )
@@ -113,6 +113,9 @@ class BasicLpManualClaudeOutputs:
     step_8_1: str = ""
     step_8_2: str = ""
     step_8_3: str = ""
+    step_url_hearing: str = ""
+    step_url_appo: str = ""
+    step_url_sales: str = ""
     step_refactor: str = ""
     raw: dict[str, str] = field(default_factory=dict)
     raw_prompts: dict[str, str] = field(default_factory=dict)
@@ -206,15 +209,30 @@ def run_basic_lp_claude_manual_pipeline(
     outs.raw["step_4"] = outs.step_4
     outs.raw_prompts["step_4"] = p4
 
+    # --- 参考サイト URL 抽出（LLM 工程: ヒアリング / アポメモ / 営業メモ → URL 一覧） ---
+    # 引数: hear / appo_memo / sales_notes の生テキスト
+    # 処理: 非空ソースごとに Claude CLI 単発で参考サイト URL を JSON 抽出
+    # 出力: ref_block（プロンプト埋め込み用テキスト）/ raw・prompt 辞書（outs 保存用）
+    ref_block, _all_urls, _url_raws, _url_prompts = _run_reference_url_extraction(
+        hearing_text=hear,
+        appo_memo=appo_memo,
+        sales_notes=sales_notes,
+        model=CLAUDE_BASIC_LP_MODEL,
+        module_name=_MODULE_NAME,
+    )
+    for k, v in _url_raws.items():
+        setattr(outs, k, v)
+        outs.raw[k] = v
+    for k, v in _url_prompts.items():
+        outs.raw_prompts[k] = v
+
     # --- タブ4: 手順5〜7（同一チャット） ---
     hp_c, mood_c = _client_hp_and_mood_placeholders()
     p5 = _subst(
         _load_step("step_5.txt"),
         HP_COLOR_CLIENT=hp_c,
         MOOD_CLIENT=mood_c,
-        REFERENCE_URL_BLOCK=_reference_url_block(
-            hear, extra_texts=[s for s in (appo_memo, sales_notes) if (s or "").strip()],
-        ),
+        REFERENCE_URL_BLOCK=ref_block,
     )
     _extras = [s for s in (appo_memo, sales_notes) if (s or "").strip()]
     _hr_block = hearing_reference_design_block_for_prompt(

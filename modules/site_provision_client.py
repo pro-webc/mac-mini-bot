@@ -96,3 +96,24 @@ def provision_site(
         logger.warning("site-annotator IP制限: %s", error_msg)
 
     raise SiteProvisionError(error_msg, status_code=resp.status_code, body=body)
+
+
+def build_share_url(provision_response: dict[str, Any]) -> str | None:
+    """provision_site の応答から修正ツール共有 URL を構築する。
+
+    応答の site に share_url があればそのまま返す。
+    なければ SITE_ANNOTATOR_FRONTEND_URL + ``/share?token={share_token}`` で構築。
+    share_token が取得できなければ None。
+    """
+    from config.config import SITE_ANNOTATOR_FRONTEND_URL
+
+    site = provision_response.get("site", {})
+    direct_url = site.get("share_url") or provision_response.get("share_url")
+    if direct_url:
+        return str(direct_url)
+
+    share_token = site.get("share_token")
+    if not share_token:
+        return None
+
+    return f"{SITE_ANNOTATOR_FRONTEND_URL}/share?token={share_token}"

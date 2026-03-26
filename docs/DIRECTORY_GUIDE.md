@@ -17,7 +17,7 @@
 
 | 順 | 工程（ログのイメージ） | 主な場所 |
 |----|------------------------|----------|
-| 1 | スプレッドシート読込・必須列チェック | `modules/spreadsheet.py`, `config/config.py`（列定義） |
+| 1 | スプレッドシート読込・列自動検出 | `modules/spreadsheet.py`（1行目から列位置を自動検出）, `config/spreadsheet_schema.py`（見出し定義） |
 | 2 | ヒアリング抽出 | `modules/case_extraction.py`, `modules/spec_generator.py`（シート取得） |
 | 3 | TEXT_LLM（プラン別・フェーズ2） | `modules/llm/text_llm_stage.py`（`if/elif` → 各 `*_claude_manual.py`） |
 | 3a | **各 LLM 呼び出しごとの入出力**（TEXT_LLM / Manus） | `modules/llm/llm_step_trace.py` → `output/<レコード番号>/llm_steps/<NNN>_<種別>/`（`input.md`・`output.md` 等）。**`output/sites/` より先**にここへ都度増える |

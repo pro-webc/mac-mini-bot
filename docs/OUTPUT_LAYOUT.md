@@ -158,7 +158,7 @@ BOT_MAX_CASES=1 python3 scripts/preflight_before_process_case.py
 python3 scripts/preflight_before_process_case.py
 ```
 
-保存先は `output/preflight_snapshots/<UTC時刻>/`（`01`〜`04` の JSON と `README.txt`）。`03` に `fetched_count`（API から取った件数）と `after_bot_max_cases`（切り詰め後）が入ります。設定 NG や `SPREADSHEET_HEADERS_STRICT` 下での列不一致は本番同様に終了コード 1 になります。
+保存先は `output/preflight_snapshots/<UTC時刻>/`（`01`〜`04` の JSON と `README.txt`）。`02` に自動検出した列位置マッピング、`03` に `fetched_count`（API から取った件数）と `after_bot_max_cases`（切り詰め後）が入ります。設定 NG や列検出失敗は本番同様に終了コード 1 になります。
 
 ## フェーズ1スナップショット（ヒアリング抽出）
 

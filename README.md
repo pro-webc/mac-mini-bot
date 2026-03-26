@@ -86,7 +86,7 @@ flowchart LR
 | プラン別チェーンの構造変更 | `modules/*_claude_manual.py`（CLI 呼び出し回数・セッション構成） |
 | リファクタの指示精度 | `config/prompts/manus/refactoring_instruction_handwork.txt` |
 | ヒアリング前処理・構造化 | `modules/case_extraction.py` |
-| 列レイアウト・見出し検証 | `config/config.py` の `SPREADSHEET_COLUMNS` / `SPREADSHEET_HEADER_LABELS` |
+| 列レイアウト・見出し自動検出 | `config/spreadsheet_schema.py` の `SPREADSHEET_HEADER_LABELS`（1行目から列位置を自動検出） |
 
 ## エラー処理の原則（必須）
 

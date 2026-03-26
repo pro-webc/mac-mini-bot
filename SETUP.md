@@ -38,10 +38,11 @@ BOT_CONFIG_CHECK=1 python main.py
 
 ### スプレッドシートの列見出し・処理順
 
-- **1行目**の列名は `config/config.py` の `SPREADSHEET_HEADER_LABELS` に載っている列について、シートと **一致**させてください（全角半角スペースの違いは正規化して比較します）。**AV・AW（Bot ステータス列・デプロイURL列）は見出し不要**で、検証の対象外です（1行目が空でも問題ありません）。
-- 上記の検証列で一致しない場合、`SPREADSHEET_HEADERS_STRICT=true`（既定）では**起動失敗**します。見出しを合わせるか、一時的に `SPREADSHEET_HEADERS_STRICT=false` で警告のみにできます。
-- **処理対象**は次を満たす行です（上から順）:（1）**業務フェーズ列**（`phase_status`・既定 **M** / `overall_status`）が **`SPREADSHEET_TARGET_AI_STATUS`** と**完全一致**。（2）**AV 列**（`ai_status`）のセル値が `完了` / `処理中` / `エラー` で始まる値でない。（3）**`SPREADSHEET_REQUIRE_HEARING_BODY_NOT_URL=true`（既定）** のとき、ヒアリング列が**空**または **http(s) URL だけで構成される**行は**スキップ**（**URL 以外の本文が1文字でもある行のみ**着手）。（4）**`SPREADSHEET_BOT_REQUIRE_EMPTY_TEST_SITE_URL=true`（既定）** のとき、`test_url` 列が**空**。
-- Bot がスプレッドシートに**書き込む列は AV と AW のみ**です。それ以外の列は更新しません。
+- **1行目**の列名は `config/spreadsheet_schema.py` の `SPREADSHEET_HEADER_LABELS` に載っている **全フィールド** と **一致** させてください（全角半角スペースの違いは正規化して比較します）。列の **位置（何列目か）は自由** です — Bot は1行目の見出しテキストから各列を自動検出します。
+- 列の見出しを一括で書き込むスクリプト: `python scripts/fix_spreadsheet_headers_av_aw.py`（既定の列位置に HEADER_LABELS の見出しを設定します）。
+- 見出しが見つからないフィールドがある場合は **起動失敗** します。
+- **処理対象**は次を満たす行です（上から順）:（1）**業務フェーズ列**（`phase_status` / `overall_status`）が **`SPREADSHEET_TARGET_AI_STATUS`** と**完全一致**。（2）**ai_status 列**（`mac-mini`）のセル値が空でない行は除外。（3）**`SPREADSHEET_REQUIRE_HEARING_BODY_NOT_URL=true`（既定）** のとき、ヒアリング列が**空**または **http(s) URL だけで構成される**行は**スキップ**（**URL 以外の本文が1文字でもある行のみ**着手）。（4）**`SPREADSHEET_BOT_REQUIRE_EMPTY_TEST_SITE_URL=true`（既定）** のとき、`test_url` 列が**空**。
+- Bot がスプレッドシートに**書き込む列は ai_status・github_repo_url・test_url（deploy_url 兼用）・correction_tool_url のみ**です。それ以外の列は更新しません。correction_tool_url 列は site-annotator へのサイト登録が成功した場合にのみ書き込まれます。
 - **`SPREADSHEET_REQUIRED_FIELDS`**（既定: レコード番号・パートナー名・契約プラン）のいずれかが空の行は、上記を満たしても**処理しません**（ステータスも「処理中」にしません）。
 - 複数件ある場合は **行番号の昇順（シートの上から）** に処理します。
 - シート（タブ）名は `GOOGLE_SHEETS_SHEET_NAME`（既定 `Sheet1`）で変更できます。**スプレッドシート上の実在するタブ名と一致**させてください。存在しない名前だと `Unable to parse range` になります。
@@ -54,7 +55,6 @@ BOT_CONFIG_CHECK=1 python main.py
 # Google Sheets API（詳細は本ドキュメント「3. Google Sheets API認証」）
 GOOGLE_SHEETS_SPREADSHEET_ID=your_spreadsheet_id
 GOOGLE_SHEETS_SHEET_NAME=Sheet1
-SPREADSHEET_HEADERS_STRICT=true
 SPREADSHEET_TARGET_AI_STATUS=デモサイト制作中
 SPREADSHEET_BOT_REQUIRE_EMPTY_TEST_SITE_URL=true
 

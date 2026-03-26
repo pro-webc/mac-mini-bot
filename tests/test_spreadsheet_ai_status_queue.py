@@ -23,7 +23,7 @@ def test_queue_includes_empty_and_whitespace_only() -> None:
 
 
 def test_get_ai_status_cell_returns_trimmed_value(monkeypatch) -> None:
-    """Sheets API の get 応答から R セル1件を読む。"""
+    """Sheets API の get 応答から ai_status セル1件を読む。"""
     monkeypatch.setattr(
         "modules.spreadsheet.GOOGLE_SHEETS_AUTH_MODE", "service_account", raising=False
     )
@@ -47,13 +47,32 @@ def test_get_ai_status_cell_returns_trimmed_value(monkeypatch) -> None:
     client.service = fake_service
     client.spreadsheet_id = "sid"
     client.sheet_name = "メイン"
-    from modules.spreadsheet import SPREADSHEET_COLUMNS
+    from config.spreadsheet_schema import BOT_WRITABLE_FIELDS
     from modules.spreadsheet_schema import (
         column_index_to_letters,
         max_column_index_for_map,
     )
 
-    client._max_col_index = max_column_index_for_map(SPREADSHEET_COLUMNS.values())
+    client.columns = {
+        "record_number": "B",
+        "partner_name": "C",
+        "contract_plan": "D",
+        "ball_holder": "Q",
+        "ai_status": "R",
+        "phase_status": "M",
+        "phase_deadline": "T",
+        "appo_memo": "AD",
+        "sales_notes": "AE",
+        "hearing_sheet_url": "AH",
+        "github_repo_url": "AI",
+        "test_site_url": "AJ",
+        "deploy_url": "AJ",
+        "correction_tool_url": "AK",
+    }
+    client._max_col_index = max_column_index_for_map(client.columns.values())
     client._data_range_end = column_index_to_letters(client._max_col_index)
+    client._bot_writable_letters = frozenset(
+        client.columns[f] for f in BOT_WRITABLE_FIELDS if f in client.columns
+    )
 
     assert client.get_ai_status_cell(100) == "MacBot"

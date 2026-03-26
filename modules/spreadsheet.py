@@ -17,12 +17,15 @@ from config.config import (
     GOOGLE_SHEETS_SPREADSHEET_ID,
     SPREADSHEET_BALL_HOLDER_REQUIRED_TEXT,
     SPREADSHEET_BOT_REQUIRE_EMPTY_TEST_SITE_URL,
-    SPREADSHEET_COLUMNS,
     SPREADSHEET_HEADER_LABELS,
     SPREADSHEET_MIN_PHASE_DEADLINE,
     SPREADSHEET_REQUIRE_HEARING_BODY_NOT_URL,
     SPREADSHEET_REQUIRED_CASE_FIELDS,
     SPREADSHEET_TARGET_AI_STATUS,
+)
+from config.spreadsheet_schema import (
+    BOT_WRITABLE_FIELDS,
+    SPREADSHEET_COLUMN_ALIASES,
 )
 from google.auth import default as google_auth_default
 from google.oauth2 import service_account
@@ -36,6 +39,7 @@ from modules.spreadsheet_schema import (
     hearing_cell_is_eligible_for_mac_mini_bot,
     max_column_index_for_map,
     normalize_header_label,
+    resolve_columns_from_header_row,
 )
 
 logger = logging.getLogger(__name__)
@@ -172,23 +176,6 @@ def resolve_basic_lp_from_site_type_rows(
     )
 
 
-# Bot が書き込みしてよい列（R・AI・AJ）。それ以外の列は更新しない。
-SPREADSHEET_BOT_WRITABLE_LETTERS: frozenset[str] = frozenset(
-    {
-        SPREADSHEET_COLUMNS["ai_status"],
-        SPREADSHEET_COLUMNS["deploy_url"],
-        SPREADSHEET_COLUMNS["github_repo_url"],
-    }
-)
-
-
-def _assert_bot_writable_column(col_letter: str, context: str) -> None:
-    if col_letter not in SPREADSHEET_BOT_WRITABLE_LETTERS:
-        raise RuntimeError(
-            f"Bot は R/AI/AJ 以外の列を編集できません（{context}: {col_letter}）"
-        )
-
-
 def ai_cell_excludes_from_pending_queue(ai_status_raw: str) -> bool:
     """
     ``get_pending_cases`` 用: R 列の表示値が空でなければキュー対象外（True）。
@@ -282,16 +269,31 @@ def _http_error_detail(exc: HttpError) -> str:
     return " ".join(parts) if parts else repr(exc)
 
 
+# 1行目読み取りの最大列数（自動検出範囲）
+_HEADER_SCAN_END_COL = "AZ"
+
+
 class SpreadsheetClient:
-    """Google Sheets APIクライアント"""
+    """Google Sheets APIクライアント
+
+    列位置は ``__init__`` でシート1行目の見出しから自動検出される。
+    検出に失敗した場合は ``RuntimeError`` を送出する。
+    """
 
     def __init__(self) -> None:
         self.service: Any = None
         self.spreadsheet_id = GOOGLE_SHEETS_SPREADSHEET_ID
         self.sheet_name = GOOGLE_SHEETS_SHEET_NAME
-        self._max_col_index = max_column_index_for_map(SPREADSHEET_COLUMNS.values())
-        self._data_range_end = column_index_to_letters(self._max_col_index)
         self._authenticate()
+        # 引数: シート1行目 / SPREADSHEET_HEADER_LABELS / SPREADSHEET_COLUMN_ALIASES
+        # 処理: 見出しテキストから列記号を自動検出。見つからないフィールドがあれば RuntimeError
+        # 出力: self.columns（field→列記号）, self._bot_writable_letters, self._max_col_index
+        self.columns = self._resolve_columns()
+        self._max_col_index = max_column_index_for_map(self.columns.values())
+        self._data_range_end = column_index_to_letters(self._max_col_index)
+        self._bot_writable_letters: frozenset[str] = frozenset(
+            self.columns[f] for f in BOT_WRITABLE_FIELDS if f in self.columns
+        )
 
     def _authenticate(self) -> None:
         """Google Sheets API認証"""
@@ -346,6 +348,82 @@ class SpreadsheetClient:
                 e,
             )
             raise
+
+    # ------------------------------------------------------------------
+    # 列位置の自動検出
+    # ------------------------------------------------------------------
+
+    def _resolve_columns(self) -> dict[str, str]:
+        """1行目の見出しから各フィールドの列位置を自動検出する。
+
+        検出できないフィールドがあれば RuntimeError。
+        """
+        range_name = a1_range(self.sheet_name, f"A1:{_HEADER_SCAN_END_COL}1")
+        try:
+            result = (
+                self.service.spreadsheets()
+                .values()
+                .get(spreadsheetId=self.spreadsheet_id, range=range_name)
+                .execute()
+            )
+        except HttpError as e:
+            logger.error(
+                "ヘッダー行の取得に失敗しました range=%r %s",
+                range_name,
+                _http_error_detail(e),
+                exc_info=True,
+            )
+            if GOOGLE_SHEETS_AUTH_MODE == "application_default":
+                if _is_insufficient_sheets_scope_error(e):
+                    raise RuntimeError(_adc_sheets_scope_help("_resolve_columns")) from e
+                if _is_adc_quota_project_error(e):
+                    raise RuntimeError(_adc_quota_project_help("_resolve_columns")) from e
+            raise
+
+        values = result.get("values") or []
+        if not values:
+            raise RuntimeError(
+                f"シート {self.sheet_name!r} の1行目が空です。"
+                "SPREADSHEET_HEADER_LABELS に定義された見出しを1行目に設定してください。"
+            )
+
+        header_row = values[0]
+        columns, errors = resolve_columns_from_header_row(
+            header_row, SPREADSHEET_HEADER_LABELS, SPREADSHEET_COLUMN_ALIASES,
+        )
+
+        if errors:
+            found_headers = [
+                f"{normalize_header_label(c)}（列{column_index_to_letters(i)}）"
+                for i, c in enumerate(header_row) if (c or "").strip()
+            ]
+            msg_lines = [
+                "スプレッドシート1行目の列見出しから以下のフィールドを検出できませんでした:",
+                *[f"  - {e}" for e in errors],
+                "",
+                f"シート {self.sheet_name!r} で検出した見出し: {found_headers}",
+                "",
+                "config/spreadsheet_schema.py の SPREADSHEET_HEADER_LABELS に定義された"
+                "見出しテキストを1行目に設定してください。",
+            ]
+            raise RuntimeError("\n".join(msg_lines))
+
+        logger.info(
+            "列位置を自動検出しました: %s",
+            {f: columns[f] for f in sorted(columns)},
+        )
+        return columns
+
+    def _assert_bot_writable(self, col_letter: str, context: str) -> None:
+        """Bot が書き込み可能な列かを検証する。"""
+        if col_letter not in self._bot_writable_letters:
+            raise RuntimeError(
+                f"Bot は書き込み対象外の列を編集できません（{context}: 列{col_letter}）"
+            )
+
+    # ------------------------------------------------------------------
+    # BASIC サイトタイプ照合
+    # ------------------------------------------------------------------
 
     def lookup_basic_is_landing_page(self, record_number: str, partner_name: str) -> bool | None:
         """
@@ -406,76 +484,9 @@ class SpreadsheetClient:
         )
         return is_lp
 
-    def validate_header_labels(self) -> list[str]:
-        """
-        1行目の列見出しが config の SPREADSHEET_HEADER_LABELS と一致するか検証する。
-
-        R（ai_status）/ AI（github_repo_url）/ AJ（deploy_url）は Bot 専用列のためラベル検証の対象外。
-
-        Returns:
-            不一致メッセージのリスト（空なら OK）
-        """
-        mismatches: list[str] = []
-        # 行だけの 1:1 は Sheet1 のように末尾が数字のシート名と組み合わさると API が
-        # "Unable to parse range" になることがあるため、A1〜期待末尾列で明示する。
-        range_name = a1_range(self.sheet_name, f"A1:{self._data_range_end}1")
-        try:
-            result = (
-                self.service.spreadsheets()
-                .values()
-                .get(spreadsheetId=self.spreadsheet_id, range=range_name)
-                .execute()
-            )
-        except HttpError as e:
-            logger.error(
-                "ヘッダー行の取得に失敗しました range=%r %s",
-                range_name,
-                _http_error_detail(e),
-                exc_info=True,
-            )
-            if GOOGLE_SHEETS_AUTH_MODE == "application_default":
-                if _is_insufficient_sheets_scope_error(e):
-                    raise RuntimeError(_adc_sheets_scope_help("validate_header_labels")) from e
-                if _is_adc_quota_project_error(e):
-                    raise RuntimeError(_adc_quota_project_help("validate_header_labels")) from e
-            raise
-
-        values = result.get("values") or []
-        if not values:
-            msg = f"シート {self.sheet_name!r} の1行目が空です（range={range_name}）"
-            logger.error("%s", msg)
-            return [msg]
-
-        header_row = values[0]
-        logger.info(
-            "列見出し検証: sheet=%r 取得セル数=%s (期待末尾列=%s)",
-            self.sheet_name,
-            len(header_row),
-            self._data_range_end,
-        )
-
-        for field, letter in SPREADSHEET_COLUMNS.items():
-            expected = SPREADSHEET_HEADER_LABELS.get(field)
-            if not expected:
-                continue
-            idx = column_letter_to_index(letter)
-            actual = header_row[idx] if idx < len(header_row) else ""
-            exp_n = normalize_header_label(expected)
-            act_n = normalize_header_label(actual)
-            if exp_n != act_n:
-                mismatches.append(
-                    f"列{letter}（{field}）見出し不一致: 期待 {expected!r} / 実際 {actual!r}"
-                )
-
-        if mismatches:
-            logger.warning(
-                "スプレッドシート列名の整合性: %s 件の不一致（起動時に ERROR/WARN として再出力されます）",
-                len(mismatches),
-            )
-        else:
-            logger.info("スプレッドシート列名の整合性チェック: OK")
-
-        return mismatches
+    # ------------------------------------------------------------------
+    # 案件取得
+    # ------------------------------------------------------------------
 
     def get_pending_cases(self, sheet_name: str | None = None) -> list[dict]:
         """
@@ -483,11 +494,11 @@ class SpreadsheetClient:
 
         条件（config）:
         - phase_status 列が SPREADSHEET_TARGET_AI_STATUS と完全一致
-        - R 列が空欄（``ai_cell_excludes_from_pending_queue`` が False）
+        - ai_status 列が空欄（``ai_cell_excludes_from_pending_queue`` が False）
         - SPREADSHEET_REQUIRE_HEARING_BODY_NOT_URL のとき: ヒアリング列が URL のみの行はスキップ（本文が1文字でもあれば着手）
         - かつ（既定）テストサイトURL列が空
-        - かつ SPREADSHEET_MIN_PHASE_DEADLINE 設定時: フェーズ期限日（T 列）がその日付以降で解釈可能であること
-        - かつ SPREADSHEET_BALL_HOLDER_REQUIRED_TEXT 設定時: Q 列（ボール保持者）がその文字列と完全一致
+        - かつ SPREADSHEET_MIN_PHASE_DEADLINE 設定時: フェーズ期限日が最小日以降で解釈可能であること
+        - かつ SPREADSHEET_BALL_HOLDER_REQUIRED_TEXT 設定時: ball_holder 列がその文字列と完全一致
 
         Args:
             sheet_name: 省略時は GOOGLE_SHEETS_SHEET_NAME
@@ -544,16 +555,15 @@ class SpreadsheetClient:
                     self._max_col_index + 1,
                 )
 
-            phase_status = self._cell(row, SPREADSHEET_COLUMNS["phase_status"]).strip()
+            phase_status = self._cell(row, self.columns["phase_status"]).strip()
             if phase_status != SPREADSHEET_TARGET_AI_STATUS:
                 continue
-            # R 列が空でなければ（Bot 着手済み）除外
-            ai_status = self._cell(row, SPREADSHEET_COLUMNS["ai_status"])
+            ai_status = self._cell(row, self.columns["ai_status"])
             if ai_cell_excludes_from_pending_queue(ai_status):
                 continue
 
             if SPREADSHEET_REQUIRE_HEARING_BODY_NOT_URL:
-                hearing = self._cell(row, SPREADSHEET_COLUMNS["hearing_sheet_url"])
+                hearing = self._cell(row, self.columns["hearing_sheet_url"])
                 if not hearing_cell_is_eligible_for_mac_mini_bot(hearing):
                     logger.debug(
                         "行%s: ヒアリング列が空または URL のためスキップ（本文のみ着手）",
@@ -562,11 +572,11 @@ class SpreadsheetClient:
                     continue
 
             if SPREADSHEET_BOT_REQUIRE_EMPTY_TEST_SITE_URL:
-                test_site = self._cell(row, SPREADSHEET_COLUMNS["test_site_url"]).strip()
+                test_site = self._cell(row, self.columns["test_site_url"]).strip()
                 if test_site:
                     continue
 
-            ball_holder = self._cell(row, SPREADSHEET_COLUMNS["ball_holder"])
+            ball_holder = self._cell(row, self.columns["ball_holder"])
             if not ball_holder_cell_matches_queue_requirement(ball_holder):
                 logger.debug(
                     "行%s: Q列ボール保持者が %r と一致しないためスキップ（実際=%r）",
@@ -577,7 +587,7 @@ class SpreadsheetClient:
                 continue
 
             if SPREADSHEET_MIN_PHASE_DEADLINE is not None:
-                pd_raw = self._cell(row, SPREADSHEET_COLUMNS["phase_deadline"])
+                pd_raw = self._cell(row, self.columns["phase_deadline"])
                 pd_date = parse_spreadsheet_phase_deadline_cell(pd_raw)
                 if pd_date is None:
                     logger.debug(
@@ -634,7 +644,7 @@ class SpreadsheetClient:
     def get_case_by_record_number(
         self, record_number: str, *, sheet_name: str | None = None,
     ) -> dict | None:
-        """R 列の状態に関係なく、レコード番号で 1 件だけ取得する（再開用）。"""
+        """ai_status 列の状態に関係なく、レコード番号で 1 件だけ取得する（再開用）。"""
         sheet = sheet_name or self.sheet_name
         range_name = a1_range(sheet, f"A:{self._data_range_end}")
         result = (
@@ -645,7 +655,7 @@ class SpreadsheetClient:
         )
         values = result.get("values", [])
         want = str(record_number).strip()
-        rec_col = SPREADSHEET_COLUMNS["record_number"]
+        rec_col = self.columns["record_number"]
         for row_index, row in enumerate(values[1:], start=2):
             cell = self._cell(row, rec_col).strip()
             if cell == want:
@@ -664,27 +674,31 @@ class SpreadsheetClient:
 
         return {
             "row_number": row_number,
-            "record_number": get_value(SPREADSHEET_COLUMNS["record_number"]),
-            "partner_name": get_value(SPREADSHEET_COLUMNS["partner_name"]),
-            "contract_plan": get_value(SPREADSHEET_COLUMNS["contract_plan"]),
-            "ball_holder": get_value(SPREADSHEET_COLUMNS["ball_holder"]),
-            "ai_status": get_value(SPREADSHEET_COLUMNS["ai_status"]),
-            "phase_deadline": get_value(SPREADSHEET_COLUMNS["phase_deadline"]),
-            "appo_memo": get_value(SPREADSHEET_COLUMNS["appo_memo"]),
-            "sales_notes": get_value(SPREADSHEET_COLUMNS["sales_notes"]),
-            "hearing_sheet_url": get_value(SPREADSHEET_COLUMNS["hearing_sheet_url"]),
-            "github_repo_url": get_value(SPREADSHEET_COLUMNS["github_repo_url"]),
-            "test_site_url": get_value(SPREADSHEET_COLUMNS["test_site_url"]),
-            "deploy_url": get_value(SPREADSHEET_COLUMNS["deploy_url"]),
+            "record_number": get_value(self.columns["record_number"]),
+            "partner_name": get_value(self.columns["partner_name"]),
+            "contract_plan": get_value(self.columns["contract_plan"]),
+            "ball_holder": get_value(self.columns["ball_holder"]),
+            "ai_status": get_value(self.columns["ai_status"]),
+            "phase_deadline": get_value(self.columns["phase_deadline"]),
+            "appo_memo": get_value(self.columns["appo_memo"]),
+            "sales_notes": get_value(self.columns["sales_notes"]),
+            "hearing_sheet_url": get_value(self.columns["hearing_sheet_url"]),
+            "github_repo_url": get_value(self.columns["github_repo_url"]),
+            "test_site_url": get_value(self.columns["test_site_url"]),
+            "deploy_url": get_value(self.columns["deploy_url"]),
         }
+
+    # ------------------------------------------------------------------
+    # 書き込み
+    # ------------------------------------------------------------------
 
     def update_deploy_url(
         self, row_number: int, deploy_url: str, sheet_name: str | None = None
     ) -> None:
         sheet = sheet_name or self.sheet_name
         try:
-            col_letter = SPREADSHEET_COLUMNS["deploy_url"]
-            _assert_bot_writable_column(col_letter, "update_deploy_url")
+            col_letter = self.columns["deploy_url"]
+            self._assert_bot_writable(col_letter, "update_deploy_url")
             range_name = a1_range(sheet, f"{col_letter}{row_number}")
 
             body = {"values": [[deploy_url]]}
@@ -724,40 +738,49 @@ class SpreadsheetClient:
         row_number: int,
         deploy_url: str,
         github_repo_url: str = "",
+        correction_tool_url: str = "",
         sheet_name: str | None = None,
     ) -> None:
         """
-        AJ（deploy_url）と AI（github_repo_url）を 1 回の batchUpdate で書く。
+        github_repo_url・deploy_url・correction_tool_url を 1 回の batchUpdate で書く。
 
         片方だけ更新されて不整合にならないよう、同時に書き込む。
+        correction_tool_url が空のときはその列には書き込まない。
         """
         sheet = sheet_name or self.sheet_name
-        col_deploy = SPREADSHEET_COLUMNS["deploy_url"]
-        col_github = SPREADSHEET_COLUMNS["github_repo_url"]
-        _assert_bot_writable_column(col_deploy, "update_deploy_url_and_complete_status")
-        _assert_bot_writable_column(col_github, "update_deploy_url_and_complete_status")
+        col_deploy = self.columns["deploy_url"]
+        col_github = self.columns["github_repo_url"]
+        self._assert_bot_writable(col_deploy, "update_deploy_url_and_complete_status")
+        self._assert_bot_writable(col_github, "update_deploy_url_and_complete_status")
         range_deploy = a1_range(sheet, f"{col_deploy}{row_number}")
         range_github = a1_range(sheet, f"{col_github}{row_number}")
+
+        data_entries = [
+            {"range": range_github, "values": [[github_repo_url]]},
+            {"range": range_deploy, "values": [[deploy_url]]},
+        ]
+        if correction_tool_url:
+            col_correction = self.columns["correction_tool_url"]
+            self._assert_bot_writable(col_correction, "update_deploy_url_and_complete_status")
+            range_correction = a1_range(sheet, f"{col_correction}{row_number}")
+            data_entries.append({"range": range_correction, "values": [[correction_tool_url]]})
+
         try:
             self.service.spreadsheets().values().batchUpdate(
                 spreadsheetId=self.spreadsheet_id,
                 body={
                     "valueInputOption": "RAW",
-                    "data": [
-                        {"range": range_github, "values": [[github_repo_url]]},
-                        {"range": range_deploy, "values": [[deploy_url]]},
-                    ],
+                    "data": data_entries,
                 },
             ).execute()
             logger.info(
-                "GitHub URL・デプロイ URL を一括更新しました sheet=%s row=%s "
-                "col_ai=%s col_aj=%s github=%s deploy=%s",
+                "GitHub URL・デプロイ URL・修正ツール URL を一括更新しました "
+                "sheet=%s row=%s github=%s deploy=%s correction=%s",
                 sheet,
                 row_number,
-                col_github,
-                col_deploy,
                 github_repo_url,
                 deploy_url,
+                correction_tool_url or "(なし)",
             )
         except HttpError as e:
             logger.error(
@@ -780,13 +803,13 @@ class SpreadsheetClient:
 
     def get_ai_status_cell(self, row_number: int, sheet_name: str | None = None) -> str:
         """
-        R 列（Bot 着手フラグ）の表示値を 1 セルだけ取得する。
+        ai_status 列（Bot 着手フラグ）の表示値を 1 セルだけ取得する。
 
         複数プロセスで ``main.py`` を並列起動するとき、着手直前に呼び出し
         他ワーカーが既に "MacBot" を書き込んでいないか確認する用途。
         """
         sheet = sheet_name or self.sheet_name
-        col_letter = SPREADSHEET_COLUMNS["ai_status"]
+        col_letter = self.columns["ai_status"]
         range_name = a1_range(sheet, f"{col_letter}{row_number}")
         try:
             result = (
@@ -797,7 +820,7 @@ class SpreadsheetClient:
             )
         except HttpError as e:
             logger.error(
-                "R 列（Bot 着手フラグ）の取得に失敗しました sheet=%s row=%s range=%r %s",
+                "ai_status 列（Bot 着手フラグ）の取得に失敗しました sheet=%s row=%s range=%r %s",
                 sheet,
                 row_number,
                 range_name,
@@ -820,8 +843,8 @@ class SpreadsheetClient:
     ) -> None:
         sheet = sheet_name or self.sheet_name
         try:
-            col_letter = SPREADSHEET_COLUMNS["ai_status"]
-            _assert_bot_writable_column(col_letter, "update_ai_status")
+            col_letter = self.columns["ai_status"]
+            self._assert_bot_writable(col_letter, "update_ai_status")
             range_name = a1_range(sheet, f"{col_letter}{row_number}")
 
             body = {"values": [[status]]}
@@ -834,7 +857,7 @@ class SpreadsheetClient:
             ).execute()
 
             logger.info(
-                "R 列（Bot 着手フラグ）を更新しました sheet=%s row=%s col=%s status=%r",
+                "ai_status 列（Bot 着手フラグ）を更新しました sheet=%s row=%s col=%s status=%r",
                 sheet,
                 row_number,
                 col_letter,
@@ -843,7 +866,7 @@ class SpreadsheetClient:
 
         except HttpError as e:
             logger.error(
-                "R 列（Bot 着手フラグ）の更新に失敗しました sheet=%s row=%s status=%r %s",
+                "ai_status 列（Bot 着手フラグ）の更新に失敗しました sheet=%s row=%s status=%r %s",
                 sheet,
                 row_number,
                 status,

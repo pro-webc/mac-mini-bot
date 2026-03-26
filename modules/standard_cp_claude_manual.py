@@ -56,7 +56,7 @@ from modules.claude_manual_common import (
     hearing_block as _hearing_block_impl,
     existing_site_url_block as _existing_site_url_block,
     client_hp_and_mood_placeholders as _client_hp_and_mood_placeholders,
-    reference_url_block as _reference_url_block,
+    run_reference_url_extraction as _run_reference_url_extraction,
     load_step as _load_step_impl,
     subst as _subst_impl,
 )
@@ -215,15 +215,30 @@ def build_standard_cp_claude_prompt_step_4(
     hearing_sheet_content: str,
     appo_memo: str = "",
     sales_notes: str = "",
+    reference_url_block_override: str = "",
 ) -> str:
-    """手順4（タブ⑤・API 9/15）に渡すプロンプト全文。Claude API は呼ばない。"""
+    """手順4（タブ⑤・API 9/15）に渡すプロンプト全文。Claude API は呼ばない。
+
+    *reference_url_block_override* が非空なら LLM 抽出済みブロックをそのまま使う。
+    空なら LLM 抽出を内部で実行（段階テスト用の後方互換）。
+    """
     hp_c, mood_c = _client_hp_and_mood_placeholders()
-    extras = [s for s in (appo_memo, sales_notes) if (s or "").strip()]
+    if (reference_url_block_override or "").strip():
+        ref_block = reference_url_block_override
+    else:
+        from modules.claude_manual_common import run_reference_url_extraction
+        ref_block, _, _, _ = run_reference_url_extraction(
+            hearing_text=(hearing_sheet_content or "").strip(),
+            appo_memo=appo_memo,
+            sales_notes=sales_notes,
+            model=CLAUDE_STANDARD_CP_MODEL,
+            module_name=_MODULE_NAME,
+        )
     return _subst(
         _load_step("step_4.txt"),
         HP_COLOR_CLIENT=hp_c,
         MOOD_CLIENT=mood_c,
-        REFERENCE_URL_BLOCK=_reference_url_block(hearing_sheet_content, extra_texts=extras),
+        REFERENCE_URL_BLOCK=ref_block,
     )
 
 
@@ -906,6 +921,9 @@ class StandardCpManualClaudeOutputs:
     step_7_2: str = ""
     step_7_3: str = ""
     step_7_4: str = ""
+    step_url_hearing: str = ""
+    step_url_appo: str = ""
+    step_url_sales: str = ""
     step_refactor: str = ""
     raw: dict[str, str] = field(default_factory=dict)
     raw_prompts: dict[str, str] = field(default_factory=dict)
@@ -1001,10 +1019,28 @@ def run_standard_cp_claude_manual_pipeline(
     outs.raw["step_3_5"] = outs.step_3_5
     outs.raw_prompts["step_3_5"] = p35
 
+    # --- 参考サイト URL 抽出（LLM 工程: ヒアリング / アポメモ / 営業メモ → URL 一覧） ---
+    # 引数: hearing_sheet_content / appo_memo / sales_notes の生テキスト
+    # 処理: 非空ソースごとに Claude CLI 単発で参考サイト URL を JSON 抽出
+    # 出力: ref_block（プロンプト埋め込み用テキスト）/ raw・prompt 辞書（outs 保存用）
+    ref_block, _all_urls, _url_raws, _url_prompts = _run_reference_url_extraction(
+        hearing_text=(hearing_sheet_content or "").strip(),
+        appo_memo=appo_memo,
+        sales_notes=sales_notes,
+        model=CLAUDE_STANDARD_CP_MODEL,
+        module_name=_MODULE_NAME,
+    )
+    for k, v in _url_raws.items():
+        setattr(outs, k, v)
+        outs.raw[k] = v
+    for k, v in _url_prompts.items():
+        outs.raw_prompts[k] = v
+
     p4 = build_standard_cp_claude_prompt_step_4(
         hearing_sheet_content=hearing_sheet_content,
         appo_memo=appo_memo,
         sales_notes=sales_notes,
+        reference_url_block_override=ref_block,
     )
     p6 = build_standard_cp_claude_prompt_step_6(
         hearing_sheet_content=hearing_sheet_content,

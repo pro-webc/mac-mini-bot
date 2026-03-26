@@ -30,13 +30,14 @@ from config.config import (
     BOT_MAX_CASES,
     BOT_ONLY_RECORD_NUMBER,
     BOT_RESUME_FROM_MANUS,
+    GA4_INJECT_TRACKING,
+    GA4_MEASUREMENT_ID,
     OUTPUT_DIR,
     SITE_BUILD_ENABLED,
     SITE_IMPLEMENTATION_ENABLED,
     SITE_PROVISION_API_KEY,
     SITE_PROVISION_API_URL,
     SPREADSHEET_AI_STATUS_ERROR_MAX_LEN,
-    SPREADSHEET_HEADERS_STRICT,
     get_contract_plan_info,
 )
 from config.log_theme import (
@@ -58,6 +59,7 @@ from modules.contract_workflow import (
     resolve_contract_work_branch,
     resolve_work_branch_with_basic_lp_override,
 )
+from modules.ga4_injector import inject_ga4_tracking
 from modules.github_client import GitHubClient, sanitize_github_repo_name
 from modules.llm.llm_raw_output import (
     write_llm_raw_artifacts,
@@ -416,6 +418,15 @@ class WebsiteBot:
                     "生成マークダウンからサイトファイルを1件も適用できませんでした。"
                     " 該当プランの Claude マニュアルとリファクタ出力が spec に入っているか確認してください。"
                 )
+
+        # 引数: site_dir（フェンス適用 or shallow clone 完了済み）/ GA4_MEASUREMENT_ID（環境変数、任意）
+        # 処理: app/layout.tsx に <Script> で CTA トラッキングを注入し、
+        #   public/scripts/ga4-cta-tracking.js を配置する（modules.ga4_injector）。
+        #   GA4_INJECT_TRACKING=true なら ID なしでもタグだけ注入（後から ID 追加可能）
+        # 出力: 注入成功ログ。GA4_INJECT_TRACKING=false かつ ID 未設定ならスキップ
+        if GA4_INJECT_TRACKING:
+            inject_ga4_tracking(site_dir, measurement_id=GA4_MEASUREMENT_ID)
+
         return site_dir
 
     # ------------------------------------------------------------------
@@ -507,27 +518,34 @@ class WebsiteBot:
         # 引数: partner_name（=サイト名）/ deploy_url（Vercel 公開 URL）
         # 処理: POST /api/sites/provision — パートナー名・リポジトリURL・tracker.js の
         #   3チェック通過時のみサイト作成・crawl 実行（site-annotator 側で並列チェック）
-        # 出力: 成功時は site id / share_token / crawl 件数をログ。失敗は warning のみ（続行）
+        # 出力: 成功時は修正ツール共有 URL（AK列に書き込む）。失敗は warning のみ（続行）
+        correction_tool_url = ""
         if SITE_PROVISION_API_URL and SITE_PROVISION_API_KEY:
             try:
-                from modules.site_provision_client import provision_site
+                from modules.site_provision_client import build_share_url, provision_site
 
                 logger.info("› site-annotator にサイトを登録…")
-                provision_site(
+                provision_data = provision_site(
                     api_url=SITE_PROVISION_API_URL,
                     api_key=SITE_PROVISION_API_KEY,
                     site_name=case["partner_name"],
                     site_url=deploy_url,
                 )
+                correction_tool_url = build_share_url(provision_data) or ""
+                if correction_tool_url:
+                    logger.info("› 修正ツール URL: %s", correction_tool_url)
             except Exception:
                 logger.warning(
                     "site-annotator への登録に失敗しました（続行します）",
                     exc_info=True,
                 )
 
-        # 引数: deploy_url / github_url / row — 処理: AI列と AJ列を batchUpdate
+        # 引数: deploy_url / github_url / correction_tool_url / row
+        # 処理: AI列・AJ列・AK列（修正ツールURL、取得できた場合のみ）を batchUpdate
         self.spreadsheet.update_deploy_url_and_complete_status(
-            case["row_number"], deploy_url, github_repo_url=github_url,
+            case["row_number"], deploy_url,
+            github_repo_url=github_url,
+            correction_tool_url=correction_tool_url,
         )
         logger.info("✓ 案件完了 — 公開 URL: %s", deploy_url)
         return deploy_url
@@ -659,52 +677,11 @@ def _run_startup_validation() -> bool:
     )
 
 
-def _spreadsheet_header_issues(spreadsheet: SpreadsheetClient) -> list[str]:
-    """列見出し検証の結果メッセージ一覧（本番・スナップショットで共通）。"""
-    return spreadsheet.validate_header_labels()
-
-
-def _react_to_spreadsheet_header_issues(issues: list[str], *, to_stdout: bool) -> None:
-    """列見出し不一致をログまたは標準出力へ出し、厳格モードなら sys.exit(1)。"""
-    if to_stdout:
-        for m in issues:
-            print(f"HEADER_MISMATCH: {m}")
-        if SPREADSHEET_HEADERS_STRICT and issues:
-            print(
-                "ERROR: 列見出し不一致のため終了（SPREADSHEET_HEADERS_STRICT=true。"
-                " R・AI・AJ は検証対象外）"
-            )
-            sys.exit(1)
-        return
-    for msg in issues:
-        if SPREADSHEET_HEADERS_STRICT:
-            logger.error("[起動時・列見出し] %s", msg)
-        else:
-            logger.warning("[起動時・列見出し] %s", msg)
-    if SPREADSHEET_HEADERS_STRICT and issues:
-        logger.error(
-            "列見出し不一致のため起動を中止します。"
-            "config.py の SPREADSHEET_HEADER_LABELS をシート1行目に合わせるか（R・AI・AJ は検証対象外）、"
-            "SPREADSHEET_HEADERS_STRICT=false で警告のみにしてください。"
-        )
-        sys.exit(1)
-
-
-def _apply_spreadsheet_header_validation(
-    spreadsheet: SpreadsheetClient, *, to_stdout: bool
-) -> None:
-    """列見出しを検証。厳格モードで不一致があれば sys.exit(1)。"""
-    _react_to_spreadsheet_header_issues(
-        _spreadsheet_header_issues(spreadsheet),
-        to_stdout=to_stdout,
-    )
-
-
 def main() -> None:
     """
     エントリポイント。
 
-    通常: 起動検証 → WebsiteBot 生成 → 列見出し確認 → run()。
+    通常: 起動検証 → WebsiteBot 生成（列自動検出含む）→ run()。
     BOT_CONFIG_CHECK=1: 上記と同じ検証を標準出力に出して終了（案件は処理しない）。
     """
     # ---- 診断モード: 本番と同じ検証ロジックを print し、問題なければ 0 で終了 ----
@@ -714,12 +691,10 @@ def main() -> None:
         if not _emit_startup_validation(cfg_result, to_stdout=True):
             sys.exit(1)
         try:
-            _react_to_spreadsheet_header_issues(
-                _spreadsheet_header_issues(SpreadsheetClient()),
-                to_stdout=True,
-            )
+            client = SpreadsheetClient()
+            print(f"OK: 列位置を自動検出しました: {client.columns}")
         except Exception as e:
-            print(f"ERROR: スプレッドシート列検証で例外: {e}")
+            print(f"ERROR: スプレッドシート列検出で例外: {e}")
             sys.exit(1)
         print("OK: 設定・列見出し検証に問題ありません。")
         sys.exit(0)
@@ -730,13 +705,10 @@ def main() -> None:
 
     try:
         bot = WebsiteBot()
-        _apply_spreadsheet_header_validation(bot.spreadsheet, to_stdout=False)
         bot.run()
     except KeyboardInterrupt:
-        # Ctrl+C
         logger.info("Botを停止しました")
     except Exception as e:
-        # run() 外の想定外（初期化失敗など）
         logger.error("予期しないエラー: %s", e, exc_info=True)
         sys.exit(1)
 

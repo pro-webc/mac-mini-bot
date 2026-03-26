@@ -62,9 +62,67 @@ def normalize_header_label(value: str) -> str:
     return " ".join((value or "").replace("\u3000", " ").split()).casefold()
 
 
+# ---------------------------------------------------------------------------
+# 1行目の見出しから列位置を自動検出する（SpreadsheetClient._resolve_columns で使用）
+# ---------------------------------------------------------------------------
+
+
+def resolve_columns_from_header_row(
+    header_row: list[str],
+    header_labels: dict[str, str],
+    aliases: dict[str, str],
+) -> tuple[dict[str, str], list[str]]:
+    """1行目の見出しテキストから各フィールドの列記号を解決する。
+
+    Args:
+        header_row: シート1行目のセル値リスト
+        header_labels: field_name → 期待する見出しテキスト
+        aliases: alias_field → target_field（同じ列を共有するフィールド）
+
+    Returns:
+        (resolved_columns, errors)
+        resolved_columns: field_name → 列記号（例: "B"）
+        errors: 解決できなかったフィールドのエラーメッセージ
+    """
+    # 正規化ラベル → 列記号の逆引き（重複チェック付き）
+    label_to_letters: dict[str, list[str]] = {}
+    for idx, cell in enumerate(header_row):
+        norm = normalize_header_label(cell)
+        if norm:
+            label_to_letters.setdefault(norm, []).append(column_index_to_letters(idx))
+
+    resolved: dict[str, str] = {}
+    errors: list[str] = []
+
+    for field, label in header_labels.items():
+        norm_label = normalize_header_label(label)
+        matches = label_to_letters.get(norm_label, [])
+        if len(matches) == 1:
+            resolved[field] = matches[0]
+        elif len(matches) > 1:
+            errors.append(
+                f"フィールド {field!r}（見出し {label!r}）が複数列に存在します: "
+                f"{', '.join(matches)}（一意にしてください）"
+            )
+        else:
+            errors.append(
+                f"フィールド {field!r}（見出し {label!r}）が1行目に見つかりません"
+            )
+
+    for alias, target in aliases.items():
+        if target in resolved:
+            resolved[alias] = resolved[target]
+        else:
+            errors.append(
+                f"エイリアス {alias!r}（→ {target!r}）の参照先が解決できません"
+            )
+
+    return resolved, errors
+
+
 def hearing_cell_is_eligible_for_mac_mini_bot(text: str) -> bool:
     """
-    ヒアリング列（AH）の値が Bot 着手対象か。
+    ヒアリング列の値が Bot 着手対象か。
 
     - 空 → 対象外
     - **URL のみ**（http(s) リンクだけで構成。改行・空白のみ残る）→ 対象外（スキップ）
