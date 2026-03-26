@@ -1,7 +1,7 @@
 """案件単位で ``output/<record_number>/llm_steps/`` に LLM 入出力を都度保存する。
 
 引数: ``begin_case_llm_trace(record_number)`` でルートを contextvars にセットする。
-処理: Gemini は ``GenerativeModel.generate_content`` のラッパーから、
+処理: TEXT_LLM（Claude Code CLI）は ``modules.claude_manual_common`` の CLI 呼び出しから ``record_llm_turn`` を記録。
       Manus は ``manus_refactor`` 内で ``record_llm_turn`` を明示呼び出し。
 出力: ``{seq:03d}_{kind}/input.md`` と ``output.md``（失敗時は ``error.txt``）。
 """
@@ -107,106 +107,12 @@ def record_llm_turn(
         )
 
 
-def _stringify_gemini_contents(contents: Any) -> str:
-    if contents is None:
-        return ""
-    if isinstance(contents, str):
-        return contents
-    if isinstance(contents, (list, tuple)):
-        parts_out: list[str] = []
-        for i, item in enumerate(contents):
-            parts_out.append(f"--- content[{i}] ---\n{_stringify_one_content_part(item)}")
-        return "\n".join(parts_out)
-    return _stringify_one_content_part(contents)
-
-
-def _stringify_one_content_part(c: Any) -> str:
-    role = getattr(c, "role", None)
-    parts = getattr(c, "parts", None)
-    if parts is None:
-        return str(c)
-    texts: list[str] = []
-    for p in parts:
-        t = getattr(p, "text", None)
-        if t:
-            texts.append(str(t))
-        else:
-            texts.append(f"(non-text part: {type(p).__name__})")
-    body = "\n".join(texts)
-    if role:
-        return f"role={role}\n{body}"
-    return body
-
-
-def _response_text_safe(response: Any) -> str:
-    try:
-        if not getattr(response, "candidates", None):
-            return (
-                "(no candidates) "
-                f"prompt_feedback={getattr(response, 'prompt_feedback', None)!r}"
-            )
-        chunks: list[str] = []
-        for cand in response.candidates:
-            content = getattr(cand, "content", None)
-            if not content or not getattr(content, "parts", None):
-                continue
-            for part in content.parts:
-                t = getattr(part, "text", None)
-                if t:
-                    chunks.append(t)
-        out = "".join(chunks).strip()
-        return out if out else "(empty assistant text)"
-    except Exception as e:
-        return f"(response extract error: {e})"
-
-
 def install_generative_model_trace_wrap() -> None:
-    """
-    ``GenerativeModel.generate_content`` をラップし、トレース有効時に入出力を保存する。
-
-    ``ensure_gemini_rpc_patch_from_config`` の **後**（タイムアウトラッパーの外側）で 1 回だけ連鎖する。
-    """
+    """後方互換のため残すが、Claude 移行後は何もしない（トレースは共通ヘルパー内で直接呼び出す）。"""
     global _generating_wrap_installed
     if _generating_wrap_installed:
         return
-    from google.generativeai import generative_models as gm
-
-    inner = gm.GenerativeModel.generate_content
-
-    def generate_content_traced(
-        self: Any,
-        contents: Any,
-        *,
-        generation_config: Any = None,
-        safety_settings: Any = None,
-        stream: bool = False,
-        **kwargs: Any,
-    ) -> Any:
-        resp = inner(
-            self,
-            contents,
-            generation_config=generation_config,
-            safety_settings=safety_settings,
-            stream=stream,
-            **kwargs,
-        )
-        if _trace_root.get() is not None and not stream:
-            try:
-                inp = _stringify_gemini_contents(contents)
-                out = _response_text_safe(resp)
-                record_llm_turn(
-                    kind="gemini_generate_content",
-                    input_text=inp,
-                    output_text=out,
-                )
-            except Exception:
-                logger.exception(
-                    "modules.llm.llm_step_trace: Gemini トレース記録で例外（応答はそのまま返す）"
-                )
-        return resp
-
-    gm.GenerativeModel.generate_content = generate_content_traced  # type: ignore[method-assign]
     _generating_wrap_installed = True
     logger.info(
-        "Gemini generate_content に LLM ステップトレースを連鎖（output/<record>/llm_steps/）"
+        "LLM ステップトレース有効（Claude: claude_manual_common 内で record_llm_turn を直接呼び出し）"
     )

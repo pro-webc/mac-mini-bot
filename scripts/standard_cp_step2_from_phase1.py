@@ -1,20 +1,20 @@
 #!/usr/bin/env python3
 """
-フェーズ1スナップショット＋ **1回目の応答** を入力に、STANDARD-CP の Gemini **2/15（タブ②）**だけ実行する。
+フェーズ1スナップショット＋ **1回目の応答** を入力に、STANDARD-CP の Claude **2/15（タブ②）**だけ実行する。
 手順1-2 と 手順1-3 を **1メッセージに連結**して送信する（手作業マニュアルと同じ）。
 
-1回目の成果物フォルダ（``02_response_step_1_1.txt`` があるディレクトリ）を ``--prev-gemini-dir`` で渡す::
+1回目の成果物フォルダ（``02_response_step_1_1.txt`` があるディレクトリ）を ``--prev-step-dir`` で渡す::
 
-  python3 scripts/gemini_standard_cp_step2_from_phase1.py \\
+  python3 scripts/standard_cp_step2_from_phase1.py \\
     --phase1-dir output/pipeline_test_runs/<run>/phase1_snapshots/<UTC> \\
-    --prev-gemini-dir output/pipeline_test_runs/<run>/gemini_step_tests/<UTC>
+    --prev-step-dir output/pipeline_test_runs/<run>/claude_step_tests/<UTC>
 
 応答テキストだけ別ファイルにある場合は ``--step1-response`` で指定::
 
-  python3 scripts/gemini_standard_cp_step2_from_phase1.py \\
+  python3 scripts/standard_cp_step2_from_phase1.py \\
     --phase1-dir ... --step1-response path/to/02_response_step_1_1.txt
 
-成果物は **同じ run 配下**の ``gemini_step_tests/<新UTC>/`` に保存（1回目と別フォルダ）。
+成果物は **同じ run 配下**の ``claude_step_tests/<新UTC>/`` に保存（1回目と別フォルダ）。
 
 リポジトリルートで実行。
 """
@@ -31,12 +31,12 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from config.config import (  # noqa: E402
-    pipeline_gemini_step_tests_base,
+    pipeline_claude_step_tests_base,
     pipeline_run_root_from_phase1_snapshot_dir,
 )
 from modules.phase2_text_llm_snapshot import load_hearing_bundle_from_phase1_dir  # noqa: E402
-from modules.standard_cp_gemini_manual import (  # noqa: E402
-    run_standard_cp_gemini_api_call_2_of_15,
+from modules.standard_cp_claude_manual import (  # noqa: E402
+    run_standard_cp_claude_api_call_2_of_15,
 )
 
 
@@ -63,7 +63,7 @@ def _load_step1_response(prev_dir: Path | None, response_file: Path | None) -> s
         return p.read_text(encoding="utf-8")
     if prev_dir is None:
         print(
-            "ERROR: --prev-gemini-dir か --step1-response のどちらかが必要です。",
+            "ERROR: --prev-step-dir か --step1-response のどちらかが必要です。",
             file=sys.stderr,
         )
         sys.exit(1)
@@ -71,7 +71,7 @@ def _load_step1_response(prev_dir: Path | None, response_file: Path | None) -> s
     inner = d / "02_response_step_1_1.txt"
     if not inner.is_file():
         print(
-            f"ERROR: {inner} がありません（--prev-gemini-dir は1回目の gemini_step_tests/<UTC>/ を指定）",
+            f"ERROR: {inner} がありません（--prev-step-dir は1回目の claude_step_tests/<UTC>/ を指定）",
             file=sys.stderr,
         )
         sys.exit(1)
@@ -80,7 +80,7 @@ def _load_step1_response(prev_dir: Path | None, response_file: Path | None) -> s
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="STANDARD-CP Gemini 2/15（手順1-2+1-3 連結）をフェーズ1＋1回目応答で実行"
+        description="STANDARD-CP Claude 2/15（手順1-2+1-3 連結）をフェーズ1＋1回目応答で実行"
     )
     parser.add_argument(
         "--phase1-dir",
@@ -91,7 +91,7 @@ def main() -> None:
     )
     g = parser.add_mutually_exclusive_group(required=True)
     g.add_argument(
-        "--prev-gemini-dir",
+        "--prev-step-dir",
         type=Path,
         default=None,
         metavar="DIR",
@@ -124,9 +124,9 @@ def main() -> None:
     run_root = _resolve_run_root(phase1=phase1, run_dir=args.run_dir)
 
     bundle = load_hearing_bundle_from_phase1_dir(phase1)
-    step1_out = _load_step1_response(args.prev_gemini_dir, args.step1_response)
+    step1_out = _load_step1_response(args.prev_step_dir, args.step1_response)
 
-    prompt, response = run_standard_cp_gemini_api_call_2_of_15(
+    prompt, response = run_standard_cp_claude_api_call_2_of_15(
         hearing_sheet_content=bundle.hearing_sheet_content or "",
         appo_memo=bundle.appo_memo,
         sales_notes=bundle.sales_notes,
@@ -134,14 +134,14 @@ def main() -> None:
         step_1_1_output=step1_out,
     )
 
-    base = pipeline_gemini_step_tests_base(run_root)
+    base = pipeline_claude_step_tests_base(run_root)
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     out = base / stamp
     out.mkdir(parents=True, exist_ok=True)
 
     prev_ref: str | None = None
-    if args.prev_gemini_dir is not None:
-        prev_ref = str(args.prev_gemini_dir.resolve())
+    if args.prev_step_dir is not None:
+        prev_ref = str(args.prev_step_dir.resolve())
     step1_file: str | None = None
     if args.step1_response is not None:
         step1_file = str(args.step1_response.resolve())
@@ -151,7 +151,7 @@ def main() -> None:
             {
                 "phase1_dir": str(phase1),
                 "run_root": str(run_root.resolve()),
-                "prev_gemini_dir": prev_ref,
+                "prev_step_dir": prev_ref,
                 "step1_response_file": step1_file,
             },
             ensure_ascii=False,
@@ -166,8 +166,8 @@ def main() -> None:
         "run_root": str(run_root.resolve()),
         "phase1_dir": str(phase1),
         "step": "standard_cp_manual_tab2_step_1_2_1_3_combined",
-        "gemini_call_index_1based": 2,
-        "gemini_calls_total_standard_cp": 15,
+        "claude_call_index_1based": 2,
+        "claude_calls_total_standard_cp": 15,
         "prompt_chars": len(prompt),
         "response_chars": len(response),
     }
@@ -178,7 +178,7 @@ def main() -> None:
     (out / "README.txt").write_text(
         "\n".join(
             [
-                "STANDARD-CP Gemini 段階テスト（手順1-2+1-3 連結・API 2/15）",
+                "STANDARD-CP Claude 段階テスト（手順1-2+1-3 連結・API 2/15）",
                 "",
                 "00_source.json — phase1・run・1回目参照",
                 "01_prompt_step_1_2_and_1_3.txt — 1-2 と 1-3 を連結したプロンプト",

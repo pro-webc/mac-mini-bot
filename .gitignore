@@ -16,6 +16,7 @@ venv/
 ENV/
 credentials/
 output/
+output_archive/
 *.log
 .DS_Store
 node_modules/

@@ -132,7 +132,7 @@ except ValueError:
 # 未処理キューのうちこのレコード番号（B列 record_id の表示値と完全一致）だけ処理。空で無効
 BOT_ONLY_RECORD_NUMBER = (os.getenv("BOT_ONLY_RECORD_NUMBER") or "").strip()
 
-# Gemini 15ステップをスキップし、保存済み Canvas から Manus 以降のみ再実行する。
+# Claude 多段チェーンをスキップし、保存済み Canvas から Manus 以降のみ再実行する。
 # BOT_ONLY_RECORD_NUMBER と併用必須。R列のステータスに関係なく対象案件を取得する。
 BOT_RESUME_FROM_MANUS = os.getenv(
     "BOT_RESUME_FROM_MANUS", "false"
@@ -147,70 +147,54 @@ try:
 except ValueError:
     SPREADSHEET_AI_STATUS_ERROR_MAX_LEN = 200
 
-# API キー（将来の実 LLM 接続などで利用）
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
-# Gemini unary RPC のサーバ待ち上限（秒）。大規模 Canvas 出力は 60s 既定では不足しがち
-GEMINI_RPC_TIMEOUT_SEC = _parse_float_env(
-    "GEMINI_RPC_TIMEOUT_SEC", 900.0, minimum=60.0, maximum=3600.0
-)
-# DeadlineExceeded（504）時の追加試行回数（0 なら再試行なし）
-GEMINI_RPC_DEADLINE_RETRIES = _parse_positive_int(
-    "GEMINI_RPC_DEADLINE_RETRIES", 2, minimum=0, maximum=10
-)
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
-# BASIC LP: 社内マニュアルどおりの Gemini 多段プロンプト（既定 true・本番パイプライン向け）
-BASIC_LP_USE_GEMINI_MANUAL = os.getenv(
-    "BASIC_LP_USE_GEMINI_MANUAL", "true"
-).strip().lower() in ("1", "true", "yes")
-# サイト制作は品質優先: 未設定時は Gemini 3.1 Pro Preview（GEMINI_*_MODEL で上書き可）
-_DEFAULT_GEMINI_SITE_MODEL = "gemini-3.1-pro-preview"
-GEMINI_BASIC_LP_MODEL = (
-    os.getenv("GEMINI_BASIC_LP_MODEL", _DEFAULT_GEMINI_SITE_MODEL)
-    or _DEFAULT_GEMINI_SITE_MODEL
+# --- Claude Code CLI（テキスト LLM・マニュアル多段チェーン）---
+# claude CLI（claude -p）で実行。サブスクリプション認証のため API キー不要
+_DEFAULT_CLAUDE_SITE_MODEL = "claude-opus-4-6"
+CLAUDE_BASIC_LP_MODEL = (
+    os.getenv("CLAUDE_BASIC_LP_MODEL", _DEFAULT_CLAUDE_SITE_MODEL)
+    or _DEFAULT_CLAUDE_SITE_MODEL
 ).strip()
-# 手順8の単一ファイル出力のあと、リファクタ指示どおりの複数ファイル出力へ変換（Manus タスク1件）
+# subprocess タイムアウト（秒）。大規模 Canvas 出力は長時間かかりうる
+CLAUDE_CLI_TIMEOUT_SEC = _parse_float_env(
+    "CLAUDE_CLI_TIMEOUT_SEC", 900.0, minimum=60.0, maximum=3600.0
+)
+# BASIC LP: 社内マニュアルどおりの Claude 多段プロンプト（既定 true・本番パイプライン向け）
+BASIC_LP_USE_CLAUDE_MANUAL = os.getenv(
+    "BASIC_LP_USE_CLAUDE_MANUAL", "true"
+).strip().lower() in ("1", "true", "yes")
 BASIC_LP_REFACTOR_AFTER_MANUAL = os.getenv(
     "BASIC_LP_REFACTOR_AFTER_MANUAL", "true"
 ).strip().lower() in ("1", "true", "yes")
 
-# BASIC（コーポレート1ページ）: BASIC-CP 制作マニュアルどおりの Gemini 多段プロンプト（既定 true）
-BASIC_CP_USE_GEMINI_MANUAL = os.getenv(
-    "BASIC_CP_USE_GEMINI_MANUAL", "true"
+# BASIC（コーポレート1ページ）
+BASIC_CP_USE_CLAUDE_MANUAL = os.getenv(
+    "BASIC_CP_USE_CLAUDE_MANUAL", "true"
 ).strip().lower() in ("1", "true", "yes")
-_raw_gemini_basic_cp = (os.getenv("GEMINI_BASIC_CP_MODEL") or "").strip()
-GEMINI_BASIC_CP_MODEL = _raw_gemini_basic_cp or GEMINI_BASIC_LP_MODEL
-# 手順7-3 のあと、リファクタ指示どおりの複数ファイル出力へ変換（Manus タスク1件）
+_raw_claude_basic_cp = (os.getenv("CLAUDE_BASIC_CP_MODEL") or "").strip()
+CLAUDE_BASIC_CP_MODEL = _raw_claude_basic_cp or CLAUDE_BASIC_LP_MODEL
 BASIC_CP_REFACTOR_AFTER_MANUAL = os.getenv(
     "BASIC_CP_REFACTOR_AFTER_MANUAL", "true"
 ).strip().lower() in ("1", "true", "yes")
 
-# STANDARD（コーポレート・6ページ想定）: STANDARD-CP 制作マニュアルどおりの Gemini 多段プロンプト（既定 true）
-STANDARD_CP_USE_GEMINI_MANUAL = os.getenv(
-    "STANDARD_CP_USE_GEMINI_MANUAL", "true"
+# STANDARD（コーポレート・6ページ想定）
+STANDARD_CP_USE_CLAUDE_MANUAL = os.getenv(
+    "STANDARD_CP_USE_CLAUDE_MANUAL", "true"
 ).strip().lower() in ("1", "true", "yes")
-_raw_gemini_standard_cp = (os.getenv("GEMINI_STANDARD_CP_MODEL") or "").strip()
-GEMINI_STANDARD_CP_MODEL = _raw_gemini_standard_cp or GEMINI_BASIC_LP_MODEL
-# マニュアル多段 Gemini の max_output_tokens。8192 だと手順7系の長いコードが途中で切れやすい。
-GEMINI_MANUAL_MAX_OUTPUT_TOKENS = _parse_positive_int(
-    "GEMINI_MANUAL_MAX_OUTPUT_TOKENS",
-    65536,
-    minimum=2048,
-    maximum=131072,
-)
+_raw_claude_standard_cp = (os.getenv("CLAUDE_STANDARD_CP_MODEL") or "").strip()
+CLAUDE_STANDARD_CP_MODEL = _raw_claude_standard_cp or CLAUDE_BASIC_LP_MODEL
 STANDARD_CP_REFACTOR_AFTER_MANUAL = os.getenv(
     "STANDARD_CP_REFACTOR_AFTER_MANUAL", "true"
 ).strip().lower() in ("1", "true", "yes")
-# 手順2の「ブログ独立1ページ」行をプロンプトに含める（false でマニュアル「不要なら削除」に相当）
 STANDARD_CP_INCLUDE_BLOG_PAGE = os.getenv(
     "STANDARD_CP_INCLUDE_BLOG_PAGE", "true"
 ).strip().lower() in ("1", "true", "yes")
 
-# ADVANCE（コーポレート・12ページ想定）: ADVANCE-CP 制作マニュアルどおりの Gemini 多段プロンプト（既定 true）
-ADVANCE_CP_USE_GEMINI_MANUAL = os.getenv(
-    "ADVANCE_CP_USE_GEMINI_MANUAL", "true"
+# ADVANCE（コーポレート・12ページ想定）
+ADVANCE_CP_USE_CLAUDE_MANUAL = os.getenv(
+    "ADVANCE_CP_USE_CLAUDE_MANUAL", "true"
 ).strip().lower() in ("1", "true", "yes")
-_raw_gemini_advance_cp = (os.getenv("GEMINI_ADVANCE_CP_MODEL") or "").strip()
-GEMINI_ADVANCE_CP_MODEL = _raw_gemini_advance_cp or GEMINI_BASIC_LP_MODEL
+_raw_claude_advance_cp = (os.getenv("CLAUDE_ADVANCE_CP_MODEL") or "").strip()
+CLAUDE_ADVANCE_CP_MODEL = _raw_claude_advance_cp or CLAUDE_BASIC_LP_MODEL
 ADVANCE_CP_REFACTOR_AFTER_MANUAL = os.getenv(
     "ADVANCE_CP_REFACTOR_AFTER_MANUAL", "true"
 ).strip().lower() in ("1", "true", "yes")
@@ -218,7 +202,7 @@ ADVANCE_CP_INCLUDE_BLOG_PAGE = os.getenv(
     "ADVANCE_CP_INCLUDE_BLOG_PAGE", "true"
 ).strip().lower() in ("1", "true", "yes")
 
-# 最終リファクタ（フェンス付きマルチファイル化・画像方針）は Manus API。マニュアル本編は Gemini のまま。
+# 最終リファクタ（フェンス付きマルチファイル化・画像方針）は Manus API。マニュアル本編は Claude Code CLI。
 MANUS_API_KEY = (os.getenv("MANUS_API_KEY", "") or "").strip()
 MANUS_API_BASE = (
     (os.getenv("MANUS_API_BASE", "https://api.manus.ai") or "https://api.manus.ai")
@@ -260,21 +244,6 @@ MANUS_PROVIDES_DEPLOY_GITHUB_URL = os.getenv(
 # 任意: Manus プロンプトに「push 先の推奨」を1行で渡す（例: your-org/123-test-acme）
 MANUS_DEPLOY_GITHUB_REPO_HINT = (os.getenv("MANUS_DEPLOY_GITHUB_REPO_HINT", "") or "").strip()
 
-# サイト TSX の ImagePlaceholder を Gemini 画像 API で実ファイル化（GEMINI_API_KEY があるとき常に実行）
-GEMINI_SITE_IMAGE_MODEL = (
-    os.getenv(
-        "GEMINI_SITE_IMAGE_MODEL",
-        "gemini-3-pro-image-preview",
-    )
-    or "gemini-3-pro-image-preview"
-).strip()
-GEMINI_SITE_IMAGE_MAX_SLOTS = _parse_positive_int(
-    "GEMINI_SITE_IMAGE_MAX_SLOTS", 12, minimum=1, maximum=32
-)
-GEMINI_SITE_IMAGE_DELAY_SEC = _parse_float_env(
-    "GEMINI_SITE_IMAGE_DELAY_SEC", 1.0, minimum=0.0, maximum=30.0
-)
-
 # npm ビルド検証
 SITE_BUILD_ENABLED = os.getenv("SITE_BUILD_ENABLED", "true").strip().lower() in (
     "1",
@@ -310,6 +279,14 @@ VERCEL_FORCE_PUBLIC_DEPLOYMENTS = os.getenv(
     "VERCEL_FORCE_PUBLIC_DEPLOYMENTS", "true"
 ).strip().lower() in ("1", "true", "yes")
 
+# --- サイト修正ツール（site-annotator）登録 ---
+# Vercel デプロイ後に site-annotator へサイトを自動登録する。
+# URL と KEY の両方がセットされている場合にのみ実行。
+SITE_PROVISION_API_URL = (
+    os.getenv("SITE_PROVISION_API_URL", "").strip().rstrip("/")
+)
+SITE_PROVISION_API_KEY = os.getenv("SITE_PROVISION_API_KEY", "").strip()
+
 # その他設定
 LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO")
 OUTPUT_DIR = Path(os.getenv("OUTPUT_DIR", str(PROJECT_ROOT / "output")))
@@ -317,7 +294,7 @@ OUTPUT_DIR = Path(os.getenv("OUTPUT_DIR", str(PROJECT_ROOT / "output")))
 # 工程テスト（プリフライト〜フェーズ1〜作業分岐）の成果物を 1 か所にまとめる（任意）
 # 例: PIPELINE_TEST_RUN_DIR=output/pipeline_test_runs/demo_run
 #     → <そのパス>/preflight_snapshots/<UTC>/ … ほか phase1_snapshots, work_branch_snapshots,
-#       phase2_snapshots, gemini_step_tests（任意）
+#       phase2_snapshots, claude_step_tests（任意）
 _PIPELINE_TEST_RUN_DIR_RAW = os.getenv("PIPELINE_TEST_RUN_DIR", "").strip()
 
 
@@ -359,9 +336,9 @@ def pipeline_phase2_snapshots_base(explicit_run_root: Path | None = None) -> Pat
     return pipeline_run_root_for_resolve(explicit_run_root) / "phase2_snapshots"
 
 
-def pipeline_gemini_step_tests_base(explicit_run_root: Path | None = None) -> Path:
-    """STANDARD-CP 段階 Gemini テストの保存先（``gemini_step_tests/<UTC>/``）。"""
-    return pipeline_run_root_for_resolve(explicit_run_root) / "gemini_step_tests"
+def pipeline_claude_step_tests_base(explicit_run_root: Path | None = None) -> Path:
+    """STANDARD-CP 段階テストの保存先（``claude_step_tests/<UTC>/``）。"""
+    return pipeline_run_root_for_resolve(explicit_run_root) / "claude_step_tests"
 
 
 def pipeline_run_root_from_phase1_snapshot_dir(phase1_dir: Path) -> Path | None:
@@ -443,7 +420,7 @@ COMMON_TECHNICAL_SPEC = {
     "images": {
         "unsplash": "Unsplash・外部ストック URL 禁止",
         "final_refactor": (
-            "ビジュアルはマニュアル後の最終リファクタ（Gemini）で実装。"
+            "ビジュアルはマニュアル後の最終リファクタ（Manus）で実装。"
             "`next/image` と `public/images/`（フェンスで SVG 等を出力）。"
             "後工程の一括画像 API は使わない。"
         ),

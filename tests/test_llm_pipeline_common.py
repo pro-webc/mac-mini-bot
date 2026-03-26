@@ -2,7 +2,7 @@
 import pytest
 from modules.llm.llm_pipeline_common import (
     finalize_plain_prompt,
-    require_gemini_text_llm,
+    require_claude_text_llm,
     unwrap_plaintext_llm_output,
 )
 
@@ -24,22 +24,20 @@ def test_finalize_plain_prompt_too_short() -> None:
         finalize_plain_prompt("x" * 50, expected_plan_type="standard", max_pages=6)
 
 
-def test_require_gemini_text_llm_raises_when_disabled() -> None:
-    with pytest.raises(RuntimeError, match="Gemini マニュアルが無効"):
-        require_gemini_text_llm(
+def test_require_claude_text_llm_raises_when_disabled() -> None:
+    with pytest.raises(RuntimeError, match="Claude マニュアルが無効"):
+        require_claude_text_llm(
             manual_flag=False,
-            api_key="x",
             plan_label="TEST",
-            manual_env_name="TEST_USE_GEMINI_MANUAL",
+            manual_env_name="TEST_USE_CLAUDE_MANUAL",
         )
 
 
-def test_require_gemini_text_llm_ok() -> None:
-    require_gemini_text_llm(
+def test_require_claude_text_llm_ok() -> None:
+    require_claude_text_llm(
         manual_flag=True,
-        api_key="sk-test",
         plan_label="TEST",
-        manual_env_name="TEST_USE_GEMINI_MANUAL",
+        manual_env_name="TEST_USE_CLAUDE_MANUAL",
     )
 
 

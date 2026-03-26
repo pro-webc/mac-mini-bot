@@ -11,7 +11,7 @@
 
   python3 scripts/phase2_from_phase1_snapshot.py --run-dir output/pipeline_test_runs/<run>
 
-環境変数・Gemini 有効化は本番 ``main.py`` と同じ（各 ``*_USE_GEMINI_MANUAL`` / ``GEMINI_API_KEY``）。
+環境変数は本番 ``main.py`` と同じ（各 ``*_USE_CLAUDE_MANUAL``）。テキスト LLM は Claude Code CLI（認証済みであること）。
 
 リポジトリルートで実行。
 """

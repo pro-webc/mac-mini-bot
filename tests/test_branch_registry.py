@@ -9,7 +9,7 @@ import importlib
 from modules.contract_workflow import (
     BRANCH_REGISTRY,
     ContractWorkBranch,
-    gemini_manual_enabled_for_branch,
+    claude_manual_enabled_for_branch,
 )
 
 
@@ -24,7 +24,7 @@ def test_registry_keys_are_non_empty_strings() -> None:
         assert cfg.refactor_key, f"{branch}: refactor_key が空"
         assert cfg.canvas_key, f"{branch}: canvas_key が空"
         assert cfg.manual_meta_key, f"{branch}: manual_meta_key が空"
-        assert cfg.use_gemini_flag, f"{branch}: use_gemini_flag が空"
+        assert cfg.use_claude_flag, f"{branch}: use_claude_flag が空"
         assert cfg.refactor_flag, f"{branch}: refactor_flag が空"
         assert cfg.plan_label, f"{branch}: plan_label が空"
 
@@ -56,12 +56,12 @@ def test_no_duplicate_refactor_keys() -> None:
 
 
 def test_config_flag_attrs_exist() -> None:
-    """use_gemini_flag / refactor_flag が config.config に実在する。"""
+    """use_claude_flag / refactor_flag が config.config に実在する。"""
     import config.config as cfg_mod
 
     for branch, bc in BRANCH_REGISTRY.items():
-        assert hasattr(cfg_mod, bc.use_gemini_flag), (
-            f"{branch}: config.config に {bc.use_gemini_flag} がない"
+        assert hasattr(cfg_mod, bc.use_claude_flag), (
+            f"{branch}: config.config に {bc.use_claude_flag} がない"
         )
         assert hasattr(cfg_mod, bc.refactor_flag), (
             f"{branch}: config.config に {bc.refactor_flag} がない"
@@ -79,12 +79,12 @@ def test_pipeline_module_importable() -> None:
         assert callable(fn)
 
 
-def test_gemini_manual_enabled_uses_registry(monkeypatch) -> None:
-    """gemini_manual_enabled_for_branch がレジストリ経由で正しいフラグを読む。"""
+def test_claude_manual_enabled_uses_registry(monkeypatch) -> None:
+    """claude_manual_enabled_for_branch がレジストリ経由で正しいフラグを読む。"""
     import config.config as cfg_mod
 
     for branch, bc in BRANCH_REGISTRY.items():
-        monkeypatch.setattr(cfg_mod, bc.use_gemini_flag, True)
-        assert gemini_manual_enabled_for_branch(branch) is True
-        monkeypatch.setattr(cfg_mod, bc.use_gemini_flag, False)
-        assert gemini_manual_enabled_for_branch(branch) is False
+        monkeypatch.setattr(cfg_mod, bc.use_claude_flag, True)
+        assert claude_manual_enabled_for_branch(branch) is True
+        monkeypatch.setattr(cfg_mod, bc.use_claude_flag, False)
+        assert claude_manual_enabled_for_branch(branch) is False

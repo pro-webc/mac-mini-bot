@@ -46,14 +46,14 @@ def run_npm_install(site_dir: Path, timeout_sec: int = 600) -> tuple[bool, str]:
 
 
 def _ensure_package_json(site_dir: Path) -> None:
-    """package.json の存在確認のみ（中身は Gemini 出力に委ねる。テンプレからの復元はしない）。"""
+    """package.json の存在確認のみ（中身は Claude CLI 出力に委ねる。テンプレからの復元はしない）。"""
     if not site_dir.is_dir():
         logger.warning("site_dir が存在しないため package.json 確認をスキップ: %s", site_dir)
         return
     pkg = site_dir / "package.json"
     if not pkg.is_file():
         logger.warning(
-            "package.json がありません。Gemini のフェンス出力に含めてください: %s", pkg
+            "package.json がありません。Claude CLI のフェンス出力に含めてください: %s", pkg
         )
 
 

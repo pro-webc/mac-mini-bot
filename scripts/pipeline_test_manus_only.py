@@ -2,7 +2,7 @@
 """
 工程テスト **Manus のみ**（GitHub push / Vercel は行わない）。
 
-Gemini 工程テストの **最終応答**を Canvas として読み、本番と同じ ``run_basic_lp_refactor_stage`` を 1 回実行する。
+Claude 工程テストの **最終応答**を Canvas として読み、本番と同じ ``run_basic_lp_refactor_stage`` を 1 回実行する。
 STANDARD-CP の最終は多くの場合 ``02_response_step_7_4.txt``（15/15 フォルダ内）。
 
 成果物（既定: 同じ run 配下 ``manus_only_tests/<UTC>/``）::
@@ -14,7 +14,7 @@ STANDARD-CP の最終は多くの場合 ``02_response_step_7_4.txt``（15/15 フ
 例::
 
   python3 scripts/pipeline_test_manus_only.py \\
-    --gemini-dir output/pipeline_test_runs/<run>/gemini_step_tests/<15回目UTC>/ \\
+    --step-dir output/pipeline_test_runs/<run>/claude_step_tests/<15回目UTC>/ \\
     --phase1-dir output/pipeline_test_runs/<run>/phase1_snapshots/<UTC>/
 
 リポジトリルートで実行。.env に ``MANUS_API_KEY`` 必須。
@@ -38,15 +38,15 @@ from config.config import (  # noqa: E402
 from config.logging_setup import configure_logging  # noqa: E402
 
 
-def _resolve_canvas_path(gemini_dir: Path | None, canvas_file: Path | None) -> Path:
+def _resolve_canvas_path(step_dir: Path | None, canvas_file: Path | None) -> Path:
     if canvas_file is not None:
         p = canvas_file.resolve()
         if not p.is_file():
             raise FileNotFoundError(f"--canvas-file が見つかりません: {p}")
         return p
-    if gemini_dir is None:
-        raise ValueError("--canvas-file か --gemini-dir のどちらかが必要です")
-    d = gemini_dir.resolve()
+    if step_dir is None:
+        raise ValueError("--canvas-file か --step-dir のどちらかが必要です")
+    d = step_dir.resolve()
     for name in (
         "02_response_step_7_4.txt",
         "02_response_step_8_3.txt",
@@ -63,7 +63,7 @@ def _resolve_out_dir(
     *,
     explicit: Path | None,
     phase1_dir: Path | None,
-    gemini_dir: Path | None,
+    step_dir: Path | None,
 ) -> Path:
     if explicit is not None:
         return explicit.resolve()
@@ -73,17 +73,17 @@ def _resolve_out_dir(
             base = rr / "manus_only_tests"
         else:
             base = OUTPUT_DIR.resolve() / "pipeline_test_runs" / "manus_only_tests"
-    elif gemini_dir is not None:
-        src = gemini_dir.resolve() / "00_source.json"
+    elif step_dir is not None:
+        src = step_dir.resolve() / "00_source.json"
         if src.is_file():
             data = json.loads(src.read_text(encoding="utf-8"))
             rr = data.get("run_root")
             if rr:
                 base = Path(rr) / "manus_only_tests"
             else:
-                base = gemini_dir.resolve().parent.parent / "manus_only_tests"
+                base = step_dir.resolve().parent.parent / "manus_only_tests"
         else:
-            base = gemini_dir.resolve().parent.parent / "manus_only_tests"
+            base = step_dir.resolve().parent.parent / "manus_only_tests"
     else:
         base = OUTPUT_DIR.resolve() / "pipeline_test_runs" / "manus_only_tests"
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
@@ -94,14 +94,14 @@ def main() -> int:
     configure_logging()
     parser = argparse.ArgumentParser(description="工程テスト: Manus のみ")
     parser.add_argument("--canvas-file", type=Path, default=None, metavar="PATH")
-    parser.add_argument("--gemini-dir", type=Path, default=None, metavar="DIR")
+    parser.add_argument("--step-dir", type=Path, default=None, metavar="DIR")
     parser.add_argument("--phase1-dir", type=Path, default=None, metavar="DIR")
     parser.add_argument("--partner-name", type=str, default=None)
     parser.add_argument("--record-number", type=str, default=None)
     parser.add_argument("--out-dir", type=Path, default=None, metavar="DIR")
     args = parser.parse_args()
 
-    canvas_path = _resolve_canvas_path(args.gemini_dir, args.canvas_file)
+    canvas_path = _resolve_canvas_path(args.step_dir, args.canvas_file)
     canvas = canvas_path.read_text(encoding="utf-8")
 
     partner = args.partner_name
@@ -120,7 +120,7 @@ def main() -> int:
     out = _resolve_out_dir(
         explicit=args.out_dir,
         phase1_dir=args.phase1_dir,
-        gemini_dir=args.gemini_dir,
+        step_dir=args.step_dir,
     )
     out.mkdir(parents=True, exist_ok=True)
 
@@ -139,7 +139,7 @@ def main() -> int:
         encoding="utf-8",
     )
 
-    from modules.basic_lp_refactor_gemini import run_basic_lp_refactor_stage
+    from modules.basic_lp_refactor_claude import run_basic_lp_refactor_stage
 
     print(f"Canvas: {canvas_path} ({len(canvas)} chars)")
     print(f"partner={partner!r} record={record!r}")

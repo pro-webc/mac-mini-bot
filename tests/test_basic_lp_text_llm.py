@@ -1,4 +1,4 @@
-"""BASIC LP TEXT_LLM（Gemini マニュアル経路をスタブで検証）"""
+"""BASIC LP TEXT_LLM（Claude CLI マニュアル経路をスタブで検証）"""
 import pytest
 from modules.case_extraction import ExtractedHearingBundle
 from modules.contract_workflow import ContractWorkBranch
@@ -26,10 +26,9 @@ def test_basic_lp_pipeline_single_page_spec(monkeypatch: pytest.MonkeyPatch) -> 
         )
         return req, spec, object()
 
-    monkeypatch.setattr("config.config.BASIC_LP_USE_GEMINI_MANUAL", True)
-    monkeypatch.setattr("config.config.GEMINI_API_KEY", "dummy-key")
+    monkeypatch.setattr("config.config.BASIC_LP_USE_CLAUDE_MANUAL", True)
     monkeypatch.setattr(
-        "modules.basic_lp_gemini_manual.run_basic_lp_gemini_manual_pipeline",
+        "modules.basic_lp_claude_manual.run_basic_lp_claude_manual_pipeline",
         fake_lp,
     )
     bundle = ExtractedHearingBundle(

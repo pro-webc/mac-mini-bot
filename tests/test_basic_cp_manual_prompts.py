@@ -2,7 +2,7 @@
 from pathlib import Path
 
 import pytest
-from modules.basic_cp_gemini_manual import _subst
+from modules.basic_cp_claude_manual import _subst
 
 _MANUAL = (
     Path(__file__).resolve().parent.parent

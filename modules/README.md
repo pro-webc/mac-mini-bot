@@ -24,30 +24,30 @@
 
 | モジュール | 役割 |
 |------------|------|
-| `llm/text_llm_stage.py` | **唯一の分岐入口**（`if/elif` → 各 `*_gemini_manual` を直接呼ぶ） |
-| `llm/llm_step_trace.py` | **自動記録**: `generate_content` をラップし、全 Gemini 呼び出しの入出力を `output/` に保存 |
+| `llm/text_llm_stage.py` | **唯一の分岐入口**（`if/elif` → 各 `*_claude_manual` を直接呼ぶ） |
+| `llm/llm_step_trace.py` | **自動記録**: `record_llm_turn` で全 Claude CLI 呼び出しの入出力を `output/` に保存 |
 | `llm/llm_raw_output.py` | **正本保存**: LLM 出力を加工前の原文で保存（パーサ失敗時の切り分け用） |
 | `llm/llm_pipeline_common.py` | 要望正規化・仕様組み立て・technical_spec 付与・**出力検証**（空応答・`MAX_TOKENS` 切れ） |
 | `llm/basic_lp_spec.py` / `llm/basic_cp_spec.py` | BASIC LP / BASIC 向け台本・仕様ブートストラップ |
 | `llm/site_script_parse.py` / `llm/spec_json_extract.py` | 台本・JSON パース |
 | `llm/llm_output_files.py` | フェンス解析・パス安全性検証 |
 
-## プラン別 Gemini マニュアルチェーン
+## プラン別 Claude CLI マニュアルチェーン
 
-各プランのチェーンは**手順ファイル** (`config/prompts/*_manual/step_*.txt`) を順に読み込み、前ステップの出力を次の入力に渡す。
+各プランのチェーンは**手順ファイル** (`config/prompts/*_manual/step_*.txt`) を順に読み込み、前ステップの出力を次の入力に渡す。実行エンジンは Claude Code CLI（`claude -p`）。
 
-| モジュール | API 回数 | セッション数 |
+| モジュール | CLI 呼び出し回数 | セッション数 |
 |------------|---------|-------------|
-| `basic_lp_gemini_manual.py` | 11 回 | 5 タブ |
-| `basic_cp_gemini_manual.py` | 10 回 | 5 タブ |
-| `standard_cp_gemini_manual.py` | 15 回 | 6 タブ |
-| `advance_cp_gemini_manual.py` | 16 回 | 6 タブ |
+| `basic_lp_claude_manual.py` | 11 回 | 5 タブ |
+| `basic_cp_claude_manual.py` | 10 回 | 5 タブ |
+| `standard_cp_claude_manual.py` | 15 回 | 6 タブ |
+| `advance_cp_claude_manual.py` | 16 回 | 6 タブ |
 
 ## Manus リファクタ
 
 | モジュール | 役割 |
 |------------|------|
-| `basic_lp_refactor_gemini.py` | Manus 向けプロンプト組み立て（`config/prompts/manus/*.txt` から連結） |
+| `basic_lp_refactor_claude.py` | Manus 向けプロンプト組み立て（`config/prompts/manus/*.txt` から連結） |
 | `manus_refactor.py` | Manus API 呼び出し・ポーリング・応答パース |
 
 ## サイト生成・適用・ビルド
@@ -64,7 +64,6 @@
 |------------|------|
 | `github_client.py` | GitHub push |
 | `vercel_client.py` | Vercel デプロイ |
-| `gemini_site_images.py` | 画像生成（パイプライン外で呼ぶ想定の処理） |
 | `contract_workflow.py` | プラン作業分岐 |
 
 ## 関連ドキュメント

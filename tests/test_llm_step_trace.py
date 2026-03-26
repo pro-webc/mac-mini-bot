@@ -16,11 +16,11 @@ def test_record_llm_turn_writes_when_active(tmp_path, monkeypatch) -> None:
     root = t.begin_case_llm_trace("99")
     try:
         t.record_llm_turn(
-            kind="gemini_generate_content",
+            kind="claude_cli_generate",
             input_text="hello",
             output_text="world",
         )
-        step = root / "llm_steps" / "001_gemini_generate_content"
+        step = root / "llm_steps" / "001_claude_cli_generate"
         assert (step / "input.md").read_text(encoding="utf-8") == "hello"
         assert (step / "output.md").read_text(encoding="utf-8") == "world"
     finally:

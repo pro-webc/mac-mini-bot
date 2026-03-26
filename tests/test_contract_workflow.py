@@ -7,7 +7,7 @@ import config.config as cfg
 from config.config import _normalize_plan_name
 from modules.contract_workflow import (
     ContractWorkBranch,
-    gemini_manual_enabled_for_branch,
+    claude_manual_enabled_for_branch,
     resolve_contract_work_branch,
     resolve_work_branch_with_basic_lp_override,
 )
@@ -161,8 +161,8 @@ def test_resolve_work_branch_basic_lp_never_calls_lookup() -> None:
     assert b == ContractWorkBranch.BASIC_LP
 
 
-def test_gemini_manual_enabled_for_branch(monkeypatch) -> None:
-    monkeypatch.setattr(cfg, "BASIC_LP_USE_GEMINI_MANUAL", True)
-    monkeypatch.setattr(cfg, "BASIC_CP_USE_GEMINI_MANUAL", False)
-    assert gemini_manual_enabled_for_branch(ContractWorkBranch.BASIC_LP) is True
-    assert gemini_manual_enabled_for_branch(ContractWorkBranch.BASIC) is False
+def test_claude_manual_enabled_for_branch(monkeypatch) -> None:
+    monkeypatch.setattr(cfg, "BASIC_LP_USE_CLAUDE_MANUAL", True)
+    monkeypatch.setattr(cfg, "BASIC_CP_USE_CLAUDE_MANUAL", False)
+    assert claude_manual_enabled_for_branch(ContractWorkBranch.BASIC_LP) is True
+    assert claude_manual_enabled_for_branch(ContractWorkBranch.BASIC) is False

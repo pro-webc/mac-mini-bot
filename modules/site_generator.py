@@ -1,6 +1,6 @@
 """サイト出力ディレクトリの準備
 
-実装の正本は Gemini のフェンス出力のみ（`apply_contract_outputs_to_site_dir`）。
+実装の正本は TEXT_LLM（Claude CLI）のフェンス出力のみ（`apply_contract_outputs_to_site_dir`）。
 ここではコピー元テンプレは使わず、適用先フォルダと TECH_REQUIREMENTS.md のみ用意する。
 """
 import logging
@@ -86,7 +86,7 @@ def _rmtree_existing_site(site_dir: Path) -> None:
 
 
 class SiteGenerator:
-    """Gemini 出力の適用先ディレクトリのみ用意する（Next ファイルはコピーしない）。"""
+    """Claude CLI 出力の適用先ディレクトリのみ用意する（Next ファイルはコピーしない）。"""
 
     def __init__(self) -> None:
         self.output_dir = OUTPUT_DIR / "sites"
@@ -102,7 +102,7 @@ class SiteGenerator:
         空のサイトディレクトリを用意し、技術要件メモのみ書く。
 
         package.json / app/ 等は ``apply_contract_outputs_to_site_dir`` が
-        Gemini のマークダウンから書き込む。
+        Claude CLI のマークダウンから書き込む。
         """
         try:
             site_dir = self.output_dir / site_name
@@ -114,7 +114,7 @@ class SiteGenerator:
             self._skip_real_images(site_dir, images)
 
             logger.info(
-                "Gemini 出力の適用先を用意しました（テンプレコピーなし）: %s", site_dir
+                "Claude CLI 出力の適用先を用意しました（テンプレコピーなし）: %s", site_dir
             )
             return site_dir
 
@@ -131,6 +131,6 @@ class SiteGenerator:
         """実画像は配置しない"""
         if images:
             logger.info(
-                "画像ファイルは配置しません（%d 件）。Gemini 出力で ImagePlaceholder を使ってください。",
+                "画像ファイルは配置しません（%d 件）。Claude CLI 出力で ImagePlaceholder を使ってください。",
                 len(images),
             )

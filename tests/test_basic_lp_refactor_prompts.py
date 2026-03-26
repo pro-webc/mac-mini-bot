@@ -1,7 +1,7 @@
 """Manus リファクタ用プロンプト（手作業マニュアル同様の manus/*.txt）"""
-import modules.basic_lp_refactor_gemini as refactor_mod
+import modules.basic_lp_refactor_claude as refactor_mod
 import pytest
-from modules.basic_lp_refactor_gemini import (
+from modules.basic_lp_refactor_claude import (
     ADVANCE_CP_REFACTOR_PREFACE_DIR,
     BASIC_CP_REFACTOR_PREFACE_DIR,
     STANDARD_CP_REFACTOR_PREFACE_DIR,

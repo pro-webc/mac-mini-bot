@@ -37,7 +37,7 @@ class BranchConfig:
     canvas_key: str
     manual_meta_key: str
     extra_spec_keys: tuple[str, ...]
-    use_gemini_flag: str
+    use_claude_flag: str
     refactor_flag: str
     plan_label: str
     pipeline_module: str
@@ -45,7 +45,7 @@ class BranchConfig:
 
     @property
     def manus_keys(self) -> tuple[str, str]:
-        """(リファクタ出力キー, Gemini Canvas キー) — Manus 前後で参照。"""
+        """(リファクタ出力キー, Claude Canvas キー) — Manus 前後で参照。"""
         return (self.refactor_key, self.canvas_key)
 
     @property
@@ -62,59 +62,59 @@ class BranchConfig:
 BRANCH_REGISTRY: dict[ContractWorkBranch, BranchConfig] = {
     ContractWorkBranch.BASIC_LP: BranchConfig(
         refactor_key="basic_lp_refactored_source_markdown",
-        canvas_key="basic_lp_manual_gemini_final",
-        manual_meta_key="basic_lp_manual_gemini",
+        canvas_key="basic_lp_manual_claude_final",
+        manual_meta_key="basic_lp_manual_claude",
         extra_spec_keys=(
-            "basic_lp_manual_gemini_step_4_wireframe",
-            "basic_lp_manual_gemini_step_7_design_doc",
+            "basic_lp_manual_claude_step_4_wireframe",
+            "basic_lp_manual_claude_step_7_design_doc",
         ),
-        use_gemini_flag="BASIC_LP_USE_GEMINI_MANUAL",
+        use_claude_flag="BASIC_LP_USE_CLAUDE_MANUAL",
         refactor_flag="BASIC_LP_REFACTOR_AFTER_MANUAL",
         plan_label="BASIC LP TEXT_LLM",
-        pipeline_module="modules.basic_lp_gemini_manual",
-        pipeline_function="run_basic_lp_gemini_manual_pipeline",
+        pipeline_module="modules.basic_lp_claude_manual",
+        pipeline_function="run_basic_lp_claude_manual_pipeline",
     ),
     ContractWorkBranch.BASIC: BranchConfig(
         refactor_key="basic_refactored_source_markdown",
-        canvas_key="basic_manual_gemini_final",
-        manual_meta_key="basic_cp_manual_gemini",
+        canvas_key="basic_manual_claude_final",
+        manual_meta_key="basic_cp_manual_claude",
         extra_spec_keys=(
-            "basic_manual_gemini_step_2_structure",
-            "basic_manual_gemini_step_6_design_doc",
+            "basic_manual_claude_step_2_structure",
+            "basic_manual_claude_step_6_design_doc",
         ),
-        use_gemini_flag="BASIC_CP_USE_GEMINI_MANUAL",
+        use_claude_flag="BASIC_CP_USE_CLAUDE_MANUAL",
         refactor_flag="BASIC_CP_REFACTOR_AFTER_MANUAL",
         plan_label="BASIC TEXT_LLM",
-        pipeline_module="modules.basic_cp_gemini_manual",
-        pipeline_function="run_basic_cp_gemini_manual_pipeline",
+        pipeline_module="modules.basic_cp_claude_manual",
+        pipeline_function="run_basic_cp_claude_manual_pipeline",
     ),
     ContractWorkBranch.STANDARD: BranchConfig(
         refactor_key="standard_refactored_source_markdown",
-        canvas_key="standard_manual_gemini_final",
-        manual_meta_key="standard_cp_manual_gemini",
+        canvas_key="standard_manual_claude_final",
+        manual_meta_key="standard_cp_manual_claude",
         extra_spec_keys=(
-            "standard_manual_gemini_step_2",
-            "standard_manual_gemini_step_6",
+            "standard_manual_claude_step_2",
+            "standard_manual_claude_step_6",
         ),
-        use_gemini_flag="STANDARD_CP_USE_GEMINI_MANUAL",
+        use_claude_flag="STANDARD_CP_USE_CLAUDE_MANUAL",
         refactor_flag="STANDARD_CP_REFACTOR_AFTER_MANUAL",
         plan_label="STANDARD TEXT_LLM",
-        pipeline_module="modules.standard_cp_gemini_manual",
-        pipeline_function="run_standard_cp_gemini_manual_pipeline",
+        pipeline_module="modules.standard_cp_claude_manual",
+        pipeline_function="run_standard_cp_claude_manual_pipeline",
     ),
     ContractWorkBranch.ADVANCE: BranchConfig(
         refactor_key="advance_refactored_source_markdown",
-        canvas_key="advance_manual_gemini_final",
-        manual_meta_key="advance_cp_manual_gemini",
+        canvas_key="advance_manual_claude_final",
+        manual_meta_key="advance_cp_manual_claude",
         extra_spec_keys=(
-            "advance_manual_gemini_step_2",
-            "advance_manual_gemini_step_6",
+            "advance_manual_claude_step_2",
+            "advance_manual_claude_step_6",
         ),
-        use_gemini_flag="ADVANCE_CP_USE_GEMINI_MANUAL",
+        use_claude_flag="ADVANCE_CP_USE_CLAUDE_MANUAL",
         refactor_flag="ADVANCE_CP_REFACTOR_AFTER_MANUAL",
         plan_label="ADVANCE TEXT_LLM",
-        pipeline_module="modules.advance_cp_gemini_manual",
-        pipeline_function="run_advance_cp_gemini_manual_pipeline",
+        pipeline_module="modules.advance_cp_claude_manual",
+        pipeline_function="run_advance_cp_claude_manual_pipeline",
     ),
 }
 
@@ -164,11 +164,11 @@ def resolve_work_branch_with_basic_lp_override(
     return work_branch
 
 
-def gemini_manual_enabled_for_branch(work_branch: ContractWorkBranch) -> bool:
-    """該当プランで Gemini マニュアルチェーンが有効か（フェンス必須判定などに使用）。"""
+def claude_manual_enabled_for_branch(work_branch: ContractWorkBranch) -> bool:
+    """該当プランで Claude マニュアルチェーンが有効か（フェンス必須判定などに使用）。"""
     from config import config as cfg
 
     info = BRANCH_REGISTRY.get(work_branch)
     if info is None:
         return False
-    return bool(getattr(cfg, info.use_gemini_flag, False))
+    return bool(getattr(cfg, info.use_claude_flag, False))

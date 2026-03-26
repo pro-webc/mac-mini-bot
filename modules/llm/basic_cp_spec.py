@@ -1,6 +1,6 @@
 """BASIC（コーポレート・1ページ）向け: マニュアル後の要望からサイト台本・仕様 dict を組み立てる。
 
-``basic_cp_gemini_manual`` が ``build_basic_spec_dict`` を参照する。TEXT_LLM の入口は
+``basic_cp_claude_manual`` が ``build_basic_spec_dict`` を参照する。TEXT_LLM の入口は
 ``text_llm_stage.run_text_llm_stage`` のみ。
 """
 from __future__ import annotations
@@ -17,7 +17,7 @@ from .site_script_parse import parse_llm_spec_or_site_script
 logger = logging.getLogger(__name__)
 
 _SECTION_PLACEHOLDER = (
-    "【サイト台本】セクション本文プレースホルダー（Gemini マニュアル結合要望で上書きされる想定）。"
+    "【サイト台本】セクション本文プレースホルダー（Claude マニュアル結合要望で上書きされる想定）。"
 )
 
 

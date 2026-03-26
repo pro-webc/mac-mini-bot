@@ -1,4 +1,4 @@
-"""プラン別: Gemini 等が出したマークダウン（パス付きフェンス）を site_dir に書き込む。"""
+"""プラン別: TEXT_LLM（Claude CLI）等が出したマークダウン（パス付きフェンス）を site_dir に書き込む。"""
 from __future__ import annotations
 
 import logging
@@ -262,10 +262,10 @@ def apply_contract_outputs_to_site_dir(
     """
     契約分岐に応じた ``spec`` キーからマークダウンを取り、site_dir に適用する。
 
-    - BASIC_LP: ``basic_lp_refactored_source_markdown`` → ``basic_lp_manual_gemini_final``
-    - BASIC: ``basic_refactored_source_markdown`` → ``basic_manual_gemini_final``
-    - STANDARD: ``standard_refactored_source_markdown`` → ``standard_manual_gemini_final``
-    - ADVANCE: ``advance_refactored_source_markdown`` → ``advance_manual_gemini_final``
+    - BASIC_LP: ``basic_lp_refactored_source_markdown`` → ``basic_lp_manual_claude_final``
+    - BASIC: ``basic_refactored_source_markdown`` → ``basic_manual_claude_final``
+    - STANDARD: ``standard_refactored_source_markdown`` → ``standard_manual_claude_final``
+    - ADVANCE: ``advance_refactored_source_markdown`` → ``advance_manual_claude_final``
     - その他: 0（スキップ）
     """
     branch_cfg = BRANCH_REGISTRY.get(work_branch)
@@ -291,7 +291,7 @@ def apply_basic_lp_spec_outputs_to_site_dir(spec: dict, site_dir: Path) -> int:
     """
     ``spec`` に含まれる BASIC LP 生成物を優先順で site_dir に適用する。
 
-    優先: ``basic_lp_refactored_source_markdown`` → 無ければ ``basic_lp_manual_gemini_final``
+    優先: ``basic_lp_refactored_source_markdown`` → 無ければ ``basic_lp_manual_claude_final``
     """
     return apply_contract_outputs_to_site_dir(
         spec, site_dir, work_branch=ContractWorkBranch.BASIC_LP

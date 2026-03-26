@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """
-フェーズ1スナップショットを入力に、STANDARD-CP の Gemini **1/15（手順1-1・タブ①）**だけ実行する。
+フェーズ1スナップショットを入力に、STANDARD-CP の Claude **1/15（手順1-1・タブ①）**だけ実行する。
 
-  python3 scripts/gemini_standard_cp_step1_from_phase1.py \\
+  python3 scripts/standard_cp_step1_from_phase1.py \\
     --phase1-dir output/pipeline_test_runs/<run>/phase1_snapshots/<UTC>
 
-成果物は **他の工程テストと同じ run 配下**の ``gemini_step_tests/<UTC>/`` に保存する
+成果物は **他の工程テストと同じ run 配下**の ``claude_step_tests/<UTC>/`` に保存する
 （``phase1_snapshots`` の親が ``<run>`` とみなせるときは ``--run-dir`` 省略可）。
 
-  python3 scripts/gemini_standard_cp_step1_from_phase1.py \\
+  python3 scripts/standard_cp_step1_from_phase1.py \\
     --phase1-dir ... --run-dir output/pipeline_test_runs/<run>
 
 リポジトリルートで実行。
@@ -26,11 +26,11 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from config.config import (  # noqa: E402
-    pipeline_gemini_step_tests_base,
+    pipeline_claude_step_tests_base,
     pipeline_run_root_from_phase1_snapshot_dir,
 )
 from modules.phase2_text_llm_snapshot import load_hearing_bundle_from_phase1_dir  # noqa: E402
-from modules.standard_cp_gemini_manual import run_standard_cp_gemini_api_call_1_of_15  # noqa: E402
+from modules.standard_cp_claude_manual import run_standard_cp_claude_api_call_1_of_15  # noqa: E402
 
 
 def _resolve_run_root(*, phase1: Path, run_dir: Path | None) -> Path:
@@ -49,7 +49,7 @@ def _resolve_run_root(*, phase1: Path, run_dir: Path | None) -> Path:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="STANDARD-CP Gemini 1/15（手順1-1）をフェーズ1入力で実行"
+        description="STANDARD-CP Claude 1/15（手順1-1）をフェーズ1入力で実行"
     )
     parser.add_argument(
         "--phase1-dir",
@@ -73,9 +73,9 @@ def main() -> None:
     bundle = load_hearing_bundle_from_phase1_dir(phase1)
     h = bundle.hearing_sheet_content or ""
 
-    prompt, response = run_standard_cp_gemini_api_call_1_of_15(hearing_sheet_content=h)
+    prompt, response = run_standard_cp_claude_api_call_1_of_15(hearing_sheet_content=h)
 
-    base = pipeline_gemini_step_tests_base(run_root)
+    base = pipeline_claude_step_tests_base(run_root)
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     out = base / stamp
     out.mkdir(parents=True, exist_ok=True)
@@ -97,8 +97,8 @@ def main() -> None:
         "run_root": str(run_root.resolve()),
         "phase1_dir": str(phase1),
         "step": "standard_cp_manual_step_1_1",
-        "gemini_call_index_1based": 1,
-        "gemini_calls_total_standard_cp": 15,
+        "claude_call_index_1based": 1,
+        "claude_calls_total_standard_cp": 15,
         "hearing_sheet_content_chars": len(h),
         "prompt_chars": len(prompt),
         "response_chars": len(response),
@@ -110,10 +110,10 @@ def main() -> None:
     (out / "README.txt").write_text(
         "\n".join(
             [
-                "STANDARD-CP Gemini 段階テスト（手順1-1・API 1/15）",
+                "STANDARD-CP Claude 段階テスト（手順1-1・API 1/15）",
                 "",
                 "00_source.json — phase1 入力ディレクトリ・run 親",
-                "01_prompt_step_1_1.txt — Gemini に渡したプロンプト",
+                "01_prompt_step_1_1.txt — Claude に渡したプロンプト",
                 "02_response_step_1_1.txt — 応答",
                 "meta.json — 文字数・メタ",
                 "",

@@ -35,9 +35,12 @@ if [ ! -f ".env" ]; then
     echo "編集が必要な項目:"
     echo "  - GOOGLE_SHEETS_CREDENTIALS_PATH"
     echo "  - GOOGLE_SHEETS_SPREADSHEET_ID"
-    echo "  - GEMINI_API_KEY"
     echo "  - GITHUB_TOKEN"
     echo "  - VERCEL_TOKEN"
+    echo ""
+    echo "テキスト LLM（Claude Code CLI）のセットアップ:"
+    echo "  npm install -g @anthropic-ai/claude-code"
+    echo "  claude auth login"
 fi
 
 echo "セットアップが完了しました！"

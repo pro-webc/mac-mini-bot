@@ -34,20 +34,20 @@ git diff で差分管理                         ← プロンプトの変更履
 | ディレクトリ | 内容 |
 |--------------|------|
 | `common/` | `technical_spec_prompt_block.txt`（技術要件・上記） |
-| `basic_lp_manual/` | BASIC LP・Gemini マニュアル `step_*.txt` |
+| `basic_lp_manual/` | BASIC LP マニュアル `step_*.txt` |
 | `basic_cp_manual/` | BASIC（CP 1P）マニュアル |
 | `standard_cp_manual/` | STANDARD マニュアル |
 | `advance_cp_manual/` | ADVANCE マニュアル |
 | `basic_lp_refactor/` 等 | プラン別ログ用パスのみ（中身の .txt は読まない）。**Manus リファクタ本文は `manus/`** |
 | `manus/` | **Manus** 手作業相当プロンプト（`README.md` あり） |
 
-契約プラン別の `*_manual/*.txt` は **各 `*_gemini_manual.py` が直接読みます**（`common/` のテキストとは自動結合されません）。
+契約プラン別の `*_manual/*.txt` は **各 `*_claude_manual.py`（実行エンジンは Claude Code CLI）が直接読みます**（`common/` のテキストとは自動結合されません）。
 
 ## プレースホルダ規約
 
 | 種類 | 記法 | 用途 |
 |------|------|------|
 | 共通テキスト | `{name}` | `prompt_settings.format_prompt` で差し込み |
-| マニュアル / Manus | `{{KEY}}` | 各 `*_gemini_manual.py` の `_subst` で置換。**未置換が残ると `RuntimeError`** |
+| マニュアル / Manus | `{{KEY}}` | 各 `*_claude_manual.py`（Claude CLI）の `_subst` で置換。**未置換が残ると `RuntimeError`** |
 
 未置換プレースホルダの検出は品質ガードレールの一部として機能する。`_subst` 関数は `{{` の残留を検知し、プロンプトの組み立てミスを即座に例外で止める。

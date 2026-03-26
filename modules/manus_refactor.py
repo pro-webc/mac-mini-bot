@@ -1,6 +1,6 @@
 """最終リファクタ: Manus API（`POST /v1/tasks` → ポーリング）でフェンス付きマークダウンを取得する。
 
-マニュアル本編は引き続き Gemini。リファクタのみ Manus。
+マニュアル本編は Claude Code CLI。リファクタのみ Manus。
 """
 from __future__ import annotations
 
@@ -203,8 +203,8 @@ def run_manus_refactor_stage(
     """
     Manus にリファクタ用プロンプトを渡し、完了までポーリングして本文を返す。
     """
-    # 遅延 import: basic_lp_refactor_gemini が本モジュールを import するため
-    from modules import basic_lp_refactor_gemini as _ref
+    # 遅延 import: basic_lp_refactor_claude が本モジュールを import するため
+    from modules import basic_lp_refactor_claude as _ref
 
     prompt = _ref.build_basic_lp_refactor_user_prompt(
         canvas_source_code,

@@ -1,15 +1,13 @@
-"""gemini_manual_common の共通ヘルパーテスト。"""
+"""claude_manual_common の共通ヘルパーテスト。"""
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import MagicMock
 
 import pytest
-from modules.gemini_manual_common import (
+from modules.claude_manual_common import (
     existing_site_url_block,
     hearing_block,
     load_step,
-    response_text,
     subst,
 )
 
@@ -53,35 +51,6 @@ class TestHearingBlock:
     def test_whitespace_only_raises(self) -> None:
         with pytest.raises(RuntimeError):
             hearing_block("   ")
-
-
-class TestResponseText:
-    def _make_response(self, text: str) -> MagicMock:
-        part = MagicMock()
-        part.text = text
-        content = MagicMock()
-        content.parts = [part]
-        cand = MagicMock()
-        cand.content = content
-        cand.finish_reason = None
-        resp = MagicMock()
-        resp.candidates = [cand]
-        return resp
-
-    def test_extracts_text(self) -> None:
-        resp = self._make_response("hello")
-        assert response_text(resp) == "hello"
-
-    def test_no_candidates_raises(self) -> None:
-        resp = MagicMock()
-        resp.candidates = []
-        with pytest.raises(RuntimeError, match="candidates がありません"):
-            response_text(resp)
-
-    def test_empty_text_raises(self) -> None:
-        resp = self._make_response("")
-        with pytest.raises(RuntimeError, match="応答テキストが空"):
-            response_text(resp)
 
 
 class TestExistingSiteUrlBlock:

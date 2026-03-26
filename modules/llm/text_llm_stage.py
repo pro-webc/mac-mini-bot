@@ -18,7 +18,7 @@ from modules.contract_workflow import (
     resolve_contract_work_branch,
 )
 
-from .llm_pipeline_common import require_gemini_text_llm
+from .llm_pipeline_common import require_claude_text_llm
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +35,7 @@ def run_text_llm_stage(
     抽出済みヒアリングから ``requirements_result`` と ``spec`` を得る。
 
     引数: bundle（フェーズ1 出力）/ contract_plan・partner_name（案件メタ）/ work_branch（省略時は自動解決）
-    処理: BRANCH_REGISTRY からプラン設定を引き、対応する Gemini パイプラインを実行
+    処理: BRANCH_REGISTRY からプラン設定を引き、対応する Claude CLI パイプラインを実行
     出力: (requirements_result, spec) — フェーズ3 以降の入力
     """
     branch = work_branch or resolve_contract_work_branch(contract_plan)
@@ -46,11 +46,10 @@ def run_text_llm_stage(
             " modules.contract_workflow.BRANCH_REGISTRY にエントリを追加してください。"
         )
 
-    require_gemini_text_llm(
-        manual_flag=getattr(cfg, branch_cfg.use_gemini_flag),
-        api_key=cfg.GEMINI_API_KEY,
+    require_claude_text_llm(
+        manual_flag=getattr(cfg, branch_cfg.use_claude_flag),
         plan_label=branch_cfg.plan_label,
-        manual_env_name=branch_cfg.use_gemini_flag,
+        manual_env_name=branch_cfg.use_claude_flag,
     )
 
     mod = importlib.import_module(branch_cfg.pipeline_module)
@@ -66,7 +65,7 @@ def run_text_llm_stage(
     )
     requirements_result, spec, _ = pipeline_fn(**kw)
     logger.info(
-        "%s（Gemini マニュアル）完了 plan_type=%s site_build_prompt_chars=%s",
+        "%s（Claude マニュアル）完了 plan_type=%s site_build_prompt_chars=%s",
         branch_cfg.plan_label,
         requirements_result.get("plan_type"),
         len(requirements_result.get("site_build_prompt") or ""),

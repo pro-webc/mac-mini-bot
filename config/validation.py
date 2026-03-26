@@ -67,29 +67,37 @@ def validate_startup_config(*, require_full_pipeline: bool = True) -> StartupVal
         if not cfg.VERCEL_TOKEN.strip():
             r.errors.append("VERCEL_TOKEN が空です。")
 
-        if not cfg.GEMINI_API_KEY.strip():
+        if not shutil.which("claude"):
             r.errors.append(
-                "GEMINI_API_KEY が空です。本番パイプラインではテキスト LLM（Gemini マニュアル）に必要です。"
+                "claude CLI が PATH にありません。"
+                "npm install -g @anthropic-ai/claude-code でインストールし、"
+                "claude auth login で認証してください。"
             )
 
         _refactor_needs_manus = any(
-            getattr(cfg, bc.use_gemini_flag, False)
+            getattr(cfg, bc.use_claude_flag, False)
             and getattr(cfg, bc.refactor_flag, False)
             for bc in BRANCH_REGISTRY.values()
         )
         if _refactor_needs_manus and not cfg.MANUS_API_KEY.strip():
             r.errors.append(
                 "MANUS_API_KEY が空です。最終リファクタは Manus API を使用します。"
-                "（いずれかのプランで *_USE_GEMINI_MANUAL と *_REFACTOR_AFTER_MANUAL が両方 true のとき必須）"
+                "（いずれかのプランで *_USE_CLAUDE_MANUAL と *_REFACTOR_AFTER_MANUAL が両方 true のとき必須）"
             )
 
         for bc in BRANCH_REGISTRY.values():
             refactor_on = getattr(cfg, bc.refactor_flag, False)
-            gemini_on = getattr(cfg, bc.use_gemini_flag, False)
-            if refactor_on and not gemini_on:
+            claude_on = getattr(cfg, bc.use_claude_flag, False)
+            if refactor_on and not claude_on:
                 r.warnings.append(
-                    f"{bc.refactor_flag}=true ですが {bc.use_gemini_flag} が無効のため、"
+                    f"{bc.refactor_flag}=true ですが {bc.use_claude_flag} が無効のため、"
                     f"{bc.plan_label} リファクタ段階はパイプライン上で実行されません。"
                 )
+
+        if cfg.SITE_PROVISION_API_URL and not cfg.SITE_PROVISION_API_KEY:
+            r.warnings.append(
+                "SITE_PROVISION_API_URL が設定されていますが SITE_PROVISION_API_KEY が空です。"
+                "site-annotator 登録はスキップされます。"
+            )
 
     return r

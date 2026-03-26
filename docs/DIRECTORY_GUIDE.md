@@ -19,8 +19,8 @@
 |----|------------------------|----------|
 | 1 | スプレッドシート読込・必須列チェック | `modules/spreadsheet.py`, `config/config.py`（列定義） |
 | 2 | ヒアリング抽出 | `modules/case_extraction.py`, `modules/spec_generator.py`（シート取得） |
-| 3 | TEXT_LLM（プラン別・フェーズ2） | `modules/llm/text_llm_stage.py`（`if/elif` → 各 `*_gemini_manual.py`） |
-| 3a | **各 LLM 呼び出しごとの入出力**（Gemini / Manus） | `modules/llm/llm_step_trace.py` → `output/<レコード番号>/llm_steps/<NNN>_<種別>/`（`input.md`・`output.md` 等）。**`output/sites/` より先**にここへ都度増える |
+| 3 | TEXT_LLM（プラン別・フェーズ2） | `modules/llm/text_llm_stage.py`（`if/elif` → 各 `*_claude_manual.py`） |
+| 3a | **各 LLM 呼び出しごとの入出力**（TEXT_LLM / Manus） | `modules/llm/llm_step_trace.py` → `output/<レコード番号>/llm_steps/<NNN>_<種別>/`（`input.md`・`output.md` 等）。**`output/sites/` より先**にここへ都度増える |
 | 4 | 出力先ディレクトリ準備 | `modules/site_generator.py` → `output/sites/<案件名>/` |
 | 5 | LLM 正本の保存 | `modules/llm/llm_raw_output.py` → 同一案件の `llm_raw_output/` |
 | 6 | 生成マークダウン → サイトファイル反映 | `modules/basic_lp_generated_apply.py` |
@@ -29,7 +29,7 @@
 
 TEXT_LLM だけをフェーズ1成果物から再実行する場合は **`scripts/phase2_from_phase1_snapshot.py`**（`phase2_snapshots/` に保存）。
 
-工程テストと同じ run 配下に段階的な Gemini 試験を残す場合は **`scripts/gemini_standard_cp_step1_from_phase1.py`**（1/15）〜**`step10_from_phase1.py`**（10/15・タブ⑤・手順5）まで（`step7` は本番の手順7-1とは別）→ `gemini_step_tests/<UTC>/`。
+工程テストと同じ run 配下に段階的な TEXT_LLM（Claude Code CLI）試験を残す場合は、**`scripts/standard_cp_step1_from_phase1.py`** から **`standard_cp_step10_from_phase1.py`**（10/15・タブ⑤・手順5）まで（`step7` は本番の手順7-1とは別）。出力は **`claude_step_tests/<UTC>/`**。
 
 詳細な LLM 割当は **`docs/LLM_PIPELINE.md`**。
 
@@ -72,7 +72,7 @@ mac-mini-bot/
 | `config/config.py` | 環境変数・スプレッドシート列・OUTPUT_DIR 等 | まれ（API キー・モデル変更時） |
 | `config/validation.py` | 起動時チェック | まれ |
 | `config/prompts/common/technical_spec_prompt_block.txt` | **全プラン共通の品質ガードレール** | **頻繁**（品質問題発見時にルール追加） |
-| `config/prompts/*_manual/step_*.txt` | **プラン別 Gemini マニュアルのステップファイル** | **頻繁**（特定ステップの品質改善時） |
+| `config/prompts/*_manual/step_*.txt` | **プラン別 TEXT_LLM マニュアルのステップファイル**（実行は Claude Code CLI） | **頻繁**（特定ステップの品質改善時） |
 | `config/prompts/manus/` | **Manus リファクタ指示** | リファクタ品質の改善時 |
 | `config/prompts/*_refactor/` | ログ用パス（中身の .txt は読まない） | 触らない |
 
@@ -86,8 +86,8 @@ mac-mini-bot/
 
 `output/` はこのシステムの核心部分であり、**全 LLM 入出力の記録**が蓄積される。
 
-- **第 1 層（ステップトレース）**: `output/<レコード番号>/llm_steps/001_gemini_generate_content/` … と、**1 API 呼び出し＝1 サブフォルダ**が自動で増える。`input.md`（送ったプロンプト）と `output.md`（LLM の応答）のペア。失敗時は `error.txt`
-- **第 2 層（チェックポイント）**: `output/phase2_llm_checkpoints/` に Gemini 完了分を退避、`output/phase2_complete/` にフェーズ 2 直後の正本を保存
+- **第 1 層（ステップトレース）**: `output/<レコード番号>/llm_steps/001_claude_cli_generate/` や `…_claude_cli_chat/` … と、**1 回の TEXT_LLM（Claude Code CLI）呼び出し＝1 サブフォルダ**が自動で増える。`input.md`（送ったプロンプト）と `output.md`（LLM の応答）のペア。失敗時は `error.txt`
+- **第 2 層（チェックポイント）**: `output/phase2_llm_checkpoints/` に TEXT_LLM 完了分を退避、`output/phase2_complete/` にフェーズ 2 直後の正本を保存
 - **第 3 層（構造化メタ）**: `spec.yaml`、`requirements_result.yaml`、`00_checkpoint.json` など機械可読なメタデータ
 
 **品質改善の手順**: 特定案件の `llm_steps/` を開き、問題のあるステップの `input.md`（プロンプト）と `output.md`（応答）を比較して、`config/prompts/` のどのファイルを改善すべきかを判断する。

@@ -2,25 +2,25 @@
 from pathlib import Path
 
 import pytest
-from modules.standard_cp_gemini_manual import (
+from modules.standard_cp_claude_manual import (
     _standard_cp_tab4_history_from_user_model_pairs,
     _subst,
     _tab4_chat_history_after_step_3_1,
     _tab4_chat_history_after_step_3_2,
     _tab4_chat_history_after_step_3_3,
     _tab4_chat_history_after_step_3_4,
-    build_standard_cp_gemini_prompt_step_1_2,
-    build_standard_cp_gemini_prompt_step_1_2_and_1_3,
-    build_standard_cp_gemini_prompt_step_2,
-    build_standard_cp_gemini_prompt_step_3_1,
-    build_standard_cp_gemini_prompt_step_3_2,
-    build_standard_cp_gemini_prompt_step_3_3,
-    build_standard_cp_gemini_prompt_step_3_4,
-    build_standard_cp_gemini_prompt_step_3_5,
-    build_standard_cp_gemini_prompt_step_4,
-    build_standard_cp_gemini_prompt_step_5,
-    build_standard_cp_gemini_prompt_step_6,
-    build_standard_cp_gemini_prompt_step_7_1,
+    build_standard_cp_claude_prompt_step_1_2,
+    build_standard_cp_claude_prompt_step_1_2_and_1_3,
+    build_standard_cp_claude_prompt_step_2,
+    build_standard_cp_claude_prompt_step_3_1,
+    build_standard_cp_claude_prompt_step_3_2,
+    build_standard_cp_claude_prompt_step_3_3,
+    build_standard_cp_claude_prompt_step_3_4,
+    build_standard_cp_claude_prompt_step_3_5,
+    build_standard_cp_claude_prompt_step_4,
+    build_standard_cp_claude_prompt_step_5,
+    build_standard_cp_claude_prompt_step_6,
+    build_standard_cp_claude_prompt_step_7_1,
 )
 
 _MANUAL = (
@@ -67,14 +67,14 @@ def test_step_2_blog_placeholder() -> None:
     assert "・ブログ行" in out
 
 
-def test_build_standard_cp_gemini_prompt_step_2_matches_subst() -> None:
-    out = build_standard_cp_gemini_prompt_step_2(step_1_3_output="手順13出力")
+def test_build_standard_cp_claude_prompt_step_2_matches_subst() -> None:
+    out = build_standard_cp_claude_prompt_step_2(step_1_3_output="手順13出力")
     assert "{{" not in out
     assert "手順13出力" in out
 
 
-def test_build_standard_cp_gemini_prompt_step_3_1_matches_subst() -> None:
-    out = build_standard_cp_gemini_prompt_step_3_1(
+def test_build_standard_cp_claude_prompt_step_3_1_matches_subst() -> None:
+    out = build_standard_cp_claude_prompt_step_3_1(
         step_2_output="構成案本文",
         step_1_3_output="お客様情報本文",
     )
@@ -84,8 +84,8 @@ def test_build_standard_cp_gemini_prompt_step_3_1_matches_subst() -> None:
     assert "ヒアリング原文の再掲なし" in out
 
 
-def test_build_standard_cp_gemini_prompt_step_3_1_hearing_block() -> None:
-    out = build_standard_cp_gemini_prompt_step_3_1(
+def test_build_standard_cp_claude_prompt_step_3_1_hearing_block() -> None:
+    out = build_standard_cp_claude_prompt_step_3_1(
         step_2_output="構成",
         step_1_3_output="顧客",
         hearing_sheet_content="電話\n090-0000-0000\n",
@@ -94,32 +94,32 @@ def test_build_standard_cp_gemini_prompt_step_3_1_hearing_block() -> None:
     assert "090-0000-0000" in out
 
 
-def test_build_standard_cp_gemini_prompt_step_3_2_no_placeholders() -> None:
-    out = build_standard_cp_gemini_prompt_step_3_2()
+def test_build_standard_cp_claude_prompt_step_3_2_no_placeholders() -> None:
+    out = build_standard_cp_claude_prompt_step_3_2()
     assert "{{" not in out
     assert "【手順.3-2】" in out
 
 
-def test_build_standard_cp_gemini_prompt_step_3_3_no_placeholders() -> None:
-    out = build_standard_cp_gemini_prompt_step_3_3()
+def test_build_standard_cp_claude_prompt_step_3_3_no_placeholders() -> None:
+    out = build_standard_cp_claude_prompt_step_3_3()
     assert "{{" not in out
     assert "【手順.3-3】" in out
 
 
-def test_build_standard_cp_gemini_prompt_step_3_4_no_placeholders() -> None:
-    out = build_standard_cp_gemini_prompt_step_3_4()
+def test_build_standard_cp_claude_prompt_step_3_4_no_placeholders() -> None:
+    out = build_standard_cp_claude_prompt_step_3_4()
     assert "{{" not in out
     assert "【手順.3-4】" in out
 
 
-def test_build_standard_cp_gemini_prompt_step_3_5_no_placeholders() -> None:
-    out = build_standard_cp_gemini_prompt_step_3_5()
+def test_build_standard_cp_claude_prompt_step_3_5_no_placeholders() -> None:
+    out = build_standard_cp_claude_prompt_step_3_5()
     assert "{{" not in out
     assert "【手順.3-5】" in out
 
 
-def test_build_standard_cp_gemini_prompt_step_4_substitutes() -> None:
-    out = build_standard_cp_gemini_prompt_step_4(
+def test_build_standard_cp_claude_prompt_step_4_substitutes() -> None:
+    out = build_standard_cp_claude_prompt_step_4(
         hearing_sheet_content="参考 https://example.com/design",
     )
     assert "{{" not in out
@@ -127,8 +127,8 @@ def test_build_standard_cp_gemini_prompt_step_4_substitutes() -> None:
     assert "HPに使いたい色" in out
 
 
-def test_build_standard_cp_gemini_prompt_step_5_substitutes() -> None:
-    out = build_standard_cp_gemini_prompt_step_5(
+def test_build_standard_cp_claude_prompt_step_5_substitutes() -> None:
+    out = build_standard_cp_claude_prompt_step_5(
         step_4_output="手順4デザイン3点ブロック",
         step_1_3_output="お客様情報ブロック",
         step_2_output="サイト構成ブロック",
@@ -139,8 +139,8 @@ def test_build_standard_cp_gemini_prompt_step_5_substitutes() -> None:
     assert "サイト構成ブロック" in out
 
 
-def test_build_standard_cp_gemini_prompt_step_6_substitutes() -> None:
-    out = build_standard_cp_gemini_prompt_step_6(
+def test_build_standard_cp_claude_prompt_step_6_substitutes() -> None:
+    out = build_standard_cp_claude_prompt_step_6(
         hearing_sheet_content="参考サイトは https://a.example.com です。デザインはシンプル希望。",
     )
     assert "{{" not in out
@@ -148,8 +148,8 @@ def test_build_standard_cp_gemini_prompt_step_6_substitutes() -> None:
     assert "参考サイト" in out or "https://a.example.com" in out
 
 
-def test_build_standard_cp_gemini_prompt_step_7_1_substitutes() -> None:
-    out = build_standard_cp_gemini_prompt_step_7_1(
+def test_build_standard_cp_claude_prompt_step_7_1_substitutes() -> None:
+    out = build_standard_cp_claude_prompt_step_7_1(
         step_6_output="# デザイン生成指示書\n…",
         hearing_sheet_content="配色はブルー系希望",
     )
@@ -164,8 +164,8 @@ def test_tab4_chat_history_after_step_3_1_shape() -> None:
         step_3_1_response="回答本文",
     )
     assert len(h) == 2
-    assert h[0] == {"role": "user", "parts": ["質問本文"]}
-    assert h[1] == {"role": "model", "parts": ["回答本文"]}
+    assert h[0] == {"role": "user", "content": "質問本文"}
+    assert h[1] == {"role": "assistant", "content": "回答本文"}
 
 
 def test_tab4_chat_history_after_step_3_2_shape() -> None:
@@ -176,9 +176,9 @@ def test_tab4_chat_history_after_step_3_2_shape() -> None:
         step_3_2_response="二答",
     )
     assert len(h) == 4
-    assert h[0]["role"] == "user" and h[1]["role"] == "model"
-    assert h[2]["role"] == "user" and h[3]["role"] == "model"
-    assert h[2] == {"role": "user", "parts": ["二問目"]}
+    assert h[0]["role"] == "user" and h[1]["role"] == "assistant"
+    assert h[2]["role"] == "user" and h[3]["role"] == "assistant"
+    assert h[2] == {"role": "user", "content": "二問目"}
 
 
 def test_tab4_chat_history_after_step_3_3_shape() -> None:
@@ -191,8 +191,8 @@ def test_tab4_chat_history_after_step_3_3_shape() -> None:
         step_3_3_response="b3",
     )
     assert len(h) == 6
-    assert h[-2] == {"role": "user", "parts": ["a3"]}
-    assert h[-1] == {"role": "model", "parts": ["b3"]}
+    assert h[-2] == {"role": "user", "content": "a3"}
+    assert h[-1] == {"role": "assistant", "content": "b3"}
 
 
 def test_tab4_chat_history_after_step_3_4_shape() -> None:
@@ -207,8 +207,8 @@ def test_tab4_chat_history_after_step_3_4_shape() -> None:
         step_3_4_response="b4",
     )
     assert len(h) == 8
-    assert h[-2] == {"role": "user", "parts": ["a4"]}
-    assert h[-1] == {"role": "model", "parts": ["b4"]}
+    assert h[-2] == {"role": "user", "content": "a4"}
+    assert h[-1] == {"role": "assistant", "content": "b4"}
 
 
 def test_standard_cp_tab4_history_rejects_empty_pairs() -> None:
@@ -222,7 +222,7 @@ def test_tab4_chat_history_rejects_empty() -> None:
             step_3_1_prompt="",
             step_3_1_response="x",
         )
-    with pytest.raises(RuntimeError, match="1 通目の model 応答が空"):
+    with pytest.raises(RuntimeError, match="1 通目の assistant 応答が空"):
         _tab4_chat_history_after_step_3_1(
             step_3_1_prompt="x",
             step_3_1_response="",
@@ -257,7 +257,7 @@ def test_tab4_chat_history_rejects_empty() -> None:
 
 
 def test_step_1_2_prompt_builder_substitutes_all_placeholders() -> None:
-    out = build_standard_cp_gemini_prompt_step_1_2(
+    out = build_standard_cp_claude_prompt_step_1_2(
         hearing_sheet_content="ヒアリング本文\n参考 https://example.com/ref",
         appo_memo="メモ",
         sales_notes="",
@@ -270,7 +270,7 @@ def test_step_1_2_prompt_builder_substitutes_all_placeholders() -> None:
 
 
 def test_step_1_2_and_1_3_combined_joins_both_sections() -> None:
-    out = build_standard_cp_gemini_prompt_step_1_2_and_1_3(
+    out = build_standard_cp_claude_prompt_step_1_2_and_1_3(
         hearing_sheet_content="ヒアリング本文",
         appo_memo="アポ",
         sales_notes="",

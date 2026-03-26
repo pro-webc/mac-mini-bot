@@ -15,22 +15,29 @@ logger = logging.getLogger(__name__)
 MIN_SITE_BUILD_PROMPT_CHARS = 400
 
 
-def require_gemini_text_llm(
+def require_claude_text_llm(
     *,
     manual_flag: bool,
-    api_key: str,
     plan_label: str,
     manual_env_name: str,
 ) -> None:
     """
-    TEXT_LLM で Gemini マニュアルを使う前提を満たすことを要求する。
-    ``manual_env_name`` はエラーメッセージ用（例: ``BASIC_CP_USE_GEMINI_MANUAL``）。
+    TEXT_LLM で Claude CLI マニュアルを使う前提を満たすことを要求する。
+    ``manual_env_name`` はエラーメッセージ用（例: ``BASIC_CP_USE_CLAUDE_MANUAL``）。
+    Claude Code CLI（サブスクリプション認証）を使用するため API キーは不要。
     """
-    if manual_flag and (api_key or "").strip():
+    import shutil
+
+    if not manual_flag:
+        raise RuntimeError(
+            f"{plan_label}: Claude マニュアルが無効です。"
+            f" {manual_env_name}=true を設定してください。"
+        )
+    if shutil.which("claude"):
         return
     raise RuntimeError(
-        f"{plan_label}: Gemini マニュアルが無効です。"
-        f" {manual_env_name}=true かつ GEMINI_API_KEY を設定してください。"
+        f"{plan_label}: claude CLI が見つかりません。"
+        " npm install -g @anthropic-ai/claude-code でインストールしてください。"
     )
 
 _SECTION_PLACEHOLDER = (
@@ -206,7 +213,7 @@ def assemble_spec_dict_from_requirements(
     """
     requirements_result の site_build_prompt（等）からサイト台本を組み、
     parse して仕様 dict（technical_spec マージ済み）を返す。
-    STANDARD / ADVANCE の Gemini マニュアル後段などが利用する。
+    STANDARD / ADVANCE の Claude マニュアル後段などが利用する。
     """
     plan_info = get_contract_plan_info(contract_plan)
     contract_pages = int(plan_info.get("pages") or 1)

@@ -106,7 +106,7 @@ def main() -> None:
                 "work_branch_snapshots/ — 契約プラン作業分岐",
                 "",
                 "TEXT_LLM 単体: scripts/phase2_from_phase1_snapshot.py（phase1 + 任意で work_branch JSON）",
-                "gemini_step_tests/ — gemini_standard_cp_step1〜10_from_phase1.py（1〜10/15・"
+                "claude_step_tests/ — standard_cp_step1〜10_from_phase1.py（1〜10/15・"
                 "タブ⑤手順5まで段階化・step7は3-4で本番手順7-1と別）",
                 "",
                 "00_pipeline_test_manifest.json に各タイムスタンプ付きディレクトリのパスを記録。",

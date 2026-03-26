@@ -4,8 +4,6 @@ from config.validation import validate_startup_config
 
 
 def test_validation_does_not_require_text_llm(monkeypatch) -> None:
-    monkeypatch.setattr(cfg, "OPENAI_API_KEY", "")
-    monkeypatch.setattr(cfg, "GEMINI_API_KEY", "")
     r = validate_startup_config(require_full_pipeline=False)
     assert r.ok
     assert not any("テキスト LLM" in e for e in r.errors)
@@ -17,7 +15,6 @@ def test_validation_full_pipeline_requires_sheet_and_tokens(monkeypatch) -> None
     monkeypatch.setattr(cfg, "GOOGLE_SHEETS_CREDENTIALS_PATH", "/nonexistent/creds.json")
     monkeypatch.setattr(cfg, "GITHUB_TOKEN", "")
     monkeypatch.setattr(cfg, "VERCEL_TOKEN", "")
-    monkeypatch.setattr(cfg, "GEMINI_API_KEY", "gemini_ok")
     monkeypatch.setattr(cfg, "MANUS_API_KEY", "manus_ok")
     r = validate_startup_config(require_full_pipeline=True)
     assert not r.ok
@@ -32,25 +29,27 @@ def test_validation_refactor_without_manual_warns(monkeypatch) -> None:
     monkeypatch.setattr(cfg, "GOOGLE_CLOUD_PROJECT", "test-gcp-project")
     monkeypatch.setattr(cfg, "GITHUB_TOKEN", "tok")
     monkeypatch.setattr(cfg, "VERCEL_TOKEN", "vtok")
-    monkeypatch.setattr(cfg, "GEMINI_API_KEY", "g")
     monkeypatch.setattr(cfg, "MANUS_API_KEY", "m")
     monkeypatch.setattr(cfg, "BASIC_LP_REFACTOR_AFTER_MANUAL", True)
-    monkeypatch.setattr(cfg, "BASIC_LP_USE_GEMINI_MANUAL", False)
+    monkeypatch.setattr(cfg, "BASIC_LP_USE_CLAUDE_MANUAL", False)
     r = validate_startup_config(require_full_pipeline=True)
     assert r.ok
     assert any("リファクタ" in w for w in r.warnings)
 
 
-def test_validation_full_pipeline_requires_gemini_api_key(monkeypatch) -> None:
+def test_validation_full_pipeline_requires_claude_cli(monkeypatch) -> None:
+    import config.validation as val_mod
+    _orig_which = val_mod.shutil.which
+    monkeypatch.setattr(val_mod.shutil, "which", lambda cmd: None if cmd == "claude" else _orig_which(cmd))
     monkeypatch.setattr(cfg, "GOOGLE_SHEETS_SPREADSHEET_ID", "sheet_ok")
     monkeypatch.setattr(cfg, "GOOGLE_SHEETS_AUTH_MODE", "application_default")
     monkeypatch.setattr(cfg, "GOOGLE_CLOUD_PROJECT", "test-gcp-project")
     monkeypatch.setattr(cfg, "GITHUB_TOKEN", "tok")
     monkeypatch.setattr(cfg, "VERCEL_TOKEN", "vtok")
-    monkeypatch.setattr(cfg, "GEMINI_API_KEY", "")
+    monkeypatch.setattr(cfg, "MANUS_API_KEY", "m")
     r = validate_startup_config(require_full_pipeline=True)
     assert not r.ok
-    assert any("GEMINI_API_KEY" in e for e in r.errors)
+    assert any("claude CLI" in e for e in r.errors)
 
 
 def test_validation_full_pipeline_requires_manus_when_refactor_enabled(monkeypatch) -> None:
@@ -59,9 +58,8 @@ def test_validation_full_pipeline_requires_manus_when_refactor_enabled(monkeypat
     monkeypatch.setattr(cfg, "GOOGLE_CLOUD_PROJECT", "test-gcp-project")
     monkeypatch.setattr(cfg, "GITHUB_TOKEN", "tok")
     monkeypatch.setattr(cfg, "VERCEL_TOKEN", "vtok")
-    monkeypatch.setattr(cfg, "GEMINI_API_KEY", "g")
     monkeypatch.setattr(cfg, "MANUS_API_KEY", "")
-    monkeypatch.setattr(cfg, "BASIC_LP_USE_GEMINI_MANUAL", True)
+    monkeypatch.setattr(cfg, "BASIC_LP_USE_CLAUDE_MANUAL", True)
     monkeypatch.setattr(cfg, "BASIC_LP_REFACTOR_AFTER_MANUAL", True)
     r = validate_startup_config(require_full_pipeline=True)
     assert not r.ok
@@ -76,7 +74,6 @@ def test_validation_application_default_skips_credential_file(monkeypatch) -> No
     monkeypatch.setattr(cfg, "GOOGLE_SHEETS_CREDENTIALS_PATH", "/nonexistent/creds.json")
     monkeypatch.setattr(cfg, "GITHUB_TOKEN", "tok")
     monkeypatch.setattr(cfg, "VERCEL_TOKEN", "vtok")
-    monkeypatch.setattr(cfg, "GEMINI_API_KEY", "g")
     monkeypatch.setattr(cfg, "MANUS_API_KEY", "m")
     r = validate_startup_config(require_full_pipeline=True)
     assert r.ok

@@ -71,13 +71,13 @@ def manus_repo_description_for_prompt(
 def _read(path: Path) -> str:
     if not path.is_file():
         raise RuntimeError(
-            f"modules.basic_lp_refactor_gemini: プロンプトが見つかりません: {path}"
+            f"modules.basic_lp_refactor_claude: プロンプトが見つかりません: {path}"
         )
     return path.read_text(encoding="utf-8")
 
 
 def _looks_like_canvas_source(code: str) -> bool:
-    """Gemini 出力中のコードフェンスから、React/TSX 本文らしいものを拾う。"""
+    """Claude CLI 出力中のコードフェンスから、React/TSX 本文らしいものを拾う。"""
     s = (code or "").strip()
     if not s:
         return False
@@ -99,7 +99,7 @@ def _normalize_canvas_source_for_manus(canvas_source_code: str) -> str:
     src = (canvas_source_code or "").strip()
     if not src:
         raise RuntimeError(
-            "modules.basic_lp_refactor_gemini: リファクタリング元ソースが空です。"
+            "modules.basic_lp_refactor_claude: リファクタリング元ソースが空です。"
         )
     blocks = [
         m.group(1).strip()
@@ -158,7 +158,7 @@ def build_basic_lp_refactor_user_prompt(
     手作業 Manus マニュアルと同じオーケストレーション + リファクタ指示書 + Canvas。
 
     Args:
-        canvas_source_code: Gemini Canvas 単一ファイル相当。
+        canvas_source_code: Claude Canvas 単一ファイル相当。
         preface_dir: 未使用（シグネチャ互換）。
         partner_name: 制作スプレッドシートの「パートナー名」列（プロンプト上の先方名と同一）。
         record_number: 制作スプレッドシートのレコード番号（リポジトリ名・ディスクリプション用）。

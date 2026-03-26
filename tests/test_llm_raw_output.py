@@ -19,8 +19,8 @@ def test_write_pre_manus_checkpoint_under_output_dir(
     out = write_pre_manus_llm_checkpoint(
         site_name="Acme-42",
         work_branch=ContractWorkBranch.STANDARD,
-        manual_meta_key="standard_cp_manual_gemini",
-        model="gemini-pro",
+        manual_meta_key="standard_cp_manual_claude",
+        model="claude-opus-4-6",
         steps={"step_1_1": "resp"},
         step_prompts={"step_1_1": "ask"},
         canvas_markdown="# canvas",
@@ -32,22 +32,22 @@ def test_write_pre_manus_checkpoint_under_output_dir(
     gem = (
         out
         / "llm_raw_output"
-        / "gemini_steps"
-        / "standard_cp_manual_gemini"
+        / "claude_steps"
+        / "standard_cp_manual_claude"
         / "step_1_1.md"
     )
     assert gem.read_text(encoding="utf-8") == "resp"
     assert (
         out
         / "llm_raw_output"
-        / "gemini_steps"
-        / "standard_cp_manual_gemini"
+        / "claude_steps"
+        / "standard_cp_manual_claude"
         / "step_1_1_prompt.txt"
     ).read_text(encoding="utf-8") == "ask"
     assert (out / "canvas_before_manus.md").read_text(encoding="utf-8") == "# canvas"
     meta = json.loads((out / "00_checkpoint.json").read_text(encoding="utf-8"))
     assert meta["work_branch"] == "standard"
-    assert meta["manual_meta_key"] == "standard_cp_manual_gemini"
+    assert meta["manual_meta_key"] == "standard_cp_manual_claude"
 
 
 def test_phase2_complete_snapshot_writes_llm_raw(
@@ -56,9 +56,9 @@ def test_phase2_complete_snapshot_writes_llm_raw(
     monkeypatch.setattr("modules.llm.llm_raw_output.OUTPUT_DIR", tmp_path)
     base = write_llm_raw_artifacts_phase2_snapshot(
         site_name="Co-1",
-        spec={"basic_lp_manual_gemini_final": "c"},
+        spec={"basic_lp_manual_claude_final": "c"},
         requirements_result={
-            "basic_lp_manual_gemini": {
+            "basic_lp_manual_claude": {
                 "model": "m",
                 "steps": {"s": "t"},
             }
@@ -67,7 +67,7 @@ def test_phase2_complete_snapshot_writes_llm_raw(
     )
     assert (base / "README.txt").is_file()
     assert (base / "llm_raw_output" / "spec.yaml").is_file()
-    assert (base / "llm_raw_output" / "gemini_steps" / "basic_lp_manual_gemini" / "s.md").read_text(
+    assert (base / "llm_raw_output" / "claude_steps" / "basic_lp_manual_claude" / "s.md").read_text(
         encoding="utf-8"
     ) == "t"
 
@@ -80,7 +80,7 @@ def test_pre_manus_checkpoint_keeps_unicode_site_folder(
     write_pre_manus_llm_checkpoint(
         site_name="株式会社アンカートレーディング-16308",
         work_branch=ContractWorkBranch.STANDARD,
-        manual_meta_key="standard_cp_manual_gemini",
+        manual_meta_key="standard_cp_manual_claude",
         model="m",
         steps={"a": "b"},
         step_prompts={},
@@ -98,12 +98,12 @@ def test_write_spec_and_steps(tmp_path: Path) -> None:
     site.mkdir()
     spec = {
         "basic_lp_refactored_source_markdown": "```tsx\napp/page.tsx\nx\n```",
-        "basic_lp_manual_gemini_final": "canvas final body",
+        "basic_lp_manual_claude_final": "canvas final body",
     }
     req = {
         "site_build_prompt": "build me a site",
-        "basic_lp_manual_gemini": {
-            "model": "gemini-test",
+        "basic_lp_manual_claude": {
+            "model": "claude-test",
             "steps": {"step_1_1": "hello", "step_empty": ""},
             "step_prompts": {"step_1_1": "prompt text for step 1-1"},
         },
@@ -115,20 +115,20 @@ def test_write_spec_and_steps(tmp_path: Path) -> None:
         work_branch=ContractWorkBranch.BASIC_LP,
     )
     assert n == 8
-    assert (site / "llm_raw_output" / "basic_lp_manual_gemini_final.md").read_text(
+    assert (site / "llm_raw_output" / "basic_lp_manual_claude_final.md").read_text(
         encoding="utf-8"
     ) == "canvas final body"
     assert (site / "llm_raw_output" / "site_build_prompt.txt").read_text(
         encoding="utf-8"
     ).startswith("build me")
     assert (
-        site / "llm_raw_output" / "gemini_steps" / "basic_lp_manual_gemini" / "step_1_1.md"
+        site / "llm_raw_output" / "claude_steps" / "basic_lp_manual_claude" / "step_1_1.md"
     ).read_text(encoding="utf-8") == "hello"
     assert (
         site
         / "llm_raw_output"
-        / "gemini_steps"
-        / "basic_lp_manual_gemini"
+        / "claude_steps"
+        / "basic_lp_manual_claude"
         / "step_1_1_prompt.txt"
     ).read_text(encoding="utf-8") == "prompt text for step 1-1"
     assert (site / "llm_raw_output" / "requirements_result.yaml").is_file()
@@ -187,7 +187,7 @@ def test_manus_only_style_writes_test_like_layout(tmp_path: Path) -> None:
         site,
         spec={
             "basic_lp_refactored_source_markdown": "# fenced\n",
-            "basic_lp_manual_gemini_final": "canvas",
+            "basic_lp_manual_claude_final": "canvas",
             "manus_deploy_github_url": "https://github.com/o/r.git",
         },
         work_branch=ContractWorkBranch.BASIC_LP,

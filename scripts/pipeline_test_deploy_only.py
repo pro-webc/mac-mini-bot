@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-工程テスト **Vercel デプロイのみ**（Manus / Gemini は行わない）。
+工程テスト **Vercel デプロイのみ**（Manus / Claude は行わない）。
 
 GitHub リポジトリ URL（``https://github.com/owner/repo.git``）を渡し、
 本番と同じ ``VercelClient.deploy_from_github`` でデプロイする。

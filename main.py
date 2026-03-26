@@ -4,12 +4,12 @@
 
 パイプライン概略:
   1. ヒアリングシート類の抽出（`modules.case_extraction`）
-  2. TEXT_LLM（`modules.llm.text_llm_stage` — プランは ``if/elif`` で分岐。各 ``*_USE_GEMINI_MANUAL`` と ``GEMINI_API_KEY`` が必須）
+  2. TEXT_LLM（`modules.llm.text_llm_stage` — プランは ``if/elif`` で分岐。各 ``*_USE_CLAUDE_MANUAL`` と Claude CLI の認証が必要）
   3. 出力先ディレクトリ準備（テンプレコピーなし）→ `llm_raw_output/` に LLM 生出力を保存
-     （Manus 待ちで 3 に進めない間は `output/phase2_llm_checkpoints/…/pre_manus/` に Gemini 分のみ先行保存）
-  4. フェンス解析で Gemini 出力のみ `app/` 等へ反映（失敗時は例外）
+     （Manus 待ちで 3 に進めない間は `output/phase2_llm_checkpoints/…/pre_manus/` に TEXT_LLM（Claude CLI）分のみ先行保存）
+  4. フェンス解析で TEXT_LLM 出力のみ `app/` 等へ反映（失敗時は例外）
   5. ビルド検証（失敗時も成果物の自動修正は行わない）
-  6. GitHub push → Vercel デプロイ → スプレッドシートに公開 URL
+  6. GitHub push → Vercel デプロイ → site-annotator 登録 → スプレッドシートに公開 URL
 
 各段の LLM 割当は ``docs/LLM_PIPELINE.md`` を参照。
 """
@@ -33,6 +33,8 @@ from config.config import (
     OUTPUT_DIR,
     SITE_BUILD_ENABLED,
     SITE_IMPLEMENTATION_ENABLED,
+    SITE_PROVISION_API_KEY,
+    SITE_PROVISION_API_URL,
     SPREADSHEET_AI_STATUS_ERROR_MAX_LEN,
     SPREADSHEET_HEADERS_STRICT,
     get_contract_plan_info,
@@ -52,7 +54,7 @@ from modules.case_extraction import extract_hearing_bundle
 from modules.contract_workflow import (
     BRANCH_REGISTRY,
     ContractWorkBranch,
-    gemini_manual_enabled_for_branch,
+    claude_manual_enabled_for_branch,
     resolve_contract_work_branch,
     resolve_work_branch_with_basic_lp_override,
 )
@@ -83,7 +85,7 @@ logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
-# Manus 再開モード: 保存済み Canvas から Gemini をスキップして Manus 以降を実行
+# Manus 再開モード: 保存済み Canvas から Claude マニュアル段をスキップして Manus 以降を実行
 # ---------------------------------------------------------------------------
 
 
@@ -98,22 +100,22 @@ def _resume_from_manus(
     work_branch: ContractWorkBranch,
     contract_max_pages: int,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
-    """保存済み Gemini Canvas を読み込み、Manus リファクタ以降のみ実行して spec を返す。
+    """保存済み Claude Canvas を読み込み、Manus リファクタ以降のみ実行して spec を返す。
 
     引数: record_number（出力ディレクトリの特定）/ hearing 情報（Manus プロンプト内の参考ブロック用）
           / work_branch・contract_max_pages（プラン別制御）
-    処理: output/{record}/llm_steps/015_gemini_generate_content/output.md を読み、
+    処理: output/{record}/llm_steps/011_claude_cli_chat/output.md を読み、
           run_basic_lp_refactor_stage で Manus のみ実行
     出力: (requirements_result, spec) — process_case のフェーズ3 以降が使う最低限のキーを格納
     """
-    from modules.basic_lp_refactor_gemini import run_basic_lp_refactor_stage
+    from modules.basic_lp_refactor_claude import run_basic_lp_refactor_stage
     from modules.hearing_url_utils import hearing_reference_design_block_for_prompt
 
-    trace_dir = OUTPUT_DIR / record_number / "llm_steps" / "015_gemini_generate_content"
+    trace_dir = OUTPUT_DIR / record_number / "llm_steps" / "011_claude_cli_chat"
     canvas_path = trace_dir / "output.md"
     if not canvas_path.is_file():
         raise FileNotFoundError(
-            f"Gemini 最終出力が見つかりません（Manus 再開には前回の Gemini 完走が必要）: {canvas_path}"
+            f"Claude マニュアル最終出力が見つかりません（Manus 再開には前回の TEXT_LLM（Claude CLI）完走が必要）: {canvas_path}"
         )
     canvas = canvas_path.read_text(encoding="utf-8")
     logger.info(
@@ -168,14 +170,14 @@ def _format_ai_status_error(exc: BaseException) -> str:
         "（modules.llm.basic_lp_spec）。",
         " modules.llm.basic_cp_spec",
         "（modules.llm.basic_cp_spec）。",
-        " modules.basic_lp_gemini_manual",
-        "（modules.basic_lp_gemini_manual）。",
-        " modules.basic_cp_gemini_manual",
-        "（modules.basic_cp_gemini_manual）。",
-        " modules.standard_cp_gemini_manual",
-        "（modules.standard_cp_gemini_manual）。",
-        " modules.advance_cp_gemini_manual",
-        "（modules.advance_cp_gemini_manual）。",
+        " modules.basic_lp_claude_manual",
+        "（modules.basic_lp_claude_manual）。",
+        " modules.basic_cp_claude_manual",
+        "（modules.basic_cp_claude_manual）。",
+        " modules.standard_cp_claude_manual",
+        "（modules.standard_cp_claude_manual）。",
+        " modules.advance_cp_claude_manual",
+        "（modules.advance_cp_claude_manual）。",
         " modules.basic_lp_generated_apply",
         "（modules.basic_lp_generated_apply）。",
         " modules.case_extraction",
@@ -318,7 +320,7 @@ class WebsiteBot:
         return hearing_bundle, work_branch, plan_info
 
     # ------------------------------------------------------------------
-    # フェーズ2: TEXT_LLM（Gemini チェーン or Manus 再開）
+    # フェーズ2: TEXT_LLM（Claude CLI マニュアルチェーン or Manus 再開）
     # ------------------------------------------------------------------
 
     def _phase2_text_llm(
@@ -333,7 +335,7 @@ class WebsiteBot:
         出力: (requirements_result, spec)
         """
         if BOT_RESUME_FROM_MANUS:
-            logger.info("【フェーズ2・Manus再開】Gemini スキップ → Manus のみ実行 branch=%s", work_branch.value)
+            logger.info("【フェーズ2・Manus再開】Claude マニュアル段スキップ → Manus のみ実行 branch=%s", work_branch.value)
             req, spec = _resume_from_manus(
                 record_number=str(case.get("record_number") or ""),
                 partner_name=case["partner_name"],
@@ -401,7 +403,7 @@ class WebsiteBot:
         if (
             work_branch in BRANCH_REGISTRY
             and n_gen == 0
-            and (gemini_manual_enabled_for_branch(work_branch) or manus_git_for_fallback)
+            and (claude_manual_enabled_for_branch(work_branch) or manus_git_for_fallback)
         ):
             if manus_git_for_fallback:
                 logger.warning(
@@ -412,7 +414,7 @@ class WebsiteBot:
             else:
                 raise RuntimeError(
                     "生成マークダウンからサイトファイルを1件も適用できませんでした。"
-                    " 該当プランの Gemini マニュアルとリファクタ出力が spec に入っているか確認してください。"
+                    " 該当プランの Claude マニュアルとリファクタ出力が spec に入っているか確認してください。"
                 )
         return site_dir
 
@@ -458,7 +460,7 @@ class WebsiteBot:
                 raise RuntimeError("npm build に失敗: " + (blog[-2000:] if blog else ""))
 
     # ------------------------------------------------------------------
-    # フェーズ5: GitHub push → Vercel デプロイ → スプレッドシート更新
+    # フェーズ5: GitHub push → Vercel デプロイ → site-annotator 登録 → スプレッドシート更新
     # ------------------------------------------------------------------
 
     def _phase5_deploy(
@@ -468,7 +470,7 @@ class WebsiteBot:
         site_dir: Path,
     ) -> str:
         """引数: site_dir（ビルド済み）/ spec（manus_deploy_github_url 参照）/ case（行番号）
-        処理: GitHub push or Manus URL 利用 → Vercel デプロイ → シートに URL 書き込み
+        処理: GitHub push or Manus URL 利用 → Vercel デプロイ → site-annotator 登録 → シートに URL 書き込み
         出力: deploy_url
         """
         fallback_repo_name = sanitize_github_repo_name(
@@ -501,6 +503,27 @@ class WebsiteBot:
         logger.info("› デプロイ URL が開けるか確認…")
         if not self.vercel_client.verify_deployment_url(deploy_url):
             logger.warning("デプロイURLが閲覧できません: %s", deploy_url)
+
+        # 引数: partner_name（=サイト名）/ deploy_url（Vercel 公開 URL）
+        # 処理: POST /api/sites/provision — パートナー名・リポジトリURL・tracker.js の
+        #   3チェック通過時のみサイト作成・crawl 実行（site-annotator 側で並列チェック）
+        # 出力: 成功時は site id / share_token / crawl 件数をログ。失敗は warning のみ（続行）
+        if SITE_PROVISION_API_URL and SITE_PROVISION_API_KEY:
+            try:
+                from modules.site_provision_client import provision_site
+
+                logger.info("› site-annotator にサイトを登録…")
+                provision_site(
+                    api_url=SITE_PROVISION_API_URL,
+                    api_key=SITE_PROVISION_API_KEY,
+                    site_name=case["partner_name"],
+                    site_url=deploy_url,
+                )
+            except Exception:
+                logger.warning(
+                    "site-annotator への登録に失敗しました（続行します）",
+                    exc_info=True,
+                )
 
         # 引数: deploy_url / github_url / row — 処理: AI列と AJ列を batchUpdate
         self.spreadsheet.update_deploy_url_and_complete_status(

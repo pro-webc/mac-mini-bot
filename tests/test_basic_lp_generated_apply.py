@@ -94,7 +94,7 @@ def test_apply_empty_markdown_returns_zero(tmp_path: Path) -> None:
 
 
 def test_single_unnamed_fence_falls_back_to_page_tsx(tmp_path: Path) -> None:
-    """Gemini manual_gemini_final の典型出力: パスなし単一 tsx フェンス。"""
+    """Claude manual_claude_final の典型出力: パスなし単一 tsx フェンス。"""
     site = tmp_path / "site"
     site.mkdir()
     md = """ご提示いただいた要件に基づきコンポーネントを作成しました。

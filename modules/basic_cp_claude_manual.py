@@ -1,8 +1,8 @@
-"""BASIC-CP（コーポレート1ページ）制作マニュアルに沿った Gemini 多段チェーン。
+"""BASIC-CP（コーポレート1ページ）制作マニュアルに沿った Claude 多段チェーン。
 
-**API 呼び出し回数（マニュアルの「新規チャット」「タブ」境界と一致）**
+**CLI 呼び出し回数（マニュアルの「新規チャット」「タブ」境界と一致）**
 
-- 合計 **10 回**（各回が ``generate_content`` または ``send_message`` の1回）
+- 合計 **10 回**（各回が Claude Code CLI（claude -p）の1回。単発またはマルチターン）
 - **新規チャット（コンテキスト断絶）** はマニュアルの **タブ①〜⑤** に対応し **5 回**
 
 内訳（1 + 1 + 2 + 3 + 3 = 10）:
@@ -28,20 +28,18 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-import google.generativeai as genai
 from config.config import (
     BASIC_CP_REFACTOR_AFTER_MANUAL,
-    BASIC_CP_USE_GEMINI_MANUAL,
-    GEMINI_BASIC_CP_MODEL,
+    BASIC_CP_USE_CLAUDE_MANUAL,
+    CLAUDE_BASIC_CP_MODEL,
     get_contract_plan_info,
 )
 
-from modules.basic_lp_refactor_gemini import (
+from modules.basic_lp_refactor_claude import (
     BASIC_CP_REFACTOR_PREFACE_DIR,
     BASIC_LP_REFACTOR_MANUS_TASKS,
 )
@@ -55,14 +53,12 @@ from modules.llm.llm_pipeline_common import MIN_SITE_BUILD_PROMPT_CHARS, finaliz
 
 logger = logging.getLogger(__name__)
 
-BASIC_CP_MANUAL_GEMINI_API_CALLS_PER_CASE = 10
-BASIC_CP_MANUAL_GEMINI_NEW_CHAT_SESSIONS = 5
+BASIC_CP_MANUAL_CLAUDE_API_CALLS_PER_CASE = 10
+BASIC_CP_MANUAL_CLAUDE_NEW_CHAT_SESSIONS = 5
 
-from modules.gemini_manual_common import (
-    SAFETY_SETTINGS as _SAFETY,
-    configure_gemini as _configure,
-    gen_config as _gen_config,
-    response_text as _response_text_impl,
+from modules.claude_manual_common import (
+    ClaudeCLIChat,
+    generate_text as _generate_text,
     hearing_block as _hearing_block_impl,
     existing_site_url_block as _existing_site_url_block,
     client_hp_and_mood_placeholders as _client_hp_and_mood_placeholders,
@@ -71,7 +67,7 @@ from modules.gemini_manual_common import (
     subst as _subst_impl,
 )
 
-_MODULE_NAME = "modules.basic_cp_gemini_manual"
+_MODULE_NAME = "modules.basic_cp_claude_manual"
 _MANUAL_DIR = Path(__file__).resolve().parent.parent / "config" / "prompts" / "basic_cp_manual"
 
 
@@ -87,12 +83,25 @@ def _hearing_block(hearing_sheet_content: str) -> str:
     return _hearing_block_impl(hearing_sheet_content, module_name=_MODULE_NAME)
 
 
-def _response_text(response: Any) -> str:
-    return _response_text_impl(response, module_name=_MODULE_NAME)
+def _gen(prompt: str) -> str:
+    """単発生成のショートハンド。"""
+    return _generate_text(
+        prompt,
+        model=CLAUDE_BASIC_CP_MODEL,
+        module_name=_MODULE_NAME,
+    )
+
+
+def _new_chat() -> ClaudeCLIChat:
+    """マルチターンチャットのショートハンド。"""
+    return ClaudeCLIChat(
+        model=CLAUDE_BASIC_CP_MODEL,
+        module_name=_MODULE_NAME,
+    )
 
 
 @dataclass
-class BasicCpManualGeminiOutputs:
+class BasicCpManualClaudeOutputs:
     """各手順のモデル出力（デバッグ・追跡用）。"""
 
     step_1_1: str = ""
@@ -111,7 +120,7 @@ class BasicCpManualGeminiOutputs:
     raw_prompts: dict[str, str] = field(default_factory=dict)
 
 
-def run_basic_cp_gemini_manual_pipeline(
+def run_basic_cp_claude_manual_pipeline(
     *,
     hearing_sheet_content: str,
     appo_memo: str,
@@ -120,42 +129,35 @@ def run_basic_cp_gemini_manual_pipeline(
     partner_name: str,
     record_number: str = "",
     existing_site_url: str = "",
-) -> tuple[dict[str, Any], dict[str, Any], BasicCpManualGeminiOutputs]:
+) -> tuple[dict[str, Any], dict[str, Any], BasicCpManualClaudeOutputs]:
     """
-    BASIC-CP マニュアル手順どおりに Gemini を呼び、``requirements_result`` / ``spec`` を組み立てる。
+    BASIC-CP マニュアル手順どおりに Claude を呼び、``requirements_result`` / ``spec`` を組み立てる。
 
     Returns:
         (requirements_result, spec, step_outputs)
     """
-    if not BASIC_CP_USE_GEMINI_MANUAL:
+    if not BASIC_CP_USE_CLAUDE_MANUAL:
         raise RuntimeError(
-            "modules.basic_cp_gemini_manual: BASIC_CP_USE_GEMINI_MANUAL が無効です。"
+            "modules.basic_cp_claude_manual: BASIC_CP_USE_CLAUDE_MANUAL が無効です。"
         )
     _manus_tasks = (
         BASIC_LP_REFACTOR_MANUS_TASKS if BASIC_CP_REFACTOR_AFTER_MANUAL else 0
     )
-    _gemini_calls = BASIC_CP_MANUAL_GEMINI_API_CALLS_PER_CASE
-    _sessions = BASIC_CP_MANUAL_GEMINI_NEW_CHAT_SESSIONS
+    _claude_calls = BASIC_CP_MANUAL_CLAUDE_API_CALLS_PER_CASE
+    _sessions = BASIC_CP_MANUAL_CLAUDE_NEW_CHAT_SESSIONS
     logger.info(
-        "BASIC-CP Gemini: Gemini API %s 回（新規チャット境界 %s）+ Manus リファクタ %s タスク。"
+        "BASIC-CP Claude: Claude API %s 回（新規チャット境界 %s）+ Manus リファクタ %s タスク。"
         " 手順7の複数タブによる追加案生成は含みません。",
-        _gemini_calls,
+        _claude_calls,
         _sessions,
         _manus_tasks,
     )
-    _configure()
-    model = genai.GenerativeModel(
-        GEMINI_BASIC_CP_MODEL,
-        safety_settings=_SAFETY,
-    )
-    gcfg = _gen_config()
-    outs = BasicCpManualGeminiOutputs()
+    outs = BasicCpManualClaudeOutputs()
 
     hear = _hearing_block(hearing_sheet_content)
     p11 = _subst(_load_step("step_1_1.txt"), HEARING_BLOCK=hear)
-    logger.info("BASIC-CP Gemini: 手順1-1（タブ①・単発）…")
-    r11 = model.generate_content(p11, generation_config=gcfg)
-    outs.step_1_1 = _response_text(r11)
+    logger.info("BASIC-CP Claude: 手順1-1（タブ①・単発）…")
+    outs.step_1_1 = _gen(p11)
     outs.raw["step_1_1"] = outs.step_1_1
     outs.raw_prompts["step_1_1"] = p11
 
@@ -174,10 +176,9 @@ def run_basic_cp_gemini_manual_pipeline(
     p13 = _load_step("step_1_3.txt")
     p12_p13 = f"{p12.rstrip()}\n\n{p13.lstrip()}"
 
-    logger.info("BASIC-CP Gemini: 手順1-2+1-3 連結（タブ②・1回）…")
-    chat2 = model.start_chat(history=[])
-    r_tab2 = chat2.send_message(p12_p13, generation_config=gcfg)
-    tab2_text = _response_text(r_tab2)
+    logger.info("BASIC-CP Claude: 手順1-2+1-3 連結（タブ②・1回）…")
+    chat2 = _new_chat()
+    tab2_text = chat2.send_message(p12_p13)
     outs.step_1_2_assistant_ack = ""
     outs.raw["step_1_2"] = ""
     outs.step_1_3 = tab2_text
@@ -193,14 +194,12 @@ def run_basic_cp_gemini_manual_pipeline(
     hb = hear if hear else "（ヒアリング原文の再掲なし。）"
     p3 = _subst(_load_step("step_3.txt"), HEARING_BLOCK=hb)
 
-    logger.info("BASIC-CP Gemini: 手順2〜3（タブ③・同一チャット）…")
-    chat3 = model.start_chat(history=[])
-    r2 = chat3.send_message(p2, generation_config=gcfg)
-    outs.step_2 = _response_text(r2)
+    logger.info("BASIC-CP Claude: 手順2〜3（タブ③・同一チャット）…")
+    chat3 = _new_chat()
+    outs.step_2 = chat3.send_message(p2)
     outs.raw["step_2"] = outs.step_2
     outs.raw_prompts["step_2"] = p2
-    r3 = chat3.send_message(p3, generation_config=gcfg)
-    outs.step_3 = _response_text(r3)
+    outs.step_3 = chat3.send_message(p3)
     outs.raw["step_3"] = outs.step_3
     outs.raw_prompts["step_3"] = p3
 
@@ -221,10 +220,9 @@ def run_basic_cp_gemini_manual_pipeline(
         ),
     )
 
-    logger.info("BASIC-CP Gemini: 手順4〜6（タブ④・同一チャット）…")
-    chat4 = model.start_chat(history=[])
-    r4 = chat4.send_message(p4, generation_config=gcfg)
-    outs.step_4 = _response_text(r4)
+    logger.info("BASIC-CP Claude: 手順4〜6（タブ④・同一チャット）…")
+    chat4 = _new_chat()
+    outs.step_4 = chat4.send_message(p4)
     outs.raw["step_4"] = outs.step_4
     outs.raw_prompts["step_4"] = p4
     p5 = _subst(
@@ -233,12 +231,10 @@ def run_basic_cp_gemini_manual_pipeline(
         HEARING_1_3_OUTPUT=outs.step_1_3,
         STEP_2_OUTPUT=outs.step_2,
     )
-    r5 = chat4.send_message(p5, generation_config=gcfg)
-    outs.step_5_assistant_ack = _response_text(r5)
+    outs.step_5_assistant_ack = chat4.send_message(p5)
     outs.raw["step_5"] = outs.step_5_assistant_ack
     outs.raw_prompts["step_5"] = p5
-    r6 = chat4.send_message(p6, generation_config=gcfg)
-    outs.step_6 = _response_text(r6)
+    outs.step_6 = chat4.send_message(p6)
     outs.raw["step_6"] = outs.step_6
     outs.raw_prompts["step_6"] = p6
 
@@ -259,18 +255,15 @@ def run_basic_cp_gemini_manual_pipeline(
     )
     p73 = _load_step("step_7_3.txt")
 
-    logger.info("BASIC-CP Gemini: 手順7-1〜7-3（タブ⑤・同一チャット）…")
-    chat5 = model.start_chat(history=[])
-    r71 = chat5.send_message(p71, generation_config=gcfg)
-    outs.step_7_1 = _response_text(r71)
+    logger.info("BASIC-CP Claude: 手順7-1〜7-3（タブ⑤・同一チャット）…")
+    chat5 = _new_chat()
+    outs.step_7_1 = chat5.send_message(p71)
     outs.raw["step_7_1"] = outs.step_7_1
     outs.raw_prompts["step_7_1"] = p71
-    r72 = chat5.send_message(p72, generation_config=gcfg)
-    outs.step_7_2 = _response_text(r72)
+    outs.step_7_2 = chat5.send_message(p72)
     outs.raw["step_7_2"] = outs.step_7_2
     outs.raw_prompts["step_7_2"] = p72
-    r73 = chat5.send_message(p73, generation_config=gcfg)
-    outs.step_7_3 = _response_text(r73)
+    outs.step_7_3 = chat5.send_message(p73)
     outs.raw["step_7_3"] = outs.step_7_3
     outs.raw_prompts["step_7_3"] = p73
 
@@ -279,7 +272,7 @@ def run_basic_cp_gemini_manual_pipeline(
 
     manus_deploy_github_url: str | None = None
     if BASIC_CP_REFACTOR_AFTER_MANUAL:
-        from modules.gemini_manual_common import run_manus_refactor_block
+        from modules.claude_manual_common import run_manus_refactor_block
 
         _hr = hearing_reference_design_block_for_prompt(
             hearing_sheet_content, extra_texts=_extras,
@@ -289,8 +282,8 @@ def run_basic_cp_gemini_manual_pipeline(
             partner_name=partner_name,
             record_number=record_number,
             work_branch=ContractWorkBranch.BASIC,
-            manual_meta_key="basic_cp_manual_gemini",
-            model=GEMINI_BASIC_CP_MODEL,
+            manual_meta_key="basic_cp_manual_claude",
+            model=CLAUDE_BASIC_CP_MODEL,
             steps=outs.raw,
             step_prompts=outs.raw_prompts,
             hearing_reference_block=_hr,
@@ -313,7 +306,7 @@ def run_basic_cp_gemini_manual_pipeline(
     max_pages = int(plan_info.get("pages") or 1)
     if len(combined.strip()) < MIN_SITE_BUILD_PROMPT_CHARS:
         raise RuntimeError(
-            "modules.basic_cp_gemini_manual: 結合要望テキストが短すぎます（"
+            "modules.basic_cp_claude_manual: 結合要望テキストが短すぎます（"
             f"{len(combined)} / 最低 {MIN_SITE_BUILD_PROMPT_CHARS}）。"
         )
     requirements_result: dict[str, Any] = finalize_plain_prompt(
@@ -321,8 +314,8 @@ def run_basic_cp_gemini_manual_pipeline(
         expected_plan_type="basic",
         max_pages=max_pages,
     )
-    requirements_result["basic_cp_manual_gemini"] = {
-        "model": GEMINI_BASIC_CP_MODEL,
+    requirements_result["basic_cp_manual_claude"] = {
+        "model": CLAUDE_BASIC_CP_MODEL,
         "steps": outs.raw,
         "step_prompts": outs.raw_prompts,
     }
@@ -332,16 +325,16 @@ def run_basic_cp_gemini_manual_pipeline(
         contract_plan,
         partner_name,
     )
-    spec["basic_manual_gemini_final"] = outs.step_7_3
+    spec["basic_manual_claude_final"] = outs.step_7_3
     spec["basic_refactored_source_markdown"] = outs.step_refactor or ""
     if manus_deploy_github_url:
         spec["manus_deploy_github_url"] = manus_deploy_github_url.strip()
-    spec["basic_manual_gemini_step_2_structure"] = outs.step_2
-    spec["basic_manual_gemini_step_6_design_doc"] = outs.step_6
+    spec["basic_manual_claude_step_2_structure"] = outs.step_2
+    spec["basic_manual_claude_step_6_design_doc"] = outs.step_6
 
     logger.info(
-        "BASIC-CP Gemini マニュアルチェーン完了 model=%s chars_7_3=%s chars_refactor=%s",
-        GEMINI_BASIC_CP_MODEL,
+        "BASIC-CP Claude マニュアルチェーン完了 model=%s chars_7_3=%s chars_refactor=%s",
+        CLAUDE_BASIC_CP_MODEL,
         len(outs.step_7_3),
         len(outs.step_refactor or ""),
     )
@@ -349,7 +342,7 @@ def run_basic_cp_gemini_manual_pipeline(
 
 
 def _build_site_build_prompt_from_steps(
-    outs: BasicCpManualGeminiOutputs,
+    outs: BasicCpManualClaudeOutputs,
     *,
     partner_name: str,
     hearing_sheet_content: str = "",
@@ -357,7 +350,7 @@ def _build_site_build_prompt_from_steps(
     sales_notes: str = "",
 ) -> str:
     parts: list[str] = [
-        f"【BASIC-CP / Gemini マニュアル全手順の結合ログ】パートナー: {partner_name}\n",
+        f"【BASIC-CP / Claude マニュアル全手順の結合ログ】パートナー: {partner_name}\n",
         "\n\n=== 手順1-1 ===\n\n",
         outs.step_1_1,
         "\n\n=== 手順1-3 ===\n\n",

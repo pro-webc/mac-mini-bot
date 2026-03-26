@@ -1,17 +1,17 @@
 #!/usr/bin/env python3
 """
-**10回目の成果物**（手順5 のプロンプト＋応答）と ``00_source.json`` の ``prev_gemini_dir``（9回目・手順4）で
-タブ⑤チャットを2往復復元し、STANDARD-CP の Gemini **11/15（手順6・タブ⑤の3通目）**だけ実行する。
+**10回目の成果物**（手順5 のプロンプト＋応答）と ``00_source.json`` の ``prev_step_dir``（9回目・手順4）で
+タブ⑤チャットを2往復復元し、STANDARD-CP の Claude **11/15（手順6・タブ⑤の3通目）**だけ実行する。
 
 ::
 
-  python3 scripts/gemini_standard_cp_step11_from_phase1.py \\
+  python3 scripts/standard_cp_step11_from_phase1.py \\
     --phase1-dir output/pipeline_test_runs/<run>/phase1_snapshots/<UTC> \\
-    --prev-gemini-dir output/pipeline_test_runs/<run>/gemini_step_tests/<10回目UTC>
+    --prev-step-dir output/pipeline_test_runs/<run>/claude_step_tests/<10回目UTC>
 
 9回目フォルダを直接渡す場合（``00_source.json`` が無いとき）は ``--step4-dir`` を追加。
 
-成果物は **同じ run 配下**の ``gemini_step_tests/<新UTC>/`` に保存。
+成果物は **同じ run 配下**の ``claude_step_tests/<新UTC>/`` に保存。
 
 リポジトリルートで実行。
 """
@@ -28,10 +28,10 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from config.config import (  # noqa: E402
-    pipeline_gemini_step_tests_base,
+    pipeline_claude_step_tests_base,
     pipeline_run_root_from_phase1_snapshot_dir,
 )
-from modules.standard_cp_gemini_manual import run_standard_cp_gemini_api_call_11_of_15  # noqa: E402
+from modules.standard_cp_claude_manual import run_standard_cp_claude_api_call_11_of_15  # noqa: E402
 
 
 def _resolve_run_root(*, phase1: Path, run_dir: Path | None) -> Path:
@@ -54,13 +54,13 @@ def _load_step4_turn(prev_dir: Path) -> tuple[str, str]:
     p_resp = d / "02_response_step_4.txt"
     if not p_prompt.is_file():
         print(
-            f"ERROR: {p_prompt} がありません（--step4-dir は9回目の gemini_step_tests/<UTC>/ を指定）",
+            f"ERROR: {p_prompt} がありません（--step4-dir は9回目の claude_step_tests/<UTC>/ を指定）",
             file=sys.stderr,
         )
         sys.exit(1)
     if not p_resp.is_file():
         print(
-            f"ERROR: {p_resp} がありません（--step4-dir は9回目の gemini_step_tests/<UTC>/ を指定）",
+            f"ERROR: {p_resp} がありません（--step4-dir は9回目の claude_step_tests/<UTC>/ を指定）",
             file=sys.stderr,
         )
         sys.exit(1)
@@ -74,13 +74,13 @@ def _load_step10_turn(prev10: Path) -> tuple[str, str, str, str]:
     p5r = d / "02_response_step_5.txt"
     if not p5p.is_file():
         print(
-            f"ERROR: {p5p} がありません（--prev-gemini-dir は10回目の gemini_step_tests/<UTC>/ を指定）",
+            f"ERROR: {p5p} がありません（--prev-step-dir は10回目の claude_step_tests/<UTC>/ を指定）",
             file=sys.stderr,
         )
         sys.exit(1)
     if not p5r.is_file():
         print(
-            f"ERROR: {p5r} がありません（--prev-gemini-dir は10回目の gemini_step_tests/<UTC>/ を指定）",
+            f"ERROR: {p5r} がありません（--prev-step-dir は10回目の claude_step_tests/<UTC>/ を指定）",
             file=sys.stderr,
         )
         sys.exit(1)
@@ -93,9 +93,9 @@ def _load_step10_turn(prev10: Path) -> tuple[str, str, str, str]:
         )
         sys.exit(1)
     src = json.loads(src_path.read_text(encoding="utf-8"))
-    prev9 = src.get("prev_gemini_dir")
+    prev9 = src.get("prev_step_dir")
     if not prev9:
-        print("ERROR: 00_source.json に prev_gemini_dir がありません。", file=sys.stderr)
+        print("ERROR: 00_source.json に prev_step_dir がありません。", file=sys.stderr)
         sys.exit(1)
     p4, r4 = _load_step4_turn(Path(prev9))
     return p4, r4, p5p.read_text(encoding="utf-8"), p5r.read_text(encoding="utf-8")
@@ -103,7 +103,7 @@ def _load_step10_turn(prev10: Path) -> tuple[str, str, str, str]:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="STANDARD-CP Gemini 11/15（手順6・タブ⑤3通目・チャット継続）"
+        description="STANDARD-CP Claude 11/15（手順6・タブ⑤3通目・チャット継続）"
     )
     parser.add_argument(
         "--phase1-dir",
@@ -113,7 +113,7 @@ def main() -> None:
         help="phase1_snapshots/<UTC>/（run 親の推定用）",
     )
     parser.add_argument(
-        "--prev-gemini-dir",
+        "--prev-step-dir",
         type=Path,
         required=True,
         metavar="DIR",
@@ -124,7 +124,7 @@ def main() -> None:
         type=Path,
         default=None,
         metavar="DIR",
-        help="省略時は 00_source.json の prev_gemini_dir。無い場合に9回目フォルダを明示",
+        help="省略時は 00_source.json の prev_step_dir。無い場合に9回目フォルダを明示",
     )
     parser.add_argument(
         "--run-dir",
@@ -137,13 +137,13 @@ def main() -> None:
 
     phase1 = args.phase1_dir.resolve()
     run_root = _resolve_run_root(phase1=phase1, run_dir=args.run_dir)
-    prev10 = args.prev_gemini_dir.resolve()
+    prev10 = args.prev_step_dir.resolve()
 
     p5 = prev10 / "01_prompt_step_5.txt"
     r5 = prev10 / "02_response_step_5.txt"
     if not p5.is_file() or not r5.is_file():
         print(
-            "ERROR: --prev-gemini-dir に 01_prompt_step_5.txt / 02_response_step_5.txt が必要です。",
+            "ERROR: --prev-step-dir に 01_prompt_step_5.txt / 02_response_step_5.txt が必要です。",
             file=sys.stderr,
         )
         sys.exit(1)
@@ -156,16 +156,16 @@ def main() -> None:
     else:
         p4, r4, p5_text, r5_text = _load_step10_turn(prev10)
         src = json.loads((prev10 / "00_source.json").read_text(encoding="utf-8"))
-        step4_ref = str(Path(src["prev_gemini_dir"]).resolve())
+        step4_ref = str(Path(src["prev_step_dir"]).resolve())
 
-    prompt, response = run_standard_cp_gemini_api_call_11_of_15(
+    prompt, response = run_standard_cp_claude_api_call_11_of_15(
         step_4_prompt=p4,
         step_4_response=r4,
         step_5_prompt=p5_text,
         step_5_response=r5_text,
     )
 
-    base = pipeline_gemini_step_tests_base(run_root)
+    base = pipeline_claude_step_tests_base(run_root)
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     out = base / stamp
     out.mkdir(parents=True, exist_ok=True)
@@ -175,7 +175,7 @@ def main() -> None:
             {
                 "phase1_dir": str(phase1),
                 "run_root": str(run_root.resolve()),
-                "prev_gemini_dir": str(prev10),
+                "prev_step_dir": str(prev10),
                 "step4_dir": step4_ref,
             },
             ensure_ascii=False,
@@ -190,8 +190,8 @@ def main() -> None:
         "run_root": str(run_root.resolve()),
         "phase1_dir": str(phase1),
         "step": "standard_cp_manual_step_6",
-        "gemini_call_index_1based": 11,
-        "gemini_calls_total_standard_cp": 15,
+        "claude_call_index_1based": 11,
+        "claude_calls_total_standard_cp": 15,
         "prompt_chars": len(prompt),
         "response_chars": len(response),
     }
@@ -202,7 +202,7 @@ def main() -> None:
     (out / "README.txt").write_text(
         "\n".join(
             [
-                "STANDARD-CP Gemini 段階テスト（手順6・API 11/15・タブ⑤3通目）",
+                "STANDARD-CP Claude 段階テスト（手順6・API 11/15・タブ⑤3通目）",
                 "",
                 "00_source.json — phase1・run・10回目・手順4フォルダ参照",
                 "01_prompt_step_6.txt — step_6.txt 本文",

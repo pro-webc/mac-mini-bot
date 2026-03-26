@@ -5,7 +5,7 @@ LLM へ渡す文言の正本は **`config/prompts/common/technical_spec_prompt_b
 
 ## このファイルの位置づけ
 
-`technical_spec_prompt_block.txt` は全プランの Gemini 多段チェーン最終段に注入される**品質ガードレール**であり、**過去の案件で発見された品質問題から蒸留されたルール集**です。
+`technical_spec_prompt_block.txt` は全プランの TEXT_LLM（Claude Code CLI）多段チェーン最終段に注入される**品質ガードレール**であり、**過去の案件で発見された品質問題から蒸留されたルール集**です。
 
 ### 運用サイクル
 
