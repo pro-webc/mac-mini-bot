@@ -12,7 +12,8 @@ from pathlib import Path
 from typing import Any
 
 from config.config import OUTPUT_DIR
-from modules.contract_workflow import ContractWorkBranch
+
+from modules.contract_workflow import BRANCH_REGISTRY, ContractWorkBranch
 
 from .llm_text_artifacts import write_llm_yaml_artifact
 
@@ -20,69 +21,8 @@ logger = logging.getLogger(__name__)
 
 _RAW_OUTPUT_DIR = "llm_raw_output"
 _GEMINI_STEPS_SUBDIR = "gemini_steps"
-# Manus 待ちでフェーズ3に進めないときも Gemini 完了分を失わない（generate_site は sites 直下を消すため sites 外に置く）
 _PHASE2_LLM_CHECKPOINT_SUBDIR = "phase2_llm_checkpoints"
-# TEXT_LLM 直後・generate_site 前（フェーズ3未到達でも正本を残す）
 _PHASE2_COMPLETE_SUBDIR = "phase2_complete"
-
-# プラン別に spec に載りうる LLM 文字列キー（順不同・空はスキップ）
-_SPEC_LLM_KEYS: dict[ContractWorkBranch, tuple[str, ...]] = {
-    ContractWorkBranch.BASIC_LP: (
-        "basic_lp_refactored_source_markdown",
-        "basic_lp_manual_gemini_final",
-        "basic_lp_manual_gemini_step_4_wireframe",
-        "basic_lp_manual_gemini_step_7_design_doc",
-        "manus_deploy_github_url",
-    ),
-    ContractWorkBranch.BASIC: (
-        "basic_refactored_source_markdown",
-        "basic_manual_gemini_final",
-        "basic_manual_gemini_step_2_structure",
-        "basic_manual_gemini_step_6_design_doc",
-        "manus_deploy_github_url",
-    ),
-    ContractWorkBranch.STANDARD: (
-        "standard_refactored_source_markdown",
-        "standard_manual_gemini_final",
-        "standard_manual_gemini_step_2",
-        "standard_manual_gemini_step_6",
-        "manus_deploy_github_url",
-    ),
-    ContractWorkBranch.ADVANCE: (
-        "advance_refactored_source_markdown",
-        "advance_manual_gemini_final",
-        "advance_manual_gemini_step_2",
-        "advance_manual_gemini_step_6",
-        "manus_deploy_github_url",
-    ),
-}
-
-_MANUAL_META_KEYS = (
-    "basic_lp_manual_gemini",
-    "basic_cp_manual_gemini",
-    "standard_cp_manual_gemini",
-    "advance_cp_manual_gemini",
-)
-
-# Manus リファクタの入力（Canvas 相当）と出力（フェンス付き MD）の spec キー
-_MANUS_BRANCH_KEYS: dict[ContractWorkBranch, tuple[str, str]] = {
-    ContractWorkBranch.BASIC_LP: (
-        "basic_lp_refactored_source_markdown",
-        "basic_lp_manual_gemini_final",
-    ),
-    ContractWorkBranch.BASIC: (
-        "basic_refactored_source_markdown",
-        "basic_manual_gemini_final",
-    ),
-    ContractWorkBranch.STANDARD: (
-        "standard_refactored_source_markdown",
-        "standard_manual_gemini_final",
-    ),
-    ContractWorkBranch.ADVANCE: (
-        "advance_refactored_source_markdown",
-        "advance_manual_gemini_final",
-    ),
-}
 
 _MANUS_ONLY_TESTS_SUBDIR = "manus_only_tests"
 
@@ -312,7 +252,9 @@ def write_llm_raw_artifacts(
     root = site_dir / _RAW_OUTPUT_DIR
     n = 0
 
-    for key in _SPEC_LLM_KEYS.get(work_branch, ()):
+    branch_cfg = BRANCH_REGISTRY.get(work_branch)
+    spec_keys = branch_cfg.spec_llm_keys if branch_cfg else ()
+    for key in spec_keys:
         raw = spec.get(key)
         if not isinstance(raw, str) or not raw.strip():
             continue
@@ -327,7 +269,8 @@ def write_llm_raw_artifacts(
             _write_text(root / "site_build_prompt.txt", prompt)
             n += 1
 
-        for meta_key in _MANUAL_META_KEYS:
+        all_meta_keys = tuple(c.manual_meta_key for c in BRANCH_REGISTRY.values())
+        for meta_key in all_meta_keys:
             meta = requirements_result.get(meta_key)
             if not isinstance(meta, dict):
                 continue
@@ -378,10 +321,10 @@ def write_manus_only_style_run_artifacts(
     処理: プラン別の refactored・canvas キーを解決し、タイムスタンプ 1 フォルダに JSON・テキストを書く。
     出力: 作成したラン用ディレクトリ（相対パス追跡用）。未作成時は None。
     """
-    pair = _MANUS_BRANCH_KEYS.get(work_branch)
-    if not pair:
+    branch_cfg = BRANCH_REGISTRY.get(work_branch)
+    if not branch_cfg:
         return None
-    refactor_key, canvas_key = pair
+    refactor_key, canvas_key = branch_cfg.manus_keys
     raw_md = spec.get(refactor_key)
     md_body = raw_md if isinstance(raw_md, str) else ""
     md_for_trigger = md_body.strip()

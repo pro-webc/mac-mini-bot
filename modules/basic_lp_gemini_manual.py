@@ -39,26 +39,13 @@ import google.generativeai as genai
 from config.config import (
     BASIC_LP_REFACTOR_AFTER_MANUAL,
     BASIC_LP_USE_GEMINI_MANUAL,
-    GEMINI_API_KEY,
     GEMINI_BASIC_LP_MODEL,
-    GEMINI_MANUAL_MAX_OUTPUT_TOKENS,
     get_contract_plan_info,
 )
-from google.generativeai.types import HarmBlockThreshold, HarmCategory
 
-from modules.basic_lp_refactor_gemini import (
-    BASIC_LP_REFACTOR_MANUS_TASKS,
-    build_basic_lp_refactor_user_prompt,
-    run_basic_lp_refactor_stage,
-)
+from modules.basic_lp_refactor_gemini import BASIC_LP_REFACTOR_MANUS_TASKS
 from modules.contract_workflow import ContractWorkBranch
-from modules.llm.llm_raw_output import write_pre_manus_llm_checkpoint
-from modules.gemini_generative_timeout import ensure_gemini_rpc_patch_from_config
-from modules.hearing_url_utils import (
-    existing_site_url_guess_from_hearing,
-    hearing_reference_design_block_for_prompt,
-    reference_site_url_from_hearing,
-)
+from modules.hearing_url_utils import hearing_reference_design_block_for_prompt
 from modules.llm.basic_lp_spec import build_basic_lp_spec_dict
 from modules.llm.llm_pipeline_common import MIN_SITE_BUILD_PROMPT_CHARS, finalize_plain_prompt
 
@@ -69,115 +56,37 @@ BASIC_LP_MANUAL_GEMINI_API_CALLS_PER_CASE = 11
 BASIC_LP_MANUAL_GEMINI_NEW_CHAT_SESSIONS = 5
 # リファクタ段階は Manus タスク1件（BASIC_LP_REFACTOR_AFTER_MANUAL 時）
 
-_MANUAL_DIR = Path(__file__).resolve().parent.parent / "config" / "prompts" / "basic_lp_manual"
+from modules.gemini_manual_common import (
+    SAFETY_SETTINGS as _SAFETY,
+    configure_gemini as _configure,
+    gen_config as _gen_config,
+    response_text as _response_text_impl,
+    hearing_block as _hearing_block_impl,
+    existing_site_url_block as _existing_site_url_block,
+    client_hp_and_mood_placeholders as _client_hp_and_mood_placeholders,
+    reference_url_block as _reference_url_block,
+    load_step as _load_step_impl,
+    subst as _subst_impl,
+)
 
-_SAFETY = {
-    HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_ONLY_HIGH,
-    HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_ONLY_HIGH,
-    HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_ONLY_HIGH,
-    HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_ONLY_HIGH,
-}
+_MODULE_NAME = "modules.basic_lp_gemini_manual"
+_MANUAL_DIR = Path(__file__).resolve().parent.parent / "config" / "prompts" / "basic_lp_manual"
 
 
 def _load_step(filename: str) -> str:
-    path = _MANUAL_DIR / filename
-    if not path.is_file():
-        raise RuntimeError(
-            f"modules.basic_lp_gemini_manual: マニュアルプロンプトが見つかりません: {path}"
-        )
-    return path.read_text(encoding="utf-8")
+    return _load_step_impl(_MANUAL_DIR, filename, module_name=_MODULE_NAME)
 
 
 def _subst(template: str, **kwargs: str) -> str:
-    out = template
-    for key, value in kwargs.items():
-        out = out.replace("{{" + key + "}}", value)
-    if "{{" in out and "}}" in out:
-        i = out.index("{{")
-        raise RuntimeError(
-            "modules.basic_lp_gemini_manual: プレースホルダが未置換です: "
-            + out[i : i + 80]
-        )
-    return out
+    return _subst_impl(template, module_name=_MODULE_NAME, **kwargs)
 
 
 def _hearing_block(hearing_sheet_content: str) -> str:
-    h = (hearing_sheet_content or "").strip()
-    if not h:
-        raise RuntimeError(
-            "modules.basic_lp_gemini_manual: ヒアリングシート本文が空です（手順1-1 に渡せません）。"
-        )
-    return h
-
-
-def _existing_site_url_block(hearing_sheet_content: str, explicit: str) -> str:
-    u = (explicit or "").strip()
-    if not u:
-        u = existing_site_url_guess_from_hearing(hearing_sheet_content)
-    if u:
-        return u
-    return "（既存サイトURLの記載なし。ヒアリング本文に URL があればそちらを参照）"
-
-
-def _client_hp_and_mood_placeholders() -> tuple[str, str]:
-    """手順5の「〇〇」相当。人間作業では手入力するため、自動実行時はモデルへの指示文とする。"""
-    return (
-        "（ヒアリングシート設問「ホームページに使いたい色」および手順1-3の記載を最優先。未記載なら本文から判断）",
-        "（ヒアリングシート設問「希望の雰囲気」および手順1-3の記載を最優先。未記載なら本文から判断）",
-    )
-
-
-def _reference_url_block(
-    hearing_sheet_content: str,
-    *,
-    extra_texts: Sequence[str] = (),
-) -> str:
-    u = reference_site_url_from_hearing(
-        hearing_sheet_content or "", extra_texts=extra_texts,
-    )
-    if u:
-        return u
-    return "（参考サイトURLの記載なし。手順1-3およびヒアリング本文を参照）"
+    return _hearing_block_impl(hearing_sheet_content, module_name=_MODULE_NAME)
 
 
 def _response_text(response: Any) -> str:
-    if not getattr(response, "candidates", None):
-        raise RuntimeError(
-            "modules.basic_lp_gemini_manual: Gemini 応答に candidates がありません。"
-            f" prompt_feedback={getattr(response, 'prompt_feedback', None)}"
-        )
-    chunks: list[str] = []
-    for cand in response.candidates:
-        content = getattr(cand, "content", None)
-        if not content or not getattr(content, "parts", None):
-            continue
-        for part in content.parts:
-            t = getattr(part, "text", None)
-            if t:
-                chunks.append(t)
-    out = "".join(chunks).strip()
-    if not out:
-        raise RuntimeError(
-            "modules.basic_lp_gemini_manual: Gemini 応答テキストが空です（フィルタ等でブロックされた可能性があります）。"
-        )
-    return out
-
-
-def _configure() -> None:
-    key = (GEMINI_API_KEY or "").strip()
-    if not key:
-        raise RuntimeError(
-            "modules.basic_lp_gemini_manual: GEMINI_API_KEY が空です。"
-        )
-    genai.configure(api_key=key)
-    ensure_gemini_rpc_patch_from_config()
-
-
-def _gen_config() -> dict[str, Any]:
-    return {
-        "max_output_tokens": GEMINI_MANUAL_MAX_OUTPUT_TOKENS,
-        "temperature": 0.35,
-    }
+    return _response_text_impl(response, module_name=_MODULE_NAME)
 
 
 @dataclass
@@ -369,31 +278,21 @@ def run_basic_lp_gemini_manual_pipeline(
 
     manus_deploy_github_url: str | None = None
     if BASIC_LP_REFACTOR_AFTER_MANUAL:
-        write_pre_manus_llm_checkpoint(
-            site_name=f"{partner_name}-{record_number}",
-            work_branch=ContractWorkBranch.BASIC_LP,
-            manual_meta_key="basic_lp_manual_gemini",
-            model=GEMINI_BASIC_LP_MODEL,
-            steps=dict(outs.raw),
-            step_prompts=dict(outs.raw_prompts),
+        from modules.gemini_manual_common import run_manus_refactor_block
+
+        md, manus_deploy_github_url, _prompt = run_manus_refactor_block(
             canvas_markdown=outs.step_8_3,
             partner_name=partner_name,
             record_number=record_number,
-        )
-        outs.raw_prompts["manus_refactor_task"] = build_basic_lp_refactor_user_prompt(
-            outs.step_8_3,
-            partner_name=partner_name,
-            record_number=record_number,
+            work_branch=ContractWorkBranch.BASIC_LP,
+            manual_meta_key="basic_lp_manual_gemini",
+            model=GEMINI_BASIC_LP_MODEL,
+            steps=outs.raw,
+            step_prompts=outs.raw_prompts,
             hearing_reference_block=_hr_block,
             contract_max_pages=_manus_contract_pages,
         )
-        md, manus_deploy_github_url = run_basic_lp_refactor_stage(
-            canvas_source_code=outs.step_8_3,
-            partner_name=partner_name,
-            record_number=record_number,
-            hearing_reference_block=_hr_block,
-            contract_max_pages=_manus_contract_pages,
-        )
+        outs.raw_prompts["manus_refactor_task"] = _prompt
         outs.step_refactor = md
         outs.raw["step_refactor"] = md
         outs.raw["step_refactor_deploy_github_url"] = manus_deploy_github_url or ""

@@ -5,6 +5,8 @@ import shutil
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from modules.contract_workflow import BRANCH_REGISTRY
+
 from config import config as cfg
 
 
@@ -70,17 +72,10 @@ def validate_startup_config(*, require_full_pipeline: bool = True) -> StartupVal
                 "GEMINI_API_KEY が空です。本番パイプラインではテキスト LLM（Gemini マニュアル）に必要です。"
             )
 
-        _refactor_needs_manus = (
-            (cfg.BASIC_LP_USE_GEMINI_MANUAL and cfg.BASIC_LP_REFACTOR_AFTER_MANUAL)
-            or (cfg.BASIC_CP_USE_GEMINI_MANUAL and cfg.BASIC_CP_REFACTOR_AFTER_MANUAL)
-            or (
-                cfg.STANDARD_CP_USE_GEMINI_MANUAL
-                and cfg.STANDARD_CP_REFACTOR_AFTER_MANUAL
-            )
-            or (
-                cfg.ADVANCE_CP_USE_GEMINI_MANUAL
-                and cfg.ADVANCE_CP_REFACTOR_AFTER_MANUAL
-            )
+        _refactor_needs_manus = any(
+            getattr(cfg, bc.use_gemini_flag, False)
+            and getattr(cfg, bc.refactor_flag, False)
+            for bc in BRANCH_REGISTRY.values()
         )
         if _refactor_needs_manus and not cfg.MANUS_API_KEY.strip():
             r.errors.append(
@@ -88,28 +83,13 @@ def validate_startup_config(*, require_full_pipeline: bool = True) -> StartupVal
                 "（いずれかのプランで *_USE_GEMINI_MANUAL と *_REFACTOR_AFTER_MANUAL が両方 true のとき必須）"
             )
 
-        if cfg.BASIC_LP_REFACTOR_AFTER_MANUAL and not cfg.BASIC_LP_USE_GEMINI_MANUAL:
-            r.warnings.append(
-                "BASIC_LP_REFACTOR_AFTER_MANUAL=true ですが BASIC_LP_USE_GEMINI_MANUAL が無効のため、"
-                "リファクタ段階はパイプライン上で実行されません。"
-            )
-
-        if cfg.BASIC_CP_REFACTOR_AFTER_MANUAL and not cfg.BASIC_CP_USE_GEMINI_MANUAL:
-            r.warnings.append(
-                "BASIC_CP_REFACTOR_AFTER_MANUAL=true ですが BASIC_CP_USE_GEMINI_MANUAL が無効のため、"
-                "BASIC-CP リファクタ段階はパイプライン上で実行されません。"
-            )
-
-        if cfg.STANDARD_CP_REFACTOR_AFTER_MANUAL and not cfg.STANDARD_CP_USE_GEMINI_MANUAL:
-            r.warnings.append(
-                "STANDARD_CP_REFACTOR_AFTER_MANUAL=true ですが STANDARD_CP_USE_GEMINI_MANUAL が無効のため、"
-                "STANDARD-CP リファクタ段階はパイプライン上で実行されません。"
-            )
-
-        if cfg.ADVANCE_CP_REFACTOR_AFTER_MANUAL and not cfg.ADVANCE_CP_USE_GEMINI_MANUAL:
-            r.warnings.append(
-                "ADVANCE_CP_REFACTOR_AFTER_MANUAL=true ですが ADVANCE_CP_USE_GEMINI_MANUAL が無効のため、"
-                "ADVANCE-CP リファクタ段階はパイプライン上で実行されません。"
-            )
+        for bc in BRANCH_REGISTRY.values():
+            refactor_on = getattr(cfg, bc.refactor_flag, False)
+            gemini_on = getattr(cfg, bc.use_gemini_flag, False)
+            if refactor_on and not gemini_on:
+                r.warnings.append(
+                    f"{bc.refactor_flag}=true ですが {bc.use_gemini_flag} が無効のため、"
+                    f"{bc.plan_label} リファクタ段階はパイプライン上で実行されません。"
+                )
 
     return r

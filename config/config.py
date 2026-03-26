@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import os
-import re
 from datetime import date, datetime
 from pathlib import Path
 
@@ -402,125 +401,19 @@ def latest_phase1_snapshot_dir(*, run_root: Path | None = None) -> Path | None:
     return max(dirs, key=lambda d: d.stat().st_mtime)
 
 
-# スプレッドシート列マッピング
-SPREADSHEET_COLUMNS = {
-    "record_number": "B",  # record_id
-    "partner_name": "C",   # client_name
-    "contract_plan": "D",  # plan_type
-    "ball_holder": "Q",  # ボール保持者（着手条件: 既定では「ポリッシュ」のみ）
-    # Bot 着手フラグ（R列）。空欄=未着手、"MacBot"=着手済み。1行目の見出しは検証しない
-    "ai_status": "R",
-    # SPREADSHEET_TARGET_AI_STATUS と照合する列（例: overall_status）
-    "phase_status": "M",
-    "phase_deadline": "T",  # phase_deadline
-    "appo_memo": "AD",     # ap_recording_memo
-    "sales_notes": "AE",   # sales_note_pre_demo
-    "hearing_sheet_url": "AH",  # hearing_sheet_url
-    "github_repo_url": "AI",    # 最終出力: GitHub リポジトリ URL
-    "test_site_url": "AJ",      # test_url（着手条件の空欄チェック用に読み取り）
-    "deploy_url": "AJ",         # 最終出力: デプロイ済み URL（test_site_url と同一列）
-}
-
-# 1行目に期待する列名（SPREADSHEET_COLUMNS のキーで検証する列のみ）
-# ※ R（ai_status）・AI（github_repo_url）・AJ（deploy_url）は Bot 書き込み専用のため見出し検証の対象外
-# ※実シートの英語ヘッダーに合わせる（日本語シートの場合は .env で別途調整）
-SPREADSHEET_HEADER_LABELS: dict[str, str] = {
-    "record_number": "record_id",
-    "partner_name": "client_name",
-    "contract_plan": "plan_type",
-    "ball_holder": "ball_holder",
-    "phase_status": "overall_status",
-    "phase_deadline": "phase_deadline",
-    "appo_memo": "ap_recording_memo",
-    "sales_notes": "sales_note_pre_demo",
-    "hearing_sheet_url": "hearing_sheet_url",
-    "test_site_url": "test_url",
-}
-
-# いずれかが空の行は対象フェーズでも処理しない（カンマ区切り・SPREADSHEET_COLUMNS のキーのみ）
-_raw_req_fields = os.getenv(
-    "SPREADSHEET_REQUIRED_FIELDS",
-    "record_number,partner_name,contract_plan",
+# スプレッドシート列定義（config/spreadsheet_schema.py から re-export）
+from config.spreadsheet_schema import (  # noqa: F401, E402, I001
+    SPREADSHEET_COLUMNS,
+    SPREADSHEET_HEADER_LABELS,
+    SPREADSHEET_REQUIRED_CASE_FIELDS,
 )
-SPREADSHEET_REQUIRED_CASE_FIELDS: tuple[str, ...] = tuple(
-    k.strip()
-    for k in _raw_req_fields.split(",")
-    if k.strip() and k.strip() in SPREADSHEET_COLUMNS
+
+# 契約プラン情報（config/contract_plans.py から re-export）
+from config.contract_plans import (  # noqa: F401, E402
+    CONTRACT_PLANS,
+    _normalize_plan_name,
+    get_contract_plan_info,
 )
-if not SPREADSHEET_REQUIRED_CASE_FIELDS:
-    SPREADSHEET_REQUIRED_CASE_FIELDS = (
-        "record_number",
-        "partner_name",
-        "contract_plan",
-    )
-
-# 契約プラン情報
-CONTRACT_PLANS = {
-    "BASIC LP": {
-        "name": "BASIC LP",
-        "pages": 1,
-        "type": "landing_page"
-    },
-    "BASIC": {
-        "name": "BASIC",
-        "pages": 1,
-        "type": "website"
-    },
-    "STANDARD": {
-        "name": "STANDARD",
-        "pages": 6,
-        "type": "website"
-    },
-    "ADVANCE": {
-        "name": "ADVANCE",
-        "pages": 12,
-        "type": "website"
-    }
-}
-
-def _normalize_plan_name(raw: str) -> str:
-    """スプレッドシートの価格接尾辞 ``(9,800円)`` 等を除去して大文字化する。
-
-    連続空白は1つに畳む（``BASIC  LP`` と ``BASIC LP`` を同一視するため）。
-    """
-    s = (raw or "").strip().upper()
-    paren = s.find("(")
-    if paren > 0:
-        s = s[:paren].rstrip()
-    s = re.sub(r"\s+", " ", s.strip())
-    return s
-
-
-def get_contract_plan_info(plan_name: str) -> dict:
-    """
-    契約プラン情報を取得
-
-    スプレッドシートの ``BASIC(9,800円)`` のような価格接尾辞を除去してからマッチする。
-
-    Args:
-        plan_name: 契約プラン名（価格接尾辞付きでも可）
-
-    Returns:
-        契約プラン情報（見つからない場合はデフォルト）
-    """
-    normalized = _normalize_plan_name(plan_name)
-    # スペース無し・ハイフン表記（プルダウンや手入力のゆれ）
-    if normalized in ("BASICLP", "BASIC-LP"):
-        normalized = "BASIC LP"
-
-    # 「BASIC」と「BASIC LP」など接頭辞が被るため、長いキーを先に照合する
-    items = sorted(
-        CONTRACT_PLANS.items(),
-        key=lambda kv: len(kv[0]),
-        reverse=True,
-    )
-    for key, value in items:
-        if key.upper() == normalized or value["name"].upper() == normalized:
-            return value
-
-    # デフォルト（STANDARD）
-    return CONTRACT_PLANS["STANDARD"]
-
 
 # プラン共通の技術・スタイリング要件（仕様書・コード生成の双方で参照）
 COMMON_TECHNICAL_SPEC = {

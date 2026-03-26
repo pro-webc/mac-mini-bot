@@ -1,9 +1,10 @@
 """Vercel連携モジュール
 
-既定のデプロイは POST /v13/deployments の gitSource（GitHub）で、人がダッシュボードで Git を接続したときと同様に
-**GitHub App 連携**を前提とする。
+デプロイ前に POST /v11/projects（gitRepository 付き）でプロジェクトを作成し、
+GitHub リポジトリとの **完全な Git リンク** を確立する。その後 POST /v13/deployments で
+デプロイを実行する。
 
-VERCEL_DEPLOY_USE_GIT_SOURCE=false のときのみ、zipball + POST /v2/files（GitHub App 不要・スナップショットデプロイ）。
+VERCEL_DEPLOY_USE_GIT_SOURCE=false のときのみ、zipball + POST /v2/files（スナップショットデプロイ）。
 """
 from __future__ import annotations
 
@@ -154,6 +155,95 @@ class VercelClient:
             "Content-Type": "application/json",
         }
 
+    def _ensure_project_with_git_link(
+        self,
+        project_name: str,
+        org: str,
+        repo: str,
+    ) -> dict[str, Any] | None:
+        """
+        Vercel プロジェクトが存在しなければ gitRepository 付きで作成し、
+        GitHub との完全な Git リンクを確立する。
+
+        既存プロジェクトにリンクがない場合はログ警告のみ（API で後付けリンクは不可）。
+        Returns: プロジェクト情報 dict、または取得/作成できなかった場合 None。
+        """
+        get_url = f"{self.base_url}/v9/projects/{quote(project_name, safe='')}"
+        if self.team_id:
+            get_url += f"?teamId={self.team_id}"
+
+        resp = requests.get(get_url, headers=self.headers, timeout=30)
+
+        if resp.status_code == 200:
+            project = resp.json()
+            link = project.get("link") or {}
+            if link.get("type") == "github" and not link.get("sourceless"):
+                logger.info(
+                    "Vercel プロジェクト %r は既に GitHub にリンク済み (%s/%s)",
+                    project_name,
+                    link.get("org", ""),
+                    link.get("repo", ""),
+                )
+            elif link.get("type") == "github" and link.get("sourceless"):
+                logger.warning(
+                    "Vercel プロジェクト %r は sourceless リンクです。"
+                    "完全リンクにするにはダッシュボードで再接続するか、プロジェクトを削除して再作成してください。",
+                    project_name,
+                )
+            else:
+                logger.warning(
+                    "Vercel プロジェクト %r に GitHub リンクがありません。"
+                    "完全リンクにするにはダッシュボードで接続するか、プロジェクトを削除して再作成してください。",
+                    project_name,
+                )
+            return project
+
+        if resp.status_code != 404:
+            logger.warning(
+                "Vercel プロジェクト取得で予期しないステータス %s: %s",
+                resp.status_code,
+                resp.text[:500],
+            )
+            return None
+
+        # --- プロジェクトが存在しない → gitRepository 付きで新規作成 ---
+        create_url = f"{self.base_url}/v11/projects"
+        if self.team_id:
+            create_url += f"?teamId={self.team_id}"
+
+        payload: dict[str, Any] = {
+            "name": project_name,
+            "framework": "nextjs",
+            "gitRepository": {
+                "repo": f"{org}/{repo}",
+                "type": "github",
+            },
+        }
+        logger.info(
+            "Vercel プロジェクト新規作成（gitRepository リンク付き）: %r → %s/%s",
+            project_name,
+            org,
+            repo,
+        )
+        create_resp = requests.post(
+            create_url, headers=self.headers, json=payload, timeout=60,
+        )
+        if create_resp.status_code in (200, 201):
+            project = create_resp.json()
+            logger.info(
+                "Vercel プロジェクト作成成功: %r (id=%s) GitHub リンク確立",
+                project_name,
+                project.get("id", ""),
+            )
+            return project
+
+        logger.warning(
+            "Vercel プロジェクト作成失敗 (HTTP %s): %s — デプロイで暗黙作成にフォールバック",
+            create_resp.status_code,
+            create_resp.text[:800],
+        )
+        return None
+
     def deploy_from_github(
         self,
         github_url: str,
@@ -163,13 +253,12 @@ class VercelClient:
         """
         GitHub リポジトリ URL から Vercel にデプロイする。
 
-        既定（VERCEL_DEPLOY_USE_GIT_SOURCE=true）:
-          POST /v13/deployments に gitSource を渡す。**Vercel GitHub App** がリポジトリを参照できることが必要。
-          デプロイ後の **Git 連携・push での自動デプロイ**は、人が手でインポートした場合と同様に扱える。
-
-        VERCEL_DEPLOY_USE_GIT_SOURCE=false のとき:
-          GitHub zipball + POST /v2/files。**GitHub App は不要**だが、スナップショットデプロイであり
-          連携の挙動は gitSource 既定より弱くなりやすい。
+        1. プロジェクトが未作成なら POST /v11/projects（gitRepository 付き）で
+           GitHub との完全な Git リンクを確立してからデプロイする。
+        2. 既定（VERCEL_DEPLOY_USE_GIT_SOURCE=true）:
+           POST /v13/deployments に gitSource を渡す。
+        3. VERCEL_DEPLOY_USE_GIT_SOURCE=false のとき:
+           GitHub zipball + POST /v2/files（スナップショットデプロイ）。
 
         Args:
             github_url: GitHub リポジトリ URL（https://github.com/org/repo.git）
@@ -187,6 +276,9 @@ class VercelClient:
             project_name = sanitize_vercel_project_name(pn)
 
             ref = (git_ref or VERCEL_GIT_REF or "main").strip()
+
+            # プロジェクトが未作成なら gitRepository 付きで先に作り GitHub リンクを確立する
+            self._ensure_project_with_git_link(project_name, org, repo)
 
             if VERCEL_DEPLOY_USE_GIT_SOURCE:
                 deployment = self._create_deployment_from_git_source(

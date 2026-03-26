@@ -28,30 +28,21 @@ from typing import Any
 
 import google.generativeai as genai
 from config.config import (
-    GEMINI_API_KEY,
-    GEMINI_MANUAL_MAX_OUTPUT_TOKENS,
     GEMINI_STANDARD_CP_MODEL,
     STANDARD_CP_INCLUDE_BLOG_PAGE,
     STANDARD_CP_REFACTOR_AFTER_MANUAL,
     STANDARD_CP_USE_GEMINI_MANUAL,
     get_contract_plan_info,
 )
-from google.generativeai.types import HarmBlockThreshold, HarmCategory
 
 from modules.basic_lp_refactor_gemini import (
     BASIC_LP_REFACTOR_MANUS_TASKS,
     STANDARD_CP_REFACTOR_PREFACE_DIR,
-    build_basic_lp_refactor_user_prompt,
-    run_basic_lp_refactor_stage,
 )
 from modules.contract_workflow import ContractWorkBranch
-from modules.gemini_generative_timeout import ensure_gemini_rpc_patch_from_config
-from modules.llm.llm_raw_output import write_pre_manus_llm_checkpoint
 from modules.hearing_url_utils import (
-    existing_site_url_guess_from_hearing,
     hearing_factual_data_block_for_prompt,
     hearing_reference_design_block_for_prompt,
-    reference_site_url_from_hearing,
 )
 from modules.llm.llm_pipeline_common import MIN_SITE_BUILD_PROMPT_CHARS, finalize_plain_prompt
 
@@ -60,121 +51,39 @@ logger = logging.getLogger(__name__)
 STANDARD_CP_MANUAL_GEMINI_API_CALLS_PER_CASE = 15
 STANDARD_CP_MANUAL_GEMINI_NEW_CHAT_SESSIONS = 6
 
-_MANUAL_DIR = Path(__file__).resolve().parent.parent / "config" / "prompts" / "standard_cp_manual"
+from modules.gemini_manual_common import (
+    SAFETY_SETTINGS as _SAFETY,
+    configure_gemini as _configure,
+    gen_config as _gen_config,
+    response_text as _response_text_impl,
+    hearing_block as _hearing_block_impl,
+    existing_site_url_block as _existing_site_url_block,
+    client_hp_and_mood_placeholders as _client_hp_and_mood_placeholders,
+    reference_url_block as _reference_url_block,
+    load_step as _load_step_impl,
+    subst as _subst_impl,
+)
 
-_SAFETY = {
-    HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_ONLY_HIGH,
-    HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_ONLY_HIGH,
-    HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_ONLY_HIGH,
-    HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_ONLY_HIGH,
-}
+_MODULE_NAME = "modules.standard_cp_gemini_manual"
+_MANUAL_DIR = Path(__file__).resolve().parent.parent / "config" / "prompts" / "standard_cp_manual"
 
 
 def _load_step(filename: str) -> str:
-    path = _MANUAL_DIR / filename
-    if not path.is_file():
-        raise RuntimeError(
-            f"modules.standard_cp_gemini_manual: マニュアルプロンプトが見つかりません: {path}"
-        )
-    return path.read_text(encoding="utf-8")
+    return _load_step_impl(_MANUAL_DIR, filename, module_name=_MODULE_NAME)
 
 
 def _subst(template: str, **kwargs: str) -> str:
-    out = template
-    for key, value in kwargs.items():
-        out = out.replace("{{" + key + "}}", value)
-    if "{{" in out and "}}" in out:
-        i = out.index("{{")
-        raise RuntimeError(
-            "modules.standard_cp_gemini_manual: プレースホルダが未置換です: "
-            + out[i : i + 80]
-        )
-    return out
-
-
-def _configure() -> None:
-    key = (GEMINI_API_KEY or "").strip()
-    if not key:
-        raise RuntimeError("modules.standard_cp_gemini_manual: GEMINI_API_KEY が空です。")
-    genai.configure(api_key=key)
-    ensure_gemini_rpc_patch_from_config()
-
-
-def _gen_config() -> dict[str, Any]:
-    return {
-        "max_output_tokens": GEMINI_MANUAL_MAX_OUTPUT_TOKENS,
-        "temperature": 0.35,
-    }
-
-
-def _response_text(response: Any) -> str:
-    if not getattr(response, "candidates", None):
-        raise RuntimeError(
-            "modules.standard_cp_gemini_manual: Gemini 応答に candidates がありません。"
-            f" prompt_feedback={getattr(response, 'prompt_feedback', None)}"
-        )
-    chunks: list[str] = []
-    for cand in response.candidates:
-        fr = getattr(cand, "finish_reason", None)
-        if fr is not None:
-            fru = str(fr).upper()
-            if "MAX" in fru and "TOKEN" in fru:
-                logger.warning(
-                    "STANDARD-CP Gemini: finish_reason=%s（max_output で出力が切れた可能性）。"
-                    " .env の GEMINI_MANUAL_MAX_OUTPUT_TOKENS を確認してください。",
-                    fr,
-                )
-        content = getattr(cand, "content", None)
-        if not content or not getattr(content, "parts", None):
-            continue
-        for part in content.parts:
-            t = getattr(part, "text", None)
-            if t:
-                chunks.append(t)
-    out = "".join(chunks).strip()
-    if not out:
-        raise RuntimeError(
-            "modules.standard_cp_gemini_manual: Gemini 応答テキストが空です。"
-        )
-    return out
+    return _subst_impl(template, module_name=_MODULE_NAME, **kwargs)
 
 
 def _hearing_block(hearing_sheet_content: str) -> str:
-    h = (hearing_sheet_content or "").strip()
-    if not h:
-        raise RuntimeError(
-            "modules.standard_cp_gemini_manual: ヒアリングシート本文が空です。"
-        )
-    return h
+    return _hearing_block_impl(hearing_sheet_content, module_name=_MODULE_NAME)
 
 
-def _existing_site_url_block(hearing_sheet_content: str, explicit: str) -> str:
-    u = (explicit or "").strip()
-    if not u:
-        u = existing_site_url_guess_from_hearing(hearing_sheet_content)
-    if u:
-        return u
-    return "（既存サイトURLの記載なし。ヒアリング本文に URL があればそちらを参照）"
-
-
-def _client_hp_and_mood_placeholders() -> tuple[str, str]:
-    return (
-        "（ヒアリングシート設問「ホームページに使いたい色」および手順1-3の記載を最優先。未記載なら本文から判断）",
-        "（ヒアリングシート設問「希望の雰囲気」および手順1-3の記載を最優先。未記載なら本文から判断）",
+def _response_text(response: Any) -> str:
+    return _response_text_impl(
+        response, module_name=_MODULE_NAME, warn_max_tokens=True,
     )
-
-
-def _reference_url_block(
-    hearing_sheet_content: str,
-    *,
-    extra_texts: Sequence[str] = (),
-) -> str:
-    u = reference_site_url_from_hearing(
-        hearing_sheet_content or "", extra_texts=extra_texts,
-    )
-    if u:
-        return u
-    return "（参考サイトURLの記載なし。手順1-3およびヒアリング本文を参照）"
 
 
 def _blog_page_line() -> str:
@@ -1255,37 +1164,26 @@ def run_standard_cp_gemini_manual_pipeline(
 
     manus_deploy_github_url: str | None = None
     if STANDARD_CP_REFACTOR_AFTER_MANUAL:
-        write_pre_manus_llm_checkpoint(
-            site_name=f"{partner_name}-{record_number}",
-            work_branch=ContractWorkBranch.STANDARD,
-            manual_meta_key="standard_cp_manual_gemini",
-            model=GEMINI_STANDARD_CP_MODEL,
-            steps=dict(outs.raw),
-            step_prompts=dict(outs.raw_prompts),
-            canvas_markdown=canvas_final,
-            partner_name=partner_name,
-            record_number=record_number,
-        )
+        from modules.gemini_manual_common import run_manus_refactor_block
+
         _extras = [s for s in (appo_memo, sales_notes) if (s or "").strip()]
         _hr = hearing_reference_design_block_for_prompt(
             hearing_sheet_content, extra_texts=_extras,
         )
-        outs.raw_prompts["manus_refactor_task"] = build_basic_lp_refactor_user_prompt(
-            canvas_final,
-            preface_dir=STANDARD_CP_REFACTOR_PREFACE_DIR,
+        md, manus_deploy_github_url, _prompt = run_manus_refactor_block(
+            canvas_markdown=canvas_final,
             partner_name=partner_name,
             record_number=record_number,
+            work_branch=ContractWorkBranch.STANDARD,
+            manual_meta_key="standard_cp_manual_gemini",
+            model=GEMINI_STANDARD_CP_MODEL,
+            steps=outs.raw,
+            step_prompts=outs.raw_prompts,
             hearing_reference_block=_hr,
             contract_max_pages=_manus_contract_pages,
-        )
-        md, manus_deploy_github_url = run_basic_lp_refactor_stage(
-            canvas_source_code=canvas_final,
             preface_dir=STANDARD_CP_REFACTOR_PREFACE_DIR,
-            partner_name=partner_name,
-            record_number=record_number,
-            hearing_reference_block=_hr,
-            contract_max_pages=_manus_contract_pages,
         )
+        outs.raw_prompts["manus_refactor_task"] = _prompt
         outs.step_refactor = md
         outs.raw["step_refactor"] = md
         outs.raw["step_refactor_deploy_github_url"] = manus_deploy_github_url or ""

@@ -5,7 +5,7 @@ import logging
 import re
 from pathlib import Path
 
-from modules.contract_workflow import ContractWorkBranch
+from modules.contract_workflow import BRANCH_REGISTRY, ContractWorkBranch
 
 logger = logging.getLogger(__name__)
 
@@ -268,16 +268,10 @@ def apply_contract_outputs_to_site_dir(
     - ADVANCE: ``advance_refactored_source_markdown`` → ``advance_manual_gemini_final``
     - その他: 0（スキップ）
     """
-    if work_branch == ContractWorkBranch.BASIC_LP:
-        keys = ("basic_lp_refactored_source_markdown", "basic_lp_manual_gemini_final")
-    elif work_branch == ContractWorkBranch.BASIC:
-        keys = ("basic_refactored_source_markdown", "basic_manual_gemini_final")
-    elif work_branch == ContractWorkBranch.STANDARD:
-        keys = ("standard_refactored_source_markdown", "standard_manual_gemini_final")
-    elif work_branch == ContractWorkBranch.ADVANCE:
-        keys = ("advance_refactored_source_markdown", "advance_manual_gemini_final")
-    else:
+    branch_cfg = BRANCH_REGISTRY.get(work_branch)
+    if branch_cfg is None:
         return 0
+    keys = branch_cfg.manus_keys
     for k in keys:
         md = (spec.get(k) or "").strip()
         if md:
