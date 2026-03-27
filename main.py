@@ -15,11 +15,13 @@
 """
 from __future__ import annotations
 
+import contextlib
 import logging
 import os
+import subprocess
 import sys
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator
 
 from config.logging_setup import configure_logging
 
@@ -219,6 +221,37 @@ class WebsiteBot:
         return self._github_client
 
     # ------------------------------------------------------------------
+    # 行番号の再解決
+    # ------------------------------------------------------------------
+
+    def _refresh_case_row(self, case: CaseRecord) -> None:
+        """レコード番号+パートナー名でシート上の現在の行番号を再取得し case を更新する。
+
+        行の挿入・削除で行番号がずれうるため、スプレッドシートへの書き込み前に呼ぶ。
+        解決に失敗した場合は元の row_number を維持して warning を出す。
+        """
+        try:
+            new_row = self.spreadsheet.resolve_current_row(
+                str(case.get("record_number") or ""),
+                str(case.get("partner_name") or ""),
+            )
+        except Exception:
+            logger.warning(
+                "行番号の再解決に失敗しました（元の row=%s を維持） record=%s",
+                case.get("row_number"), case.get("record_number"),
+                exc_info=True,
+            )
+            return
+        old_row = case.get("row_number")
+        if new_row != old_row:
+            logger.info(
+                "行番号が変わりました record=%s partner=%s: row %s → %s",
+                case.get("record_number"), case.get("partner_name"),
+                old_row, new_row,
+            )
+            case["row_number"] = new_row
+
+    # ------------------------------------------------------------------
     # process_case: 5 フェーズを順に実行するオーケストレーション
     # ------------------------------------------------------------------
 
@@ -232,6 +265,7 @@ class WebsiteBot:
             )
             return None
 
+        self._refresh_case_row(case)
         self.spreadsheet.update_ai_status(case["row_number"], "MacBot")
         logger.info(case_start_banner(
             row=case.get("row_number"),
@@ -261,6 +295,7 @@ class WebsiteBot:
                 case.get("partner_name"), e, exc_info=True,
             )
             try:
+                self._refresh_case_row(case)
                 self.spreadsheet.update_ai_status(
                     case["row_number"], _format_ai_status_error(e),
                 )
@@ -293,6 +328,7 @@ class WebsiteBot:
                 case.get("row_number"), case.get("record_number"),
                 case.get("partner_name"),
             )
+            self._refresh_case_row(case)
             self.spreadsheet.update_ai_status(
                 case["row_number"], "スキップ: ヒアリング本文なし（AH列の取得結果が空）",
             )
@@ -398,25 +434,23 @@ class WebsiteBot:
 
         manus_git_for_fallback = (spec.get("manus_deploy_github_url") or "").strip()
 
-        n_gen = apply_contract_outputs_to_site_dir(spec, site_dir, work_branch=work_branch)
-        if n_gen:
-            logger.info("› フェンス解析でサイトに %s ファイル反映（分岐 %s）", n_gen, work_branch.value)
-
-        if (
-            work_branch in BRANCH_REGISTRY
-            and n_gen == 0
-            and (claude_manual_enabled_for_branch(work_branch) or manus_git_for_fallback)
-        ):
-            if manus_git_for_fallback:
-                logger.warning(
-                    "フェンスからファイル 0 件だが manus_deploy_github_url があるため "
-                    "GitHub を shallow clone して続行します: %s", manus_git_for_fallback,
-                )
-                self.github_client.shallow_clone_repo_into_site_dir(manus_git_for_fallback, site_dir)
-            else:
+        # manus_deploy_github_url があれば Manus が完成リポを push 済みなので
+        # フェンス解析より shallow clone を優先する（部分抽出による不整合を防止）
+        if manus_git_for_fallback:
+            logger.info(
+                "manus_deploy_github_url があるため GitHub を shallow clone してサイト全体を取得します: %s",
+                manus_git_for_fallback,
+            )
+            self.github_client.shallow_clone_repo_into_site_dir(manus_git_for_fallback, site_dir)
+        else:
+            n_gen = apply_contract_outputs_to_site_dir(spec, site_dir, work_branch=work_branch)
+            if n_gen:
+                logger.info("› フェンス解析でサイトに %s ファイル反映（分岐 %s）", n_gen, work_branch.value)
+            elif work_branch in BRANCH_REGISTRY and claude_manual_enabled_for_branch(work_branch):
                 raise RuntimeError(
                     "生成マークダウンからサイトファイルを1件も適用できませんでした。"
-                    " 該当プランの Claude マニュアルとリファクタ出力が spec に入っているか確認してください。"
+                    " manus_deploy_github_url も無いため続行できません。"
+                    " Manus の返答を確認してください。"
                 )
 
         # 引数: site_dir（フェンス適用 or shallow clone 完了済み）/ GA4_MEASUREMENT_ID（環境変数、任意）
@@ -542,6 +576,8 @@ class WebsiteBot:
 
         # 引数: deploy_url / github_url / correction_tool_url / row
         # 処理: AI列・AJ列・AK列（修正ツールURL、取得できた場合のみ）を batchUpdate
+        # 長時間処理の後で行番号がずれている場合があるため再解決する
+        self._refresh_case_row(case)
         self.spreadsheet.update_deploy_url_and_complete_status(
             case["row_number"], deploy_url,
             github_repo_url=github_url,
@@ -625,6 +661,7 @@ class WebsiteBot:
             # 1 件失敗してもループは続ける（各 process_case が例外を投げうる）
             for case in cases:
                 try:
+                    self._refresh_case_row(case)
                     row_n = int(case["row_number"])
                     r_now = self.spreadsheet.get_ai_status_cell(row_n)
                     if not BOT_RESUME_FROM_MANUS and ai_cell_excludes_from_pending_queue(r_now):
@@ -669,6 +706,36 @@ def _emit_startup_validation(result: StartupValidationResult, *, to_stdout: bool
     return result.ok
 
 
+@contextlib.contextmanager
+def _prevent_sleep() -> Iterator[None]:
+    """macOS の caffeinate でアイドル／システムスリープを抑止する。
+
+    Bot 終了時（正常・例外・KeyboardInterrupt いずれでも）に自動解除される。
+    caffeinate が使えない環境では warning だけ出して続行する。
+    """
+    try:
+        proc = subprocess.Popen(
+            ["caffeinate", "-i", "-s"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+    except FileNotFoundError:
+        logger.warning("caffeinate が見つかりません — スリープ抑止をスキップします")
+        yield
+        return
+
+    logger.info("スリープ抑止を開始しました (caffeinate pid=%s)", proc.pid)
+    try:
+        yield
+    finally:
+        proc.terminate()
+        try:
+            proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+        logger.info("スリープ抑止を解除しました")
+
+
 def _run_startup_validation() -> bool:
     """.env 等の必須設定を検証。失敗時は False（呼び出し側が exit）。"""
     return _emit_startup_validation(
@@ -703,14 +770,15 @@ def main() -> None:
     if not _run_startup_validation():
         sys.exit(1)
 
-    try:
-        bot = WebsiteBot()
-        bot.run()
-    except KeyboardInterrupt:
-        logger.info("Botを停止しました")
-    except Exception as e:
-        logger.error("予期しないエラー: %s", e, exc_info=True)
-        sys.exit(1)
+    with _prevent_sleep():
+        try:
+            bot = WebsiteBot()
+            bot.run()
+        except KeyboardInterrupt:
+            logger.info("Botを停止しました")
+        except Exception as e:
+            logger.error("予期しないエラー: %s", e, exc_info=True)
+            sys.exit(1)
 
 
 # python main.py 実行時の起点（pytest 等から import しただけでは呼ばれない）

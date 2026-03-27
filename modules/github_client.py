@@ -102,6 +102,14 @@ class GitHubClient:
         self.github = Github(GITHUB_TOKEN)
         self.username = GITHUB_USERNAME
     
+    def repo_exists(self, repo_name: str) -> bool:
+        """指定名のリポジトリがオーナー配下に既に存在するか判定する。"""
+        try:
+            self.github.get_user().get_repo(repo_name)
+            return True
+        except Exception:
+            return False
+
     def create_repository(
         self,
         repo_name: str,
@@ -109,7 +117,8 @@ class GitHubClient:
         private: bool = False
     ) -> str:
         """
-        新規リポジトリのみ作成する（同名が既に存在する場合は失敗。既存 repo への上書きプッシュは行わない）。
+        新規リポジトリのみ作成する。同名が既に存在する場合は即座に例外を送出する。
+        既存リポジトリの削除・上書きは行わない。
 
         Args:
             repo_name: リポジトリ名
@@ -118,7 +127,16 @@ class GitHubClient:
             
         Returns:
             リポジトリURL
+
+        Raises:
+            RuntimeError: 同名のリポジトリが既に存在する場合
         """
+        if self.repo_exists(repo_name):
+            raise RuntimeError(
+                f"リポジトリ '{repo_name}' は既に存在します。"
+                " 既存リポジトリの上書き・削除は禁止されています。"
+                " 手動で確認してください。"
+            )
         try:
             user = self.github.get_user()
             repo = user.create_repo(
@@ -239,8 +257,8 @@ npm start
             if repo.active_branch.name != "main":
                 repo.git.branch("-M", "main")
 
-            # プッシュ
-            origin.push(refspec="main:main", force=True)
+            # プッシュ（force=False: 既存リポジトリへの上書きを防止）
+            origin.push(refspec="main:main")
             
             logger.info(f"GitHubにプッシュしました: {repo_url}")
             return repo_url

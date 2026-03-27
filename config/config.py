@@ -180,7 +180,7 @@ STANDARD_CP_REFACTOR_AFTER_MANUAL = os.getenv(
     "STANDARD_CP_REFACTOR_AFTER_MANUAL", "true"
 ).strip().lower() in ("1", "true", "yes")
 STANDARD_CP_INCLUDE_BLOG_PAGE = os.getenv(
-    "STANDARD_CP_INCLUDE_BLOG_PAGE", "true"
+    "STANDARD_CP_INCLUDE_BLOG_PAGE", "false"
 ).strip().lower() in ("1", "true", "yes")
 
 # ADVANCE（コーポレート・12ページ想定）
@@ -193,7 +193,7 @@ ADVANCE_CP_REFACTOR_AFTER_MANUAL = os.getenv(
     "ADVANCE_CP_REFACTOR_AFTER_MANUAL", "true"
 ).strip().lower() in ("1", "true", "yes")
 ADVANCE_CP_INCLUDE_BLOG_PAGE = os.getenv(
-    "ADVANCE_CP_INCLUDE_BLOG_PAGE", "true"
+    "ADVANCE_CP_INCLUDE_BLOG_PAGE", "false"
 ).strip().lower() in ("1", "true", "yes")
 
 # 最終リファクタ（フェンス付きマルチファイル化・画像方針）は Manus API。マニュアル本編は Claude Code CLI。

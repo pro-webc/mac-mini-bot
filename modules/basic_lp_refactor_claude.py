@@ -10,9 +10,15 @@ from __future__ import annotations
 
 import logging
 import re
+import shutil
+import subprocess
 from pathlib import Path
 
+import json
+
 from config.config import (
+    CLAUDE_BASIC_LP_MODEL,
+    GITHUB_USERNAME,
     MANUS_DEPLOY_GITHUB_REPO_HINT,
     MANUS_PROVIDES_DEPLOY_GITHUB_URL,
 )
@@ -134,9 +140,14 @@ def _manus_contract_pages_and_legal_block(contract_max_pages: int | None) -> str
     return (
         "\n\n---\n\n"
         "【契約ページ数・法的情報（必須・最優先の制約）】\n"
-        f"- 契約ページ数（厳守）: {cap}。"
+        f"- 契約ページ数（厳守）: **{cap}**。"
         " コンテンツ用の App Router の `app/**/page.tsx` および `src/app/**/page.tsx` の合計本数は **"
-        f"ちょうど {cap} 本**とすること。**超過も不足も禁止**（パイプラインのビルド検証で不一致は失敗する）。\n"
+        f"ちょうど {cap} 本**とすること。**超過も不足も禁止**（パイプラインのビルド検証で不一致は即失敗する）。\n"
+        f"- **元コードに存在しないページの `page.tsx` を新規作成することは禁止**。"
+        " 特に `blog/page.tsx`・`news/page.tsx`・`privacy/page.tsx`・`terms/page.tsx` 等を"
+        " 元コードに対応するセクションがないのに追加してはならない。"
+        " 元コードのページ構成をそのまま App Router のルーティングに変換し、"
+        f" **合計 {cap} 本に一致させること**。\n"
         + multi_line
         + "- プライバシーポリシー・利用規約などの法的情報は **契約ページ数に含めない**。"
         " **独立の `page.tsx`（例: `app/privacy/page.tsx`）を新規作成しない**。\n"
@@ -210,6 +221,187 @@ def _manus_bot_deploy_instruction_block() -> str:
     return body.replace("{{MANUS_DEPLOY_GITHUB_REPO_HINT_LINE}}", hint_line)
 
 
+# ---------------------------------------------------------------------------
+# Manus 返答を Claude CLI で検証・状況判断・リカバリ判断
+# ---------------------------------------------------------------------------
+
+_COMMON_PROMPT_DIR = Path(__file__).resolve().parent.parent / "config" / "prompts" / "common"
+
+_NORMALIZED_URL_RE = re.compile(
+    r"https://github\.com/[\w.%-]+/[\w.%-]+\.git",
+    re.IGNORECASE,
+)
+
+
+class PostManusResult:
+    """post_manus_verify の構造化結果。"""
+    __slots__ = ("status", "github_url", "completed_steps", "diagnosis", "recovery", "recovery_url")
+
+    def __init__(
+        self,
+        *,
+        status: str = "FAILED",
+        github_url: str | None = None,
+        completed_steps: list[str] | None = None,
+        diagnosis: str = "",
+        recovery: str = "PROCEED",
+        recovery_url: str | None = None,
+    ):
+        self.status = status
+        self.github_url = github_url
+        self.completed_steps = completed_steps or []
+        self.diagnosis = diagnosis
+        self.recovery = recovery
+        self.recovery_url = recovery_url
+
+    def __repr__(self) -> str:
+        return (
+            f"PostManusResult(status={self.status!r}, github_url={self.github_url!r}, "
+            f"recovery={self.recovery!r}, diagnosis={self.diagnosis!r})"
+        )
+
+
+def _verify_manus_response_via_claude_cli(
+    manus_response: str,
+    *,
+    record_number: str | None = None,
+    partner_name: str | None = None,
+    expected_repo_name: str | None = None,
+    model: str | None = None,
+) -> PostManusResult:
+    """Manus 応答を Claude CLI で分析し、状況判断・リカバリ方針を含む構造化結果を返す。
+
+    引数: manus_response — Manus 完了後の返答テキスト全文
+          record_number / partner_name — 案件特定用
+          expected_repo_name — Manus に指示したリポジトリ名
+          model — Claude CLI の --model
+    処理: post_manus_verify.txt に応答を埋め込み、Claude CLI 単発で呼び出し、
+          JSON レスポンスをパースして PostManusResult を構築
+    出力: PostManusResult（status / github_url / recovery 等を含む）
+    """
+    from modules.claude_manual_common import generate_text, load_step, subst
+
+    tmpl = load_step(
+        _COMMON_PROMPT_DIR, "post_manus_verify.txt",
+        module_name="basic_lp_refactor_claude",
+    )
+    repo_name = expected_repo_name or ""
+    if not repo_name and record_number and partner_name:
+        repo_name = sanitize_github_repo_name(partner_name, record_number)
+    github_owner = (GITHUB_USERNAME or "").strip()
+
+    prompt = subst(
+        tmpl,
+        module_name="basic_lp_refactor_claude",
+        RECORD_NUMBER=str(record_number or ""),
+        PARTNER_NAME=str(partner_name or ""),
+        EXPECTED_REPO_NAME=repo_name,
+        GITHUB_OWNER=github_owner,
+        MANUS_RESPONSE=manus_response,
+    )
+    cli_model = (model or CLAUDE_BASIC_LP_MODEL).strip()
+    try:
+        raw = generate_text(
+            prompt, model=cli_model,
+            module_name="basic_lp_refactor_claude(post-Manus検証)",
+        )
+    except Exception:
+        logger.warning(
+            "Claude CLI による post-Manus 検証に失敗しました（正規表現フォールバックに移行）",
+            exc_info=True,
+        )
+        return _fallback_post_manus_result(manus_response, record_number=record_number)
+
+    return _parse_post_manus_json(raw, manus_response, record_number=record_number)
+
+
+def _parse_post_manus_json(
+    cli_output: str, manus_response: str, *, record_number: str | None = None,
+) -> PostManusResult:
+    """Claude CLI 出力から JSON を抽出してパースする。失敗時は正規表現フォールバック。"""
+    text = (cli_output or "").strip()
+    json_start = text.find("{")
+    json_end = text.rfind("}") + 1
+    if json_start >= 0 and json_end > json_start:
+        try:
+            d = json.loads(text[json_start:json_end])
+            url = (d.get("github_url") or d.get("recovery_url") or "")
+            if url and not _NORMALIZED_URL_RE.search(url):
+                url = None
+            recovery = (d.get("recovery") or "PROCEED").upper()
+            recovery_url = (d.get("recovery_url") or "")
+            if recovery_url and not _NORMALIZED_URL_RE.search(recovery_url):
+                recovery_url = None
+            return PostManusResult(
+                status=(d.get("status") or "FAILED").upper(),
+                github_url=url or None,
+                completed_steps=d.get("completed_steps") or [],
+                diagnosis=d.get("diagnosis") or "",
+                recovery=recovery,
+                recovery_url=recovery_url or None,
+            )
+        except (json.JSONDecodeError, TypeError):
+            logger.warning("post-Manus 検証の JSON パースに失敗。正規表現フォールバック。")
+
+    return _fallback_post_manus_result(manus_response, record_number=record_number)
+
+
+def _fallback_post_manus_result(
+    manus_response: str, *, record_number: str | None = None,
+) -> PostManusResult:
+    """Claude CLI が使えないときの正規表現ベースフォールバック。"""
+    from modules.manus_refactor import (
+        infer_manus_github_clone_url,
+        split_manus_response_deploy_url,
+    )
+    _, url = split_manus_response_deploy_url(manus_response)
+    if not url:
+        url = infer_manus_github_clone_url(manus_response, record_number=record_number)
+    if url:
+        u = url.rstrip("/")
+        if not u.lower().endswith(".git"):
+            u = f"{u}.git"
+        return PostManusResult(
+            status="SUCCESS", github_url=u, recovery="PROCEED",
+            diagnosis="正規表現フォールバックで URL を抽出",
+        )
+    return PostManusResult(
+        status="FAILED", diagnosis="URL 抽出不可（正規表現フォールバック）",
+        recovery="LOCAL_PUSH",
+    )
+
+
+def _verify_github_url_reachable(url: str) -> bool:
+    """git ls-remote で URL の到達確認を行う（LLM 不要）。
+
+    引数: url — `https://github.com/owner/repo.git` 形式
+    処理: git ls-remote --exit-code を実行（タイムアウト 15s）
+    出力: True（到達可能） / False（失敗）
+    """
+    git = shutil.which("git")
+    if not git:
+        logger.warning("git コマンドが見つかりません。URL 到達確認をスキップします。")
+        return True
+    try:
+        r = subprocess.run(
+            [git, "ls-remote", "--exit-code", url, "HEAD"],
+            capture_output=True, text=True, timeout=15,
+        )
+        if r.returncode == 0:
+            return True
+        logger.warning(
+            "git ls-remote 失敗 (exit=%d): %s — %s",
+            r.returncode, url, (r.stderr or "").strip()[:200],
+        )
+        return False
+    except subprocess.TimeoutExpired:
+        logger.warning("git ls-remote がタイムアウトしました: %s", url)
+        return False
+    except Exception:
+        logger.warning("git ls-remote 実行エラー: %s", url, exc_info=True)
+        return False
+
+
 def run_basic_lp_refactor_stage(
     *,
     canvas_source_code: str,
@@ -218,20 +410,24 @@ def run_basic_lp_refactor_stage(
     record_number: str | None = None,
     hearing_reference_block: str | None = None,
     contract_max_pages: int | None = None,
+    model: str | None = None,
 ) -> tuple[str, str | None]:
-    """
-    Manus にリファクタ用プロンプトを送り、完了まで待つ。
+    """Manus にリファクタ用プロンプトを送り、完了まで待つ。
 
-    Returns:
-        (フェンス付きマークダウン本文, 任意の GitHub clone URL)。
-        ``MANUS_PROVIDES_DEPLOY_GITHUB_URL`` のとき、``BOT_DEPLOY_GITHUB_URL:`` 行（後続に別文があっても可）または
-        本文中の ``https://github.com/...git`` を推定して URL を返し、可能なら本文から当該行を除く。
+    引数: canvas_source_code — Claude CLI 出力の Canvas / record_number — レコード番号
+          model — Claude CLI URL 正規化に使うモデル（省略時 CLAUDE_BASIC_LP_MODEL）
+    処理: Manus タスク実行 → Claude CLI で検証・状況判断 → git ls-remote で到達確認
+          → リカバリ方針に基づいて URL を決定
+    出力: (フェンス付きマークダウン本文, GitHub clone URL or None)
     """
     from modules.manus_refactor import (
-        infer_manus_github_clone_url,
         run_manus_refactor_stage,
         split_manus_response_deploy_url,
     )
+
+    expected_repo = sanitize_github_repo_name(
+        partner_name or "", record_number or "",
+    ) if (partner_name or record_number) else ""
 
     raw = run_manus_refactor_stage(
         canvas_source_code=canvas_source_code,
@@ -243,22 +439,48 @@ def run_basic_lp_refactor_stage(
     )
     if not MANUS_PROVIDES_DEPLOY_GITHUB_URL:
         return raw, None
-    md, url = split_manus_response_deploy_url(raw)
-    if not url:
-        url = infer_manus_github_clone_url(raw, record_number=record_number)
-        if url:
-            logger.warning(
-                "Manus 返答に BOT_DEPLOY_GITHUB_URL 行が無いか欠損のため、"
-                "本文中の GitHub clone URL をレコード等で推定しました: %s",
-                url,
-            )
-    if url:
-        u = url.rstrip("/")
-        if not u.lower().endswith(".git"):
-            u = f"{u}.git"
-        return md, u
+
+    # --- Claude CLI で Manus 応答を検証・状況判断 ---
+    result = _verify_manus_response_via_claude_cli(
+        raw,
+        record_number=record_number,
+        partner_name=partner_name,
+        expected_repo_name=expected_repo,
+        model=model,
+    )
+    logger.info("post-Manus 検証: %s", result)
+
+    # --- 検証結果に基づいて URL を決定 ---
+    candidate_url = result.github_url
+
+    if result.recovery == "USE_EXISTING_REPO" and not candidate_url:
+        candidate_url = result.recovery_url
+    if not candidate_url and result.recovery == "USE_EXISTING_REPO" and expected_repo:
+        owner = (GITHUB_USERNAME or "").strip()
+        if owner:
+            candidate_url = f"https://github.com/{owner}/{expected_repo}.git"
+            logger.info("既存リポ利用: 期待リポ名から URL を構築: %s", candidate_url)
+
+    if candidate_url and _verify_github_url_reachable(candidate_url):
+        logger.info(
+            "post-Manus 検証 + git ls-remote で deploy URL を確認: %s (recovery=%s)",
+            candidate_url, result.recovery,
+        )
+        md, _ = split_manus_response_deploy_url(raw)
+        return md, candidate_url
+
+    if candidate_url:
+        logger.warning(
+            "検証で得た URL が git ls-remote で到達不可: %s — ローカル push フォールバック",
+            candidate_url,
+        )
+
+    if result.recovery == "LOCAL_PUSH":
+        logger.info("post-Manus 検証: ローカル push が推奨されました。diagnosis=%s", result.diagnosis)
+
     logger.warning(
-        "MANUS_PROVIDES_DEPLOY_GITHUB_URL=true だが Manus 返答から deploy URL を取得できませんでした。"
-        " 従来どおりボットがローカルから GitHub に push します。",
+        "Manus 返答から有効な deploy URL を取得できませんでした。"
+        " ボットがローカルから GitHub に push します。 diagnosis=%s",
+        result.diagnosis,
     )
     return raw, None

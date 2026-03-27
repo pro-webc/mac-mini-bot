@@ -431,7 +431,7 @@ def run_manus_refactor_block(
 
     prompt = build_basic_lp_refactor_user_prompt(canvas_markdown, **refactor_kw)
     md, manus_deploy_github_url = run_basic_lp_refactor_stage(
-        canvas_source_code=canvas_markdown, **refactor_kw,
+        canvas_source_code=canvas_markdown, model=model, **refactor_kw,
     )
 
     return md, manus_deploy_github_url, prompt

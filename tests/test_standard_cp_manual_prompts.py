@@ -47,6 +47,7 @@ _EXPECTED_FILES = (
     "step_7_2.txt",
     "step_7_3.txt",
     "step_7_4.txt",
+    "step_7_5.txt",
 )
 
 
@@ -65,6 +66,20 @@ def test_step_2_blog_placeholder() -> None:
     assert "{{" not in out
     assert "顧客情報" in out
     assert "・ブログ行" in out
+
+
+def test_step_2_include_blog_true() -> None:
+    out = build_standard_cp_claude_prompt_step_2(
+        step_1_3_output="info", include_blog=True,
+    )
+    assert "・ブログページは必ず独立1ページ" in out
+
+
+def test_step_2_include_blog_false() -> None:
+    out = build_standard_cp_claude_prompt_step_2(
+        step_1_3_output="info", include_blog=False,
+    )
+    assert "・ブログページは必ず独立1ページ" not in out
 
 
 def test_build_standard_cp_claude_prompt_step_2_matches_subst() -> None:
@@ -284,13 +299,31 @@ def test_step_1_2_and_1_3_combined_joins_both_sections() -> None:
     assert "out1" in out
 
 
-def test_step_7_3_subpages_placeholder() -> None:
+def test_step_7_3_batch1_placeholder() -> None:
     t = _MANUAL.joinpath("step_7_3.txt").read_text(encoding="utf-8")
     out = _subst(
         t,
-        STEP_3_SUBPAGES_OUTPUT="下層構成",
+        STEP_3_LOWER_BATCH1="下層1群目",
         HEARING_FACTUAL_BLOCK="事実抜粋",
     )
     assert "{{" not in out
-    assert "下層構成" in out
+    assert "下層1群目" in out
     assert "事実抜粋" in out
+
+
+def test_step_7_4_batch2_placeholder() -> None:
+    t = _MANUAL.joinpath("step_7_4.txt").read_text(encoding="utf-8")
+    out = _subst(
+        t,
+        STEP_3_LOWER_BATCH2="下層2群目",
+        HEARING_FACTUAL_BLOCK="事実抜粋2",
+    )
+    assert "{{" not in out
+    assert "下層2群目" in out
+    assert "事実抜粋2" in out
+
+
+def test_step_7_5_no_placeholders() -> None:
+    t = _MANUAL.joinpath("step_7_5.txt").read_text(encoding="utf-8")
+    assert "{{" not in t
+    assert "【手順.7-5】" in t

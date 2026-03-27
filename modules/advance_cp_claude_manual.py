@@ -32,6 +32,7 @@ from config.config import (
     CLAUDE_ADVANCE_CP_MODEL,
     get_contract_plan_info,
 )
+from modules.case_extraction import detect_blog_desired
 
 from modules.basic_lp_refactor_claude import (
     ADVANCE_CP_REFACTOR_PREFACE_DIR,
@@ -93,8 +94,9 @@ def _new_chat() -> ClaudeCLIChat:
     )
 
 
-def _blog_page_line() -> str:
-    if ADVANCE_CP_INCLUDE_BLOG_PAGE:
+def _blog_page_line(include_blog: bool | None = None) -> str:
+    flag = include_blog if include_blog is not None else ADVANCE_CP_INCLUDE_BLOG_PAGE
+    if flag:
         return "・ブログページは必ず独立1ページ(不必要の場合は必ず削除)\n"
     return ""
 
@@ -184,10 +186,12 @@ def run_advance_cp_claude_manual_pipeline(
     outs.raw_prompts["step_1_2"] = p12_p13
     outs.raw_prompts["step_1_3"] = p12_p13
 
+    _blog = detect_blog_desired(hearing_sheet_content, appo_memo, sales_notes)
+    logger.info("ブログページ: %s（全情報源から自動判定）", "含める" if _blog else "含めない")
     p2 = _subst(
         _load_step("step_2.txt"),
         STEP_1_3_OUTPUT=outs.step_1_3,
-        BLOG_PAGE_LINE=_blog_page_line(),
+        BLOG_PAGE_LINE=_blog_page_line(_blog),
     )
 
     logger.info("ADVANCE-CP Claude: 手順2（タブ③）…")

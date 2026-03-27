@@ -1,4 +1,6 @@
 """Manus リファクタ用プロンプト（手作業マニュアル同様の manus/*.txt）"""
+import subprocess
+
 import modules.basic_lp_refactor_claude as refactor_mod
 import pytest
 from modules.basic_lp_refactor_claude import (
@@ -6,6 +8,8 @@ from modules.basic_lp_refactor_claude import (
     BASIC_CP_REFACTOR_PREFACE_DIR,
     STANDARD_CP_REFACTOR_PREFACE_DIR,
     _normalize_canvas_source_for_manus,
+    _normalize_deploy_url_via_claude_cli,
+    _verify_github_url_reachable,
     build_basic_lp_refactor_user_prompt,
 )
 
@@ -47,7 +51,7 @@ def test_refactor_prompt_repo_name_and_description_in_orchestration() -> None:
         partner_name="テスト商事",
         record_number="42",
     )
-    assert "`42`" in p
+    assert "42" in p
     assert "テスト商事" in p
     assert "{{MANUS_REPO_NAME}}" not in p
     assert "{{MANUS_REPO_DESCRIPTION}}" not in p
@@ -61,6 +65,22 @@ def test_refactor_prompt_record_number_in_repo_name() -> None:
     )
     assert "12345-ACME" in p
     assert "12345 ACME株式会社" in p
+
+
+def test_refactor_prompt_contains_layout_preservation_rules(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """改修後のプロンプトにレイアウト構造維持・アニメーション動作保証の指示が含まれる。"""
+    monkeypatch.setattr(refactor_mod, "MANUS_PROVIDES_DEPLOY_GITHUB_URL", False)
+    p = build_basic_lp_refactor_user_prompt("export default function X() { return null }")
+    assert "レイアウト構造の維持" in p
+    assert "背景画像" in p
+    assert "CSSグラデーション" in p or "gradient" in p.lower()
+    assert "props" in p
+    assert "opacity: 0" in p
+    assert "IntersectionObserver" in p
+    assert "未配線" in p or "配線義務" in p
+    assert "background-image" in p
 
 
 def test_refactor_prompt_empty_raises() -> None:
@@ -88,7 +108,7 @@ def test_refactor_prompt_includes_contract_pages_when_passed(
         "const x = 1",
         contract_max_pages=6,
     )
-    assert "契約ページ数（厳守）: 6" in p
+    assert "契約ページ数（厳守）: **6**" in p
     assert "ちょうど 6 本" in p
     assert "Pattern A" in p
     assert "app/privacy/page.tsx" in p
@@ -146,3 +166,111 @@ def test_cp_preface_dir_ignored_same_as_handwork(monkeypatch: pytest.MonkeyPatch
         preface_dir=ADVANCE_CP_REFACTOR_PREFACE_DIR,
     )
     assert base == p_cp == p_st == p_adv
+
+
+# ---------------------------------------------------------------------------
+# Claude CLI URL 正規化
+# ---------------------------------------------------------------------------
+
+
+def test_normalize_deploy_url_via_claude_cli_extracts_clean_url(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Claude CLI が正規形 URL を返したらそのまま採用する。"""
+    monkeypatch.setattr(
+        "modules.claude_manual_common.generate_text",
+        lambda prompt, model, module_name="": "https://github.com/org/repo.git",
+    )
+    url = _normalize_deploy_url_via_claude_cli(
+        "some manus response", record_number="123",
+    )
+    assert url == "https://github.com/org/repo.git"
+
+
+def test_normalize_deploy_url_via_claude_cli_returns_none_for_NONE_response(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Claude CLI が NONE を返したら None。"""
+    monkeypatch.setattr(
+        "modules.claude_manual_common.generate_text",
+        lambda prompt, model, module_name="": "NONE",
+    )
+    assert _normalize_deploy_url_via_claude_cli("no url here") is None
+
+
+def test_normalize_deploy_url_via_claude_cli_extracts_from_noisy_response(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Claude CLI が補足文付きで返しても URL 部分を抽出する。"""
+    monkeypatch.setattr(
+        "modules.claude_manual_common.generate_text",
+        lambda prompt, model, module_name="": (
+            "以下が正規化した URL です：\nhttps://github.com/acme/site.git"
+        ),
+    )
+    url = _normalize_deploy_url_via_claude_cli("manus text")
+    assert url == "https://github.com/acme/site.git"
+
+
+def test_normalize_deploy_url_via_claude_cli_falls_back_on_exception(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Claude CLI が例外を投げたら None（正規表現フォールバックに委ねる）。"""
+    def _boom(*a, **kw):
+        raise RuntimeError("CLI unavailable")
+
+    monkeypatch.setattr(
+        "modules.claude_manual_common.generate_text", _boom,
+    )
+    assert _normalize_deploy_url_via_claude_cli("manus text") is None
+
+
+def test_normalize_deploy_url_via_claude_cli_invalid_format_returns_none(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Claude CLI が GitHub URL 以外を返したら None。"""
+    monkeypatch.setattr(
+        "modules.claude_manual_common.generate_text",
+        lambda prompt, model, module_name="": "https://gitlab.com/org/repo.git",
+    )
+    assert _normalize_deploy_url_via_claude_cli("manus text") is None
+
+
+# ---------------------------------------------------------------------------
+# git ls-remote 到達確認
+# ---------------------------------------------------------------------------
+
+
+def test_verify_github_url_reachable_success(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "modules.basic_lp_refactor_claude.subprocess.run",
+        lambda *a, **kw: subprocess.CompletedProcess(a[0], 0),
+    )
+    assert _verify_github_url_reachable("https://github.com/o/r.git") is True
+
+
+def test_verify_github_url_reachable_failure(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        "modules.basic_lp_refactor_claude.subprocess.run",
+        lambda *a, **kw: subprocess.CompletedProcess(a[0], 2, stderr="not found"),
+    )
+    assert _verify_github_url_reachable("https://github.com/o/r.git") is False
+
+
+def test_verify_github_url_reachable_timeout(monkeypatch: pytest.MonkeyPatch) -> None:
+    def _timeout(*a, **kw):
+        raise subprocess.TimeoutExpired(cmd="git", timeout=15)
+
+    monkeypatch.setattr(
+        "modules.basic_lp_refactor_claude.subprocess.run", _timeout,
+    )
+    assert _verify_github_url_reachable("https://github.com/o/r.git") is False
+
+
+def test_verify_github_url_reachable_no_git(monkeypatch: pytest.MonkeyPatch) -> None:
+    """git が PATH に無い場合は True（スキップ扱い）。"""
+    monkeypatch.setattr(
+        "modules.basic_lp_refactor_claude.shutil.which",
+        lambda _name: None,
+    )
+    assert _verify_github_url_reachable("https://github.com/o/r.git") is True

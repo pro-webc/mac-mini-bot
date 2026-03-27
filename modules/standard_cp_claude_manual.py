@@ -2,19 +2,22 @@
 
 **CLI 呼び出し回数（マニュアルの「新規チャット」「タブ」境界と一致）**
 
-- 合計 **15 回**（各回が Claude Code CLI（claude -p）の1回）
+- 合計 **16 回**（各回が Claude Code CLI（claude -p）の1回）
 - **新規チャット** はマニュアルの **タブ①〜⑥** に対応し **6 回**
 
-内訳（1 + 1 + 1 + 5 + 3 + 4 = 15）:
+内訳（1 + 1 + 1 + 5 + 3 + 5 = 16）:
 
 - **タブ①**: 手順1-1 → 1回
 - **タブ②**: 手順1-2 と 手順1-3 を **1メッセージに連結**して送信 → 1回（手作業マニュアルと同じ）
 - **タブ③**: 手順2（6ページ構成）→ 1回
 - **タブ④**: 手順3-1 → … → 3-5 → 5回（ページ別・同一チャット）
 - **タブ⑤**: 手順4 → 5 → 6 → 3回（配色・デザイン指示書）
-- **タブ⑥**: 手順7-1 → 7-2 → 7-3 → 7-4 → 4回（コード・Canvas 想定）
+- **タブ⑥**: 手順7-1 → 7-2 → 7-3 → 7-4 → 7-5 → 5回（コード・Canvas 想定）
 
-**手順7の「複数タブで試す」** は人手任意。本モジュールは **タブ⑥を1本分**のみ（7-1〜7-4 の4回）。
+**手順7-3 / 7-4**: 下層ページを2群に分け、7-3 は手順3-2・3-3、7-4 は手順3-4・3-5 の構成を渡す。
+**手順7-5**: 最終仕上げ（元の手順7-4 に相当）。
+
+**手順7の「複数タブで試す」** は人手任意。本モジュールは **タブ⑥を1本分**のみ（7-1〜7-5 の5回）。
 
 **リファクタ**（任意・既定オン）: ``STANDARD_CP_REFACTOR_AFTER_MANUAL`` で **Manus タスク1件**。
 """
@@ -33,6 +36,7 @@ from config.config import (
     STANDARD_CP_USE_CLAUDE_MANUAL,
     get_contract_plan_info,
 )
+from modules.case_extraction import detect_blog_desired
 
 from modules.basic_lp_refactor_claude import (
     BASIC_LP_REFACTOR_MANUS_TASKS,
@@ -47,7 +51,7 @@ from modules.llm.llm_pipeline_common import MIN_SITE_BUILD_PROMPT_CHARS, finaliz
 
 logger = logging.getLogger(__name__)
 
-STANDARD_CP_MANUAL_CLAUDE_API_CALLS_PER_CASE = 15
+STANDARD_CP_MANUAL_CLAUDE_API_CALLS_PER_CASE = 16
 STANDARD_CP_MANUAL_CLAUDE_NEW_CHAT_SESSIONS = 6
 
 from modules.claude_manual_common import (
@@ -95,8 +99,9 @@ def _new_chat(*, history: list[dict[str, str]] | None = None) -> ClaudeCLIChat:
     )
 
 
-def _blog_page_line() -> str:
-    if STANDARD_CP_INCLUDE_BLOG_PAGE:
+def _blog_page_line(include_blog: bool | None = None) -> str:
+    flag = include_blog if include_blog is not None else STANDARD_CP_INCLUDE_BLOG_PAGE
+    if flag:
         return "・ブログページは必ず独立1ページ(不必要の場合は必ず削除)\n"
     return ""
 
@@ -160,12 +165,17 @@ def build_standard_cp_claude_prompt_step_1_2_and_1_3(
     return f"{p12.rstrip()}\n\n{p13.lstrip()}"
 
 
-def build_standard_cp_claude_prompt_step_2(*, step_1_3_output: str) -> str:
-    """手順2（タブ③・API 3/15）に渡すプロンプト全文。Claude API は呼ばない。"""
+def build_standard_cp_claude_prompt_step_2(
+    *, step_1_3_output: str, include_blog: bool | None = None,
+) -> str:
+    """手順2（タブ③・API 3/15）に渡すプロンプト全文。Claude API は呼ばない。
+
+    include_blog: True=ブログページ指示を含める / False=省略 / None=環境変数に従う
+    """
     return _subst(
         _load_step("step_2.txt"),
         STEP_1_3_OUTPUT=step_1_3_output,
-        BLOG_PAGE_LINE=_blog_page_line(),
+        BLOG_PAGE_LINE=_blog_page_line(include_blog),
     )
 
 
@@ -444,6 +454,7 @@ def run_standard_cp_claude_api_call_2_of_15(
 def run_standard_cp_claude_api_call_3_of_15(
     *,
     step_1_3_output: str,
+    include_blog: bool | None = None,
 ) -> tuple[str, str]:
     """
     STANDARD-CP マニュアル chain の **Claude 3/15**（新規チャット・手順2・タブ③）。
@@ -458,7 +469,9 @@ def run_standard_cp_claude_api_call_3_of_15(
             "modules.standard_cp_claude_manual: STANDARD_CP_USE_CLAUDE_MANUAL が無効です。"
         )
 
-    prompt = build_standard_cp_claude_prompt_step_2(step_1_3_output=step_1_3_output)
+    prompt = build_standard_cp_claude_prompt_step_2(
+        step_1_3_output=step_1_3_output, include_blog=include_blog,
+    )
     logger.info("STANDARD-CP Claude: 手順2のみ（段階テスト・API 3/15）…")
     chat3 = _new_chat()
     text = chat3.send_message(prompt)
@@ -820,25 +833,23 @@ def run_standard_cp_claude_api_call_13_of_15(
     return prompt, text
 
 
-def run_standard_cp_claude_api_call_14_of_15(
+def run_standard_cp_claude_api_call_14_of_16(
     *,
     step_7_1_prompt: str,
     step_7_1_response: str,
     step_7_2_prompt: str,
     step_7_2_response: str,
-    step_3_subpages_output: str,
+    step_3_lower_batch1: str,
     hearing_sheet_content: str = "",
     appo_memo: str = "",
     sales_notes: str = "",
 ) -> tuple[str, str]:
     """
-    STANDARD-CP マニュアル chain の **Claude 14/15**（タブ⑥の3通目・手順7-3）。
+    STANDARD-CP マニュアル chain の **Claude 14/16**（タブ⑥の3通目・手順7-3・下層1群目）。
 
-    本番と同様、手順7-2 までの **同一チャット** を ``history`` で2往復復元したうえで
-    ``ClaudeCLIChat.send_message`` で手順7-3 を1回送る。
-
-    Returns:
-        (prompt_text, response_text)
+    引数: step_3_lower_batch1 = 手順3-2（サービス）＋3-3（会社概要）の連結テキスト
+    処理: history で手順7-2 まで2往復復元 → 手順7-3 を送信
+    出力: (prompt_text, response_text)
     """
     if not STANDARD_CP_USE_CLAUDE_MANUAL:
         raise RuntimeError(
@@ -851,7 +862,7 @@ def run_standard_cp_claude_api_call_14_of_15(
     )
     prompt = _subst(
         _load_step("step_7_3.txt"),
-        STEP_3_SUBPAGES_OUTPUT=(step_3_subpages_output or "").strip(),
+        STEP_3_LOWER_BATCH1=(step_3_lower_batch1 or "").strip(),
         HEARING_FACTUAL_BLOCK=_factual,
     )
     hist = _standard_cp_tab4_history_from_user_model_pairs(
@@ -860,13 +871,13 @@ def run_standard_cp_claude_api_call_14_of_15(
             (step_7_2_prompt, step_7_2_response),
         ]
     )
-    logger.info("STANDARD-CP Claude: 手順7-3のみ（段階テスト・API 14/15・タブ⑥継続）…")
+    logger.info("STANDARD-CP Claude: 手順7-3のみ（段階テスト・API 14/16・タブ⑥継続・下層1群目）…")
     chat6 = _new_chat(history=hist)
     text = chat6.send_message(prompt)
     return prompt, text
 
 
-def run_standard_cp_claude_api_call_15_of_15(
+def run_standard_cp_claude_api_call_15_of_16(
     *,
     step_7_1_prompt: str,
     step_7_1_response: str,
@@ -874,22 +885,32 @@ def run_standard_cp_claude_api_call_15_of_15(
     step_7_2_response: str,
     step_7_3_prompt: str,
     step_7_3_response: str,
+    step_3_lower_batch2: str,
+    hearing_sheet_content: str = "",
+    appo_memo: str = "",
+    sales_notes: str = "",
 ) -> tuple[str, str]:
     """
-    STANDARD-CP マニュアル chain の **Claude 15/15**（タブ⑥の4通目・手順7-4）。
+    STANDARD-CP マニュアル chain の **Claude 15/16**（タブ⑥の4通目・手順7-4・下層2群目）。
 
-    本番と同様、手順7-3 までの **同一チャット** を ``history`` で3往復復元したうえで
-    ``ClaudeCLIChat.send_message`` で手順7-4 を1回送る（テンプレにプレースホルダ無し）。
-
-    Returns:
-        (prompt_text, response_text)
+    引数: step_3_lower_batch2 = 手順3-4（お問い合わせ）＋3-5（その他）の連結テキスト
+    処理: history で手順7-3 まで3往復復元 → 手順7-4 を送信
+    出力: (prompt_text, response_text)
     """
     if not STANDARD_CP_USE_CLAUDE_MANUAL:
         raise RuntimeError(
             "modules.standard_cp_claude_manual: STANDARD_CP_USE_CLAUDE_MANUAL が無効です。"
         )
 
-    prompt = _load_step("step_7_4.txt")
+    _extras = [s for s in (appo_memo, sales_notes) if (s or "").strip()]
+    _factual = hearing_factual_data_block_for_prompt(
+        hearing_sheet_content, extra_texts=_extras,
+    )
+    prompt = _subst(
+        _load_step("step_7_4.txt"),
+        STEP_3_LOWER_BATCH2=(step_3_lower_batch2 or "").strip(),
+        HEARING_FACTUAL_BLOCK=_factual,
+    )
     hist = _standard_cp_tab4_history_from_user_model_pairs(
         [
             (step_7_1_prompt, step_7_1_response),
@@ -897,7 +918,44 @@ def run_standard_cp_claude_api_call_15_of_15(
             (step_7_3_prompt, step_7_3_response),
         ]
     )
-    logger.info("STANDARD-CP Claude: 手順7-4のみ（段階テスト・API 15/15・タブ⑥継続）…")
+    logger.info("STANDARD-CP Claude: 手順7-4のみ（段階テスト・API 15/16・タブ⑥継続・下層2群目）…")
+    chat6 = _new_chat(history=hist)
+    text = chat6.send_message(prompt)
+    return prompt, text
+
+
+def run_standard_cp_claude_api_call_16_of_16(
+    *,
+    step_7_1_prompt: str,
+    step_7_1_response: str,
+    step_7_2_prompt: str,
+    step_7_2_response: str,
+    step_7_3_prompt: str,
+    step_7_3_response: str,
+    step_7_4_prompt: str,
+    step_7_4_response: str,
+) -> tuple[str, str]:
+    """
+    STANDARD-CP マニュアル chain の **Claude 16/16**（タブ⑥の5通目・手順7-5・最終仕上げ）。
+
+    処理: history で手順7-4 まで4往復復元 → 手順7-5（仕上げ）を送信
+    出力: (prompt_text, response_text)
+    """
+    if not STANDARD_CP_USE_CLAUDE_MANUAL:
+        raise RuntimeError(
+            "modules.standard_cp_claude_manual: STANDARD_CP_USE_CLAUDE_MANUAL が無効です。"
+        )
+
+    prompt = _load_step("step_7_5.txt")
+    hist = _standard_cp_tab4_history_from_user_model_pairs(
+        [
+            (step_7_1_prompt, step_7_1_response),
+            (step_7_2_prompt, step_7_2_response),
+            (step_7_3_prompt, step_7_3_response),
+            (step_7_4_prompt, step_7_4_response),
+        ]
+    )
+    logger.info("STANDARD-CP Claude: 手順7-5のみ（段階テスト・API 16/16・タブ⑥継続・最終仕上げ）…")
     chat6 = _new_chat(history=hist)
     text = chat6.send_message(prompt)
     return prompt, text
@@ -921,6 +979,7 @@ class StandardCpManualClaudeOutputs:
     step_7_2: str = ""
     step_7_3: str = ""
     step_7_4: str = ""
+    step_7_5: str = ""
     step_url_hearing: str = ""
     step_url_appo: str = ""
     step_url_sales: str = ""
@@ -983,7 +1042,11 @@ def run_standard_cp_claude_manual_pipeline(
     outs.raw_prompts["step_1_2"] = p12_p13
     outs.raw_prompts["step_1_3"] = p12_p13
 
-    p2 = build_standard_cp_claude_prompt_step_2(step_1_3_output=outs.step_1_3)
+    _blog = detect_blog_desired(hearing_sheet_content, appo_memo, sales_notes)
+    logger.info("ブログページ: %s（全情報源から自動判定）", "含める" if _blog else "含めない")
+    p2 = build_standard_cp_claude_prompt_step_2(
+        step_1_3_output=outs.step_1_3, include_blog=_blog,
+    )
 
     logger.info("STANDARD-CP Claude: 手順2（タブ③）…")
     chat3 = _new_chat()
@@ -1065,12 +1128,18 @@ def run_standard_cp_claude_manual_pipeline(
     outs.raw["step_6"] = outs.step_6
     outs.raw_prompts["step_6"] = p6
 
-    subpages = (
+    # 引数: 手順3-2〜3-5 の出力を2群に分割（ADVANCE 方式横展開）
+    # 処理: batch1（サービス＋会社概要）と batch2（お問い合わせ＋その他）で
+    #       手順7-3 / 7-4 を別ターンに分け、出力トークン圧力を軽減
+    # 出力: 各 batch の React コード → 手順7-5 で最終仕上げ
+    batch1 = (
         "\n\n=== 手順3-2 サービスページ ===\n\n"
         + outs.step_3_2
         + "\n\n=== 手順3-3 会社概要 ===\n\n"
         + outs.step_3_3
-        + "\n\n=== 手順3-4 お問い合わせ ===\n\n"
+    )
+    batch2 = (
+        "\n\n=== 手順3-4 お問い合わせ ===\n\n"
         + outs.step_3_4
         + "\n\n=== 手順3-5 その他 ===\n\n"
         + outs.step_3_5
@@ -1094,12 +1163,17 @@ def run_standard_cp_claude_manual_pipeline(
     )
     p73 = _subst(
         _load_step("step_7_3.txt"),
-        STEP_3_SUBPAGES_OUTPUT=subpages,
+        STEP_3_LOWER_BATCH1=batch1,
         HEARING_FACTUAL_BLOCK=_factual_block,
     )
-    p74 = _load_step("step_7_4.txt")
+    p74 = _subst(
+        _load_step("step_7_4.txt"),
+        STEP_3_LOWER_BATCH2=batch2,
+        HEARING_FACTUAL_BLOCK=_factual_block,
+    )
+    p75 = _load_step("step_7_5.txt")
 
-    logger.info("STANDARD-CP Claude: 手順7-1〜7-4（タブ⑥）…")
+    logger.info("STANDARD-CP Claude: 手順7-1〜7-5（タブ⑥・下層2群分割）…")
     chat6 = _new_chat()
     outs.step_7_1 = chat6.send_message(p71)
     outs.raw["step_7_1"] = outs.step_7_1
@@ -1113,8 +1187,11 @@ def run_standard_cp_claude_manual_pipeline(
     outs.step_7_4 = chat6.send_message(p74)
     outs.raw["step_7_4"] = outs.step_7_4
     outs.raw_prompts["step_7_4"] = p74
+    outs.step_7_5 = chat6.send_message(p75)
+    outs.raw["step_7_5"] = outs.step_7_5
+    outs.raw_prompts["step_7_5"] = p75
 
-    canvas_final = (outs.step_7_4 or "").strip() or outs.step_7_3
+    canvas_final = (outs.step_7_5 or "").strip() or outs.step_7_4
 
     _ref_plan = get_contract_plan_info(contract_plan)
     _manus_contract_pages = int(_ref_plan.get("pages") or 6)

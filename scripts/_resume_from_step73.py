@@ -48,8 +48,9 @@ from modules.standard_cp_claude_manual import (
     CLAUDE_STANDARD_CP_MODEL,
     StandardCpManualClaudeOutputs,
     _build_site_build_prompt_from_steps,
-    run_standard_cp_claude_api_call_14_of_15,
-    run_standard_cp_claude_api_call_15_of_15,
+    run_standard_cp_claude_api_call_14_of_16,
+    run_standard_cp_claude_api_call_15_of_16,
+    run_standard_cp_claude_api_call_16_of_16,
 )
 from main import WebsiteBot
 
@@ -143,10 +144,12 @@ def resume_case(record_number: str) -> None:
     begin_case_llm_trace(record_number)
     _step_seq.set(15)
 
-    subpages = (
+    batch1 = (
         "\n\n=== 手順3-2 サービスページ ===\n\n" + outs.step_3_2
         + "\n\n=== 手順3-3 会社概要 ===\n\n" + outs.step_3_3
-        + "\n\n=== 手順3-4 お問い合わせ ===\n\n" + outs.step_3_4
+    )
+    batch2 = (
+        "\n\n=== 手順3-4 お問い合わせ ===\n\n" + outs.step_3_4
         + "\n\n=== 手順3-5 その他 ===\n\n" + outs.step_3_5
     )
 
@@ -154,14 +157,14 @@ def resume_case(record_number: str) -> None:
     am = bundle.appo_memo
     sn = bundle.sales_notes
 
-    # --- step 7-3 (API 14/15) ---
-    logger.info("手順7-3 を再開します（タイムアウト 1800s）…")
-    p73, r73 = run_standard_cp_claude_api_call_14_of_15(
+    # --- step 7-3 (API 14/16・下層1群目) ---
+    logger.info("手順7-3 を再開します（下層1群目・タイムアウト 1800s）…")
+    p73, r73 = run_standard_cp_claude_api_call_14_of_16(
         step_7_1_prompt=s71_prompt,
         step_7_1_response=s71_response,
         step_7_2_prompt=s72_prompt,
         step_7_2_response=s72_response,
-        step_3_subpages_output=subpages,
+        step_3_lower_batch1=batch1,
         hearing_sheet_content=hs,
         appo_memo=am,
         sales_notes=sn,
@@ -170,23 +173,43 @@ def resume_case(record_number: str) -> None:
     outs.raw["step_7_3"] = r73
     outs.raw_prompts["step_7_3"] = p73
 
-    # --- step 7-4 (API 15/15) ---
-    logger.info("手順7-4 を実行します…")
-    p74, r74 = run_standard_cp_claude_api_call_15_of_15(
+    # --- step 7-4 (API 15/16・下層2群目) ---
+    logger.info("手順7-4 を実行します（下層2群目）…")
+    p74, r74 = run_standard_cp_claude_api_call_15_of_16(
         step_7_1_prompt=s71_prompt,
         step_7_1_response=s71_response,
         step_7_2_prompt=s72_prompt,
         step_7_2_response=s72_response,
         step_7_3_prompt=p73,
         step_7_3_response=r73,
+        step_3_lower_batch2=batch2,
+        hearing_sheet_content=hs,
+        appo_memo=am,
+        sales_notes=sn,
     )
     outs.step_7_4 = r74
     outs.raw["step_7_4"] = r74
     outs.raw_prompts["step_7_4"] = p74
+
+    # --- step 7-5 (API 16/16・最終仕上げ) ---
+    logger.info("手順7-5 を実行します（最終仕上げ）…")
+    p75, r75 = run_standard_cp_claude_api_call_16_of_16(
+        step_7_1_prompt=s71_prompt,
+        step_7_1_response=s71_response,
+        step_7_2_prompt=s72_prompt,
+        step_7_2_response=s72_response,
+        step_7_3_prompt=p73,
+        step_7_3_response=r73,
+        step_7_4_prompt=p74,
+        step_7_4_response=r74,
+    )
+    outs.step_7_5 = r75
+    outs.raw["step_7_5"] = r75
+    outs.raw_prompts["step_7_5"] = p75
     outs.step_7_1 = s71_response
     outs.step_7_2 = s72_response
 
-    canvas_final = (r74 or "").strip() or r73
+    canvas_final = (r75 or "").strip() or r74
 
     # --- Manus リファクタ ---
     manus_deploy_github_url: str | None = None

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
 **12回目**（手順7-1）と **13回目**（手順7-2）のプロンプト＋応答でタブ⑥を2往復復元し、
-**5〜8回目**（手順3-2〜3-5）の応答を束ねて ``STEP_3_SUBPAGES_OUTPUT`` とし、
-STANDARD-CP の Claude **14/15（手順7-3・タブ⑥の3通目）**だけ実行する。
+**5〜6回目**（手順3-2〜3-3）の応答を束ねて ``STEP_3_LOWER_BATCH1`` とし、
+STANDARD-CP の Claude **14/16（手順7-3・タブ⑥の3通目・下層1群目）**だけ実行する。
 
 12回目・13回目の解決:
   ``--prev-step-dir`` は **13回目**フォルダ（``01_prompt_step_7_2.txt`` 等）。
@@ -46,7 +46,7 @@ from config.config import (  # noqa: E402
     pipeline_claude_step_tests_base,
     pipeline_run_root_from_phase1_snapshot_dir,
 )
-from modules.standard_cp_claude_manual import run_standard_cp_claude_api_call_14_of_15  # noqa: E402
+from modules.standard_cp_claude_manual import run_standard_cp_claude_api_call_14_of_16  # noqa: E402
 
 
 def _resolve_run_root(*, phase1: Path, run_dir: Path | None) -> Path:
@@ -120,31 +120,23 @@ def _read_response(d: Path, filename: str, label: str) -> str:
     return p.read_text(encoding="utf-8")
 
 
-def _build_subpages_from_dirs(
+def _build_batch1_from_dirs(
     d32: Path,
     d33: Path,
-    d34: Path,
-    d35: Path,
 ) -> str:
     s2 = _read_response(d32, "02_response_step_3_2.txt", "--step32-dir")
     s3 = _read_response(d33, "02_response_step_3_3.txt", "--step33-dir")
-    s4 = _read_response(d34, "02_response_step_3_4.txt", "--step34-dir")
-    s5 = _read_response(d35, "02_response_step_3_5.txt", "--step35-dir")
     return (
         "\n\n=== 手順3-2 サービスページ ===\n\n"
         + s2
         + "\n\n=== 手順3-3 会社概要 ===\n\n"
         + s3
-        + "\n\n=== 手順3-4 お問い合わせ ===\n\n"
-        + s4
-        + "\n\n=== 手順3-5 その他 ===\n\n"
-        + s5
     )
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="STANDARD-CP Claude 14/15（手順7-3・タブ⑥3通目・チャット継続）"
+        description="STANDARD-CP Claude 14/16（手順7-3・タブ⑥3通目・下層1群目）"
     )
     parser.add_argument(
         "--phase1-dir",
@@ -180,23 +172,11 @@ def main() -> None:
         metavar="DIR",
     )
     parser.add_argument(
-        "--step34-dir",
-        type=Path,
-        default=None,
-        metavar="DIR",
-    )
-    parser.add_argument(
-        "--step35-dir",
-        type=Path,
-        default=None,
-        metavar="DIR",
-    )
-    parser.add_argument(
-        "--subpages-output-file",
+        "--batch1-output-file",
         type=Path,
         default=None,
         metavar="PATH",
-        help="STEP_3_SUBPAGES 相当の全文テキスト（4ディレクトリ指定と排他）",
+        help="STEP_3_LOWER_BATCH1 相当の全文テキスト（2ディレクトリ指定と排他）",
     )
     parser.add_argument(
         "--run-dir",
@@ -226,65 +206,59 @@ def main() -> None:
         )
 
     has_dirs = all(
-        x is not None
-        for x in (args.step32_dir, args.step33_dir, args.step34_dir, args.step35_dir)
+        x is not None for x in (args.step32_dir, args.step33_dir)
     )
     has_partial_dirs = any(
-        x is not None
-        for x in (args.step32_dir, args.step33_dir, args.step34_dir, args.step35_dir)
+        x is not None for x in (args.step32_dir, args.step33_dir)
     ) and not has_dirs
-    has_file = args.subpages_output_file is not None
+    has_file = args.batch1_output_file is not None
 
     if has_partial_dirs:
         print(
-            "ERROR: --step32-dir / --step33-dir / --step34-dir / --step35-dir は"
-            " 4つすべて指定するか、すべて省略して --subpages-output-file を使ってください。",
+            "ERROR: --step32-dir / --step33-dir は"
+            " 両方指定するか、省略して --batch1-output-file を使ってください。",
             file=sys.stderr,
         )
         sys.exit(1)
     if has_dirs and has_file:
         print(
-            "ERROR: 4ディレクトリ指定と --subpages-output-file は同時に使えません。",
+            "ERROR: ディレクトリ指定と --batch1-output-file は同時に使えません。",
             file=sys.stderr,
         )
         sys.exit(1)
     if not has_dirs and not has_file:
         print(
-            "ERROR: (--step32-dir … --step35-dir の4つ) または "
-            "--subpages-output-file が必要です。",
+            "ERROR: (--step32-dir + --step33-dir) または "
+            "--batch1-output-file が必要です。",
             file=sys.stderr,
         )
         sys.exit(1)
 
     if has_file:
-        p = args.subpages_output_file.resolve()
+        p = args.batch1_output_file.resolve()
         if not p.is_file():
-            print(f"ERROR: --subpages-output-file が見つかりません: {p}", file=sys.stderr)
+            print(f"ERROR: --batch1-output-file が見つかりません: {p}", file=sys.stderr)
             sys.exit(1)
-        subpages = p.read_text(encoding="utf-8")
+        batch1 = p.read_text(encoding="utf-8")
         sub_ref = str(p)
         via_file = True
     else:
-        subpages = _build_subpages_from_dirs(
+        batch1 = _build_batch1_from_dirs(
             args.step32_dir,
             args.step33_dir,
-            args.step34_dir,
-            args.step35_dir,
         )
         sub_ref = {
             "step32": str(args.step32_dir.resolve()),
             "step33": str(args.step33_dir.resolve()),
-            "step34": str(args.step34_dir.resolve()),
-            "step35": str(args.step35_dir.resolve()),
         }
         via_file = False
 
-    prompt, response = run_standard_cp_claude_api_call_14_of_15(
+    prompt, response = run_standard_cp_claude_api_call_14_of_16(
         step_7_1_prompt=p71,
         step_7_1_response=r71,
         step_7_2_prompt=p72,
         step_7_2_response=r72,
-        step_3_subpages_output=subpages,
+        step_3_lower_batch1=batch1,
     )
 
     base = pipeline_claude_step_tests_base(run_root)
@@ -299,8 +273,8 @@ def main() -> None:
                 "run_root": str(run_root.resolve()),
                 "prev_step_dir": str(prev13),
                 "step7_1_dir": step12_ref,
-                "subpages_source": sub_ref,
-                "subpages_via_file": via_file,
+                "batch1_source": sub_ref,
+                "batch1_via_file": via_file,
             },
             ensure_ascii=False,
             indent=2,
@@ -315,7 +289,7 @@ def main() -> None:
         "phase1_dir": str(phase1),
         "step": "standard_cp_manual_step_7_3",
         "claude_call_index_1based": 14,
-        "claude_calls_total_standard_cp": 15,
+        "claude_calls_total_standard_cp": 16,
         "prompt_chars": len(prompt),
         "response_chars": len(response),
     }
@@ -326,9 +300,9 @@ def main() -> None:
     (out / "README.txt").write_text(
         "\n".join(
             [
-                "STANDARD-CP Claude 段階テスト（手順7-3・API 14/15・タブ⑥3通目）",
+                "STANDARD-CP Claude 段階テスト（手順7-3・API 14/16・タブ⑥3通目・下層1群目）",
                 "",
-                "00_source.json — phase1・run・13回目・12回目・下層ページ束ね参照",
+                "00_source.json — phase1・run・13回目・12回目・下層1群目参照",
                 "01_prompt_step_7_3.txt — step_7_3.txt 置換済み",
                 "02_response_step_7_3.txt — 応答",
                 "meta.json — 文字数・メタ",
@@ -340,7 +314,7 @@ def main() -> None:
         encoding="utf-8",
     )
 
-    print("--- 14/15（手順7-3・タブ⑥3通目）---")
+    print("--- 14/16（手順7-3・タブ⑥3通目・下層1群目）---")
     print(f"run_root: {run_root.resolve()}")
     print(f"phase1_dir: {phase1}")
     print(f"保存: {out}")

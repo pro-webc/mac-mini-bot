@@ -692,6 +692,47 @@ class SpreadsheetClient:
     # 書き込み
     # ------------------------------------------------------------------
 
+    def resolve_current_row(
+        self,
+        record_number: str,
+        partner_name: str,
+        *,
+        sheet_name: str | None = None,
+    ) -> int:
+        """レコード番号+パートナー名で現在の行番号を取得する。
+
+        行の挿入・削除で行番号がずれうるため、長時間処理の後で
+        スプレッドシートに書き込む前に呼び出す。
+        レコード番号が一致し、パートナー名も一致する行を返す。
+        パートナー名が不一致の場合は警告を出しつつレコード番号一致を優先する。
+        """
+        sheet = sheet_name or self.sheet_name
+        range_name = a1_range(sheet, f"A:{self._data_range_end}")
+        result = (
+            self.service.spreadsheets()
+            .values()
+            .get(spreadsheetId=self.spreadsheet_id, range=range_name)
+            .execute()
+        )
+        values = result.get("values", [])
+        want_rec = str(record_number).strip()
+        rec_col = self.columns["record_number"]
+        partner_col = self.columns["partner_name"]
+        for row_index, row in enumerate(values[1:], start=2):
+            cell_rec = self._cell(row, rec_col).strip()
+            if cell_rec == want_rec:
+                cell_partner = self._cell(row, partner_col).strip()
+                if cell_partner != partner_name.strip():
+                    logger.warning(
+                        "行番号再解決: レコード番号 %r の行 %d でパートナー名が不一致 "
+                        "(期待=%r 実際=%r)。レコード番号一致を優先します",
+                        want_rec, row_index, partner_name, cell_partner,
+                    )
+                return row_index
+        raise ValueError(
+            f"レコード番号 {want_rec!r} がシート {sheet!r} に見つかりません"
+        )
+
     def update_deploy_url(
         self, row_number: int, deploy_url: str, sheet_name: str | None = None
     ) -> None:
