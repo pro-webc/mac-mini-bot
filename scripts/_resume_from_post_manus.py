@@ -127,7 +127,7 @@ def resume_post_manus(record_number: str) -> None:
     outs.raw["step_1_2"] = ""
     outs.raw_prompts["step_1_2"] = outs.raw_prompts.get("step_1_3", "")
 
-    canvas_final = (outs.step_7_5 or "").strip() or outs.step_7_4
+    claude_final = (outs.step_7_5 or "").strip() or outs.step_7_4
 
     # --- post-Manus 検証（新ロジック）---
     expected_repo = sanitize_github_repo_name(partner_name, record_number)
@@ -177,7 +177,7 @@ def resume_post_manus(record_number: str) -> None:
     spec = assemble_spec_dict_from_requirements(
         req, contract_plan, partner_name,
     )
-    spec["standard_manual_claude_final"] = canvas_final
+    spec["standard_manual_claude_final"] = claude_final
     spec["standard_refactored_source_markdown"] = outs.step_refactor or ""
     if manus_deploy_github_url:
         spec["manus_deploy_github_url"] = manus_deploy_github_url.strip()

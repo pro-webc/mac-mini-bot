@@ -25,9 +25,9 @@ output/11346/llm_steps/
 ├── 003_claude_cli_chat/       ← 手順2: ページ構成・セクション設計
 ├── 004_claude_cli_chat/       ← 手順3: テキストライティング
 ├── ...
-├── 010_claude_cli_chat/       ← 手順7-*: コード生成（Canvas tsx）
-├── 011_claude_cli_chat/       ← 最終: Canvas 完成
-└── 013_manus_refactor/        ← Manus リファクタ（設定有効時のみ）
+├── 010_claude_cli_chat/       ← 手順7-*: コード生成（tsx ソース）
+├── 011_claude_cli_chat/       ← 最終: Claude CLI 出力完成
+└── 012_manus_refactor/        ← Manus リファクタ（設定有効時のみ）
     ├── input.md
     └── output.md（または error.txt）
 ```
@@ -55,7 +55,7 @@ output/11346/llm_steps/
 
 | ファイル | 内容 | 書式 |
 |----------|------|------|
-| `input.md` | LLM に送ったプロンプト全文 | Markdown テキスト。`claude_cli_generate` は `claude -p` に渡した 1 プロンプト。`claude_cli_chat` はユーザーメッセージ（初回は会話履歴を含む場合あり）。`manus_refactor` はタスク作成時の全文（オーケストレーション + リファクタ指示 + Canvas ソース） |
+| `input.md` | LLM に送ったプロンプト全文 | Markdown テキスト。`claude_cli_generate` は `claude -p` に渡した 1 プロンプト。`claude_cli_chat` はユーザーメッセージ（初回は会話履歴を含む場合あり）。`manus_refactor` はタスク作成時の全文（オーケストレーション + リファクタ指示 + LLM ソース） |
 | `output.md` | LLM の応答全文 | Markdown テキスト。Claude CLI の場合は `result` JSON の `text`。Manus の場合は完了タスクの `output_text` |
 | `error.txt` | エラー発生時の例外メッセージ | `output.md` の代わりに保存。例: `RuntimeError: Manus タスクがタイムアウトしました（2700.0s）` |
 
@@ -65,7 +65,7 @@ output/11346/llm_steps/
 
 ```bash
 ls output/11346/llm_steps/
-# 001_claude_cli_generate/  002_claude_cli_chat/  ...  013_manus_refactor/
+# 001_claude_cli_generate/  002_claude_cli_chat/  ...  012_manus_refactor/
 ```
 
 2. **各ステップの出力を確認して問題箇所を特定する**
@@ -74,7 +74,7 @@ ls output/11346/llm_steps/
 # ページ構成（手順2）の出力を見る
 cat output/11346/llm_steps/003_claude_cli_chat/output.md
 
-# コード生成（Canvas）の出力を見る
+# コード生成（Claude CLI）の出力を見る
 cat output/11346/llm_steps/010_claude_cli_chat/output.md
 ```
 
@@ -157,7 +157,7 @@ output/sites/<site_name>/llm_raw_output/                ← フェーズ3完了�
 | 改善の観点 | 参照する記録 | 具体例 |
 |------------|-------------|--------|
 | 特定ステップの品質 | 第 1 層の `NNN_*/output.md` | 「ステップ 2（ページ構成）でセクションが薄い」→ `step_2.txt` を改善 |
-| TEXT_LLM vs Manus の切り分け | 第 1 層の最終 TEXT_LLM（Claude CLI）と Manus の両方 | 「Canvas tsx は良いが Manus の分割で壊れる」→ `refactoring_instruction_handwork.txt` を改善 |
+| TEXT_LLM vs Manus の切り分け | 第 1 層の最終 TEXT_LLM（Claude CLI）と Manus の両方 | 「Claude 出力の tsx は良いが Manus の分割で壊れる」→ `refactoring_instruction_handwork.txt` を改善 |
 | 全体傾向の把握 | 第 3 層の `spec.yaml` / `summary.json` | 「STANDARD プランで文字数が少ない案件が多い」→ コンテンツ生成ステップを強化 |
 | パーサ vs LLM の切り分け | 第 2 層の raw output vs `app/` | 「raw に正しいコードがあるのに `app/` に反映されない」→ パーサ側のバグ |
 
@@ -247,7 +247,7 @@ output/sites/<パートナー名>-<レコード番号>/
 output/phase2_llm_checkpoints/<site_name>/pre_manus/
   README.txt
   00_checkpoint.json
-  canvas_before_manus.md
+  claude_output_before_manus.md
   llm_raw_output/claude_steps/<pipe>/…   （サイト正本と同じ .md / *_prompt.txt / _model.txt）
 ```
 

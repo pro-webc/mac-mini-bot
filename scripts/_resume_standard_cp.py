@@ -355,7 +355,7 @@ def resume_case(record_number: str) -> None:
     outs.raw["step_7_5"] = outs.step_7_5
     outs.raw_prompts["step_7_5"] = p75
 
-    canvas_final = (outs.step_7_5 or "").strip() or outs.step_7_4
+    claude_final = (outs.step_7_5 or "").strip() or outs.step_7_4
 
     # --- Manus リファクタ ---
     manus_deploy_github_url: str | None = None
@@ -368,7 +368,7 @@ def resume_case(record_number: str) -> None:
         max_pages = int(plan_info.get("pages") or 6)
 
         md, manus_deploy_github_url, _prompt = run_manus_refactor_block(
-            canvas_markdown=canvas_final,
+            claude_source_code=claude_final,
             partner_name=case["partner_name"],
             record_number=record_number,
             work_branch=ContractWorkBranch.STANDARD,
@@ -408,7 +408,7 @@ def resume_case(record_number: str) -> None:
     spec = assemble_spec_dict_from_requirements(
         req, case.get("contract_plan", ""), case["partner_name"],
     )
-    spec["standard_manual_claude_final"] = canvas_final
+    spec["standard_manual_claude_final"] = claude_final
     spec["standard_refactored_source_markdown"] = outs.step_refactor or ""
     if manus_deploy_github_url:
         spec["manus_deploy_github_url"] = manus_deploy_github_url.strip()

@@ -1,7 +1,7 @@
-"""Canvas 由来ソースを Next.js App Router 用にリファクタ（Manus API・タスク1件）。
+"""Claude CLI 出力ソースを Next.js App Router 用にリファクタ（Manus API・タスク1件）。
 
 Manus 向け文言は **`config/prompts/manus/*.txt` に集約**。コードは読み込み・
-`{{MANUS_REPO_*}}` / `MANUS_DEPLOY_GITHUB_REPO_HINT` の差し替え・Canvas ブロックの連結のみ。
+`{{MANUS_REPO_*}}` / `MANUS_DEPLOY_GITHUB_REPO_HINT` の差し替え・LLM ソースブロックの連結のみ。
 `MANUS_PROVIDES_DEPLOY_GITHUB_URL` が off のときは `bot_deploy_instruction.txt` を連結しない。
 
 ``preface_dir`` は互換のため引数に残すが、Manus プロンプト組み立てでは使用しない（手作業ではプラン別 intro を使わない）。
@@ -26,7 +26,7 @@ from modules.github_client import sanitize_github_repo_name
 
 logger = logging.getLogger(__name__)
 
-_CANVAS_CODE_BLOCK_RE = re.compile(
+_CODE_BLOCK_RE = re.compile(
     r"```(?:tsx|jsx|typescript|javascript|ts|js)?\s*\n(.*?)```",
     re.IGNORECASE | re.DOTALL,
 )
@@ -82,8 +82,8 @@ def _read(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
-def _looks_like_canvas_source(code: str) -> bool:
-    """Claude CLI 出力中のコードフェンスから、React/TSX 本文らしいものを拾う。"""
+def _looks_like_tsx_source(code: str) -> bool:
+    """コードフェンスから React/TSX 本文らしいものを判定する。"""
     s = (code or "").strip()
     if not s:
         return False
@@ -100,17 +100,17 @@ def _looks_like_canvas_source(code: str) -> bool:
     return any(h in s for h in hints)
 
 
-def _normalize_canvas_source_for_manus(canvas_source_code: str) -> str:
-    """Manus に渡す前に説明文を除き、Canvas の実コード本文だけに整える。"""
-    src = (canvas_source_code or "").strip()
+def _normalize_source_for_manus(claude_source_code: str) -> str:
+    """Manus に渡す前に説明文を除き、LLM 出力の実コード本文だけに整える。"""
+    src = (claude_source_code or "").strip()
     if not src:
         raise RuntimeError(
             "modules.basic_lp_refactor_claude: リファクタリング元ソースが空です。"
         )
     blocks = [
         m.group(1).strip()
-        for m in _CANVAS_CODE_BLOCK_RE.finditer(src)
-        if _looks_like_canvas_source(m.group(1))
+        for m in _CODE_BLOCK_RE.finditer(src)
+        if _looks_like_tsx_source(m.group(1))
     ]
     if blocks:
         return max(blocks, key=len)
@@ -132,7 +132,7 @@ def _manus_contract_pages_and_legal_block(contract_max_pages: int | None) -> str
     multi_line = ""
     if multi:
         multi_line = (
-            f"- 契約が複数ページ（{cap}）のときは、元 Canvas に `useState` 等の擬似ページ切替が無くても、"
+            f"- 契約が複数ページ（{cap}）のときは、元ソースに `useState` 等の擬似ページ切替が無くても、"
             " **Pattern A（`app/page.tsx` のみの縦スクロール単一路線）にしてはならない**。"
             " 見出し・ナビ・セクション境界・コメントから各論理ページを切り出し、"
             " **ファイルベースルーティングでちょうど上記本数の `page.tsx` に分配**すること。\n"
@@ -157,7 +157,7 @@ def _manus_contract_pages_and_legal_block(contract_max_pages: int | None) -> str
 
 
 def build_basic_lp_refactor_user_prompt(
-    canvas_source_code: str,
+    claude_source_code: str,
     *,
     preface_dir: Path | None = None,
     partner_name: str | None = None,
@@ -166,18 +166,20 @@ def build_basic_lp_refactor_user_prompt(
     contract_max_pages: int | None = None,
 ) -> str:
     """
-    手作業 Manus マニュアルと同じオーケストレーション + リファクタ指示書 + Canvas。
+    手作業 Manus マニュアルと同じオーケストレーション + リファクタ指示書 + LLM ソース。
+
+    全文を 1 本の prompt に連結する旧形式。トレース記録やフォールバック用に残す。
 
     Args:
-        canvas_source_code: Claude Canvas 単一ファイル相当。
+        claude_source_code: Claude CLI 最終出力のソースコード。
         preface_dir: 未使用（シグネチャ互換）。
         partner_name: 制作スプレッドシートの「パートナー名」列（プロンプト上の先方名と同一）。
         record_number: 制作スプレッドシートのレコード番号（リポジトリ名・ディスクリプション用）。
-        hearing_reference_block: 任意。ヒアリング由来の参考サイト・デザイン原文（Canvas 直前に再掲）。
+        hearing_reference_block: 任意。ヒアリング由来の参考サイト・デザイン原文（ソース直前に再掲）。
         contract_max_pages: 任意。契約プランのページ数。指定時はリファクタで余分な ``page.tsx`` を増やさない旨を注入する。
     """
     del preface_dir  # Manus 手作業フローではプラン別 preface を使わない
-    src = _normalize_canvas_source_for_manus(canvas_source_code)
+    src = _normalize_source_for_manus(claude_source_code)
     repo_name = manus_repo_name_for_prompt(record_number, partner_name)
     repo_desc = manus_repo_description_for_prompt(partner_name, record_number)
     orch = _read(_MANUS_DIR / "orchestration_prompt.txt")
@@ -195,16 +197,85 @@ def build_basic_lp_refactor_user_prompt(
         + refactor
         + legal
         + hr_block
-        + "\n\n===== BEGIN_CANVAS_SOURCE =====\n"
+        + "\n\n===== BEGIN_CLAUDE_SOURCE =====\n"
         + "以下がリファクタリング元のソースコードです。"
         + " 外部ファイルの添付や参照ではなく、このブロック内のコードを直接入力として扱ってください。\n\n"
         + "```tsx\n"
         + src
-        + "\n```\n===== END_CANVAS_SOURCE =====\n"
+        + "\n```\n===== END_CLAUDE_SOURCE =====\n"
     )
     if MANUS_PROVIDES_DEPLOY_GITHUB_URL:
         base += "\n\n" + _manus_bot_deploy_instruction_block()
     return base
+
+
+# ---------------------------------------------------------------------------
+# 添付ファイル分離版（Manus API の attachments を利用）
+# ---------------------------------------------------------------------------
+
+# 手作業 Manus では「プロンプト + 2 ファイル」で送る。
+# API でも prompt/attachments を分離し、ソースコードを添付ファイルとして渡す。
+
+_ATTACHMENT_OVERRIDE_NOTE = """\
+**【ファイル添付形式について — このブロックが最優先】**
+本タスクではリファクタリング指示書とソースコードを **添付ファイル** として送信しています。
+- 添付ファイル **`refactoring_instructions.md`** がリファクタリング指示書（手順2 の全ルール）です。
+- 添付ファイル **`claude_source.tsx`** がリファクタリング元のソースコードです。
+本文中の「このプロンプトの末尾の `BEGIN_CLAUDE_SOURCE`」等の記述は、すべて **添付ファイル `claude_source.tsx`** に読み替えてください。\
+ 同様に「以下のリファクタリング指示書」は **添付ファイル `refactoring_instructions.md`** を指します。
+添付ファイルの内容が正であり、プロンプト本文に埋め込みソースコードはありません。\
+ 添付ファイルを無視してスクラッチで独自実装することは禁止です。
+"""
+
+
+def build_manus_refactor_prompt_and_attachments(
+    claude_source_code: str,
+    *,
+    preface_dir: Path | None = None,
+    partner_name: str | None = None,
+    record_number: str | None = None,
+    hearing_reference_block: str | None = None,
+    contract_max_pages: int | None = None,
+) -> tuple[str, list[dict[str, str]]]:
+    """手作業と同じ「プロンプト + 2 ファイル」構成を API 用に返す。
+
+    引数: build_basic_lp_refactor_user_prompt と同一シグネチャ。
+    処理: orchestration + 法的ブロック + ヒアリング再掲 + deploy 指示を prompt に、
+          リファクタ指示書と LLM ソースを添付ファイルとして分離。
+    出力: (prompt_text, attachments) — attachments は
+          ``[{"filename": str, "content": str}, ...]`` 形式。
+    """
+    del preface_dir
+    src = _normalize_source_for_manus(claude_source_code)
+    repo_name = manus_repo_name_for_prompt(record_number, partner_name)
+    repo_desc = manus_repo_description_for_prompt(partner_name, record_number)
+
+    orch = _read(_MANUS_DIR / "orchestration_prompt.txt")
+    orch = orch.replace("{{MANUS_REPO_NAME}}", repo_name).replace(
+        "{{MANUS_REPO_DESCRIPTION}}", repo_desc
+    )
+
+    refactor_text = _read(_MANUS_DIR / "refactoring_instruction_handwork.txt")
+    legal = _manus_contract_pages_and_legal_block(contract_max_pages)
+    hr = (hearing_reference_block or "").strip()
+    hr_block = ("\n\n---\n\n" + hr) if hr else ""
+
+    prompt = (
+        _ATTACHMENT_OVERRIDE_NOTE
+        + "\n\n"
+        + orch
+        + legal
+        + hr_block
+    )
+    if MANUS_PROVIDES_DEPLOY_GITHUB_URL:
+        prompt += "\n\n" + _manus_bot_deploy_instruction_block()
+
+    refactor_with_legal = refactor_text + legal
+    attachments = [
+        {"filename": "refactoring_instructions.md", "content": refactor_with_legal},
+        {"filename": "claude_source.tsx", "content": src},
+    ]
+    return prompt, attachments
 
 
 def _manus_bot_deploy_instruction_block() -> str:
@@ -404,7 +475,7 @@ def _verify_github_url_reachable(url: str) -> bool:
 
 def run_basic_lp_refactor_stage(
     *,
-    canvas_source_code: str,
+    claude_source_code: str,
     preface_dir: Path | None = None,
     partner_name: str | None = None,
     record_number: str | None = None,
@@ -414,7 +485,7 @@ def run_basic_lp_refactor_stage(
 ) -> tuple[str, str | None]:
     """Manus にリファクタ用プロンプトを送り、完了まで待つ。
 
-    引数: canvas_source_code — Claude CLI 出力の Canvas / record_number — レコード番号
+    引数: claude_source_code — Claude CLI 最終出力のソースコード / record_number — レコード番号
           model — Claude CLI URL 正規化に使うモデル（省略時 CLAUDE_BASIC_LP_MODEL）
     処理: Manus タスク実行 → Claude CLI で検証・状況判断 → git ls-remote で到達確認
           → リカバリ方針に基づいて URL を決定
@@ -430,7 +501,7 @@ def run_basic_lp_refactor_stage(
     ) if (partner_name or record_number) else ""
 
     raw = run_manus_refactor_stage(
-        canvas_source_code=canvas_source_code,
+        claude_source_code=claude_source_code,
         preface_dir=preface_dir,
         partner_name=partner_name,
         record_number=record_number,

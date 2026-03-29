@@ -73,11 +73,20 @@ def record_llm_turn(
     input_text: str,
     output_text: str | None = None,
     error_text: str | None = None,
+    attachments: list[dict[str, str]] | None = None,
 ) -> None:
     """
     アクティブな案件トレースがあるときだけ、1 ステップ分をディスクへ書く。
 
+    引数:
+        kind: ステップ種別（ディレクトリ名の一部）
+        input_text: プロンプト本文
+        output_text: LLM 応答
+        error_text: エラー時のメッセージ
+        attachments: 添付ファイル ``[{"filename": str, "content": str}, ...]``。
+                     指定時は各ファイルを ``attachments/`` サブディレクトリに個別保存する。
     出力: ``<root>/llm_steps/<NNN>_<kind>/input.md`` + ``output.md`` または ``error.txt``
+          + ``attachments/<filename>``（添付がある場合）
     """
     root = _trace_root.get()
     if root is None:
@@ -91,15 +100,23 @@ def record_llm_turn(
             _write_text_file(step_dir / "error.txt", error_text)
         elif output_text is not None:
             _write_text_file(step_dir / "output.md", output_text)
+        if attachments:
+            att_dir = step_dir / "attachments"
+            att_dir.mkdir(parents=True, exist_ok=True)
+            for att in attachments:
+                fname = _safe_segment(att.get("filename") or "unnamed")
+                _write_text_file(att_dir / fname, att.get("content") or "")
         try:
             from config.config import OUTPUT_DIR
 
             rel = step_dir.resolve().relative_to(OUTPUT_DIR.resolve())
         except ValueError:
             rel = step_dir
+        att_count = len(attachments) if attachments else 0
         logger.info(
-            "LLM トレース保存（1 呼び出しにつき 1 ディレクトリ）: %s",
+            "LLM トレース保存: %s (attachments=%d)",
             rel,
+            att_count,
         )
     except Exception:
         logger.exception(

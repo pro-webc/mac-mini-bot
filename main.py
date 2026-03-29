@@ -15,9 +15,11 @@
 """
 from __future__ import annotations
 
+import atexit
 import contextlib
 import logging
 import os
+import signal
 import subprocess
 import sys
 from pathlib import Path
@@ -89,9 +91,66 @@ logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
-# Manus 再開モード: 保存済み Canvas から Claude マニュアル段をスキップして Manus 以降を実行
+# Manus 再開モード: 保存済み Claude 出力から Claude マニュアル段をスキップして Manus 以降を実行
 # ---------------------------------------------------------------------------
 
+
+
+def _find_last_claude_cli_output(record_number: str) -> Path:
+    """Manus 直前の最終 Claude CLI 出力ファイルを自動検出する。
+
+    引数: record_number — 案件番号
+    処理: output/{record}/llm_steps/ を走査し、オリジナルパイプラインの manus_refactor
+          ステップ（最大番号）の直前にある Claude CLI 出力を選ぶ。
+          再開実行で番号が若い manus_refactor（001 等）が混在しても正しく動作する。
+    出力: 最終 Claude CLI output.md の Path
+    """
+    steps_dir = OUTPUT_DIR / record_number / "llm_steps"
+    if not steps_dir.is_dir():
+        raise FileNotFoundError(
+            f"LLM ステップディレクトリが存在しません: {steps_dir}"
+        )
+
+    max_manus_seq: int | None = None
+    cli_candidates: list[tuple[int, Path]] = []
+
+    for d in steps_dir.iterdir():
+        if not d.is_dir():
+            continue
+        name = d.name
+        try:
+            seq = int(name.split("_", 1)[0])
+        except (ValueError, IndexError):
+            continue
+
+        if "manus_refactor" in name:
+            if max_manus_seq is None or seq > max_manus_seq:
+                max_manus_seq = seq
+            continue
+
+        if "claude_cli_chat" not in name and "claude_cli_generate" not in name:
+            continue
+        out = d / "output.md"
+        if not out.is_file():
+            continue
+        cli_candidates.append((seq, out))
+
+    if max_manus_seq is not None:
+        cli_candidates = [(s, p) for s, p in cli_candidates if s < max_manus_seq]
+
+    if not cli_candidates:
+        raise FileNotFoundError(
+            f"Claude CLI 出力が見つかりません（Manus 再開には前回の TEXT_LLM 完走が必要）: {steps_dir}"
+        )
+
+    cli_candidates.sort(key=lambda t: t[0], reverse=True)
+    best_seq, best_path = cli_candidates[0]
+    logger.info(
+        "Manus 再開: 最終 Claude CLI ステップを自動検出 → step=%03d path=%s"
+        " (original_manus_step=%s)",
+        best_seq, best_path, max_manus_seq,
+    )
+    return best_path
 
 
 def _resume_from_manus(
@@ -104,47 +163,42 @@ def _resume_from_manus(
     work_branch: ContractWorkBranch,
     contract_max_pages: int,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
-    """保存済み Claude Canvas を読み込み、Manus リファクタ以降のみ実行して spec を返す。
+    """保存済み Claude CLI 出力を読み込み、Manus リファクタ以降のみ実行して spec を返す。
 
     引数: record_number（出力ディレクトリの特定）/ hearing 情報（Manus プロンプト内の参考ブロック用）
           / work_branch・contract_max_pages（プラン別制御）
-    処理: output/{record}/llm_steps/011_claude_cli_chat/output.md を読み、
+    処理: output/{record}/llm_steps/ から最終 Claude CLI 出力を自動検出し、
           run_basic_lp_refactor_stage で Manus のみ実行
     出力: (requirements_result, spec) — process_case のフェーズ3 以降が使う最低限のキーを格納
     """
     from modules.basic_lp_refactor_claude import run_basic_lp_refactor_stage
     from modules.hearing_url_utils import hearing_reference_design_block_for_prompt
 
-    trace_dir = OUTPUT_DIR / record_number / "llm_steps" / "011_claude_cli_chat"
-    canvas_path = trace_dir / "output.md"
-    if not canvas_path.is_file():
-        raise FileNotFoundError(
-            f"Claude マニュアル最終出力が見つかりません（Manus 再開には前回の TEXT_LLM（Claude CLI）完走が必要）: {canvas_path}"
-        )
-    canvas = canvas_path.read_text(encoding="utf-8")
+    claude_output_path = _find_last_claude_cli_output(record_number)
+    claude_output = claude_output_path.read_text(encoding="utf-8")
     logger.info(
-        "Manus 再開: 保存済み Canvas を読み込みました (%s chars) path=%s",
-        len(canvas), canvas_path,
+        "Manus 再開: 保存済み Claude 出力を読み込みました (%s chars) path=%s",
+        len(claude_output), claude_output_path,
     )
 
     extras = [s for s in (appo_memo, sales_notes) if (s or "").strip()]
     hr = hearing_reference_design_block_for_prompt(hearing_sheet_content, extra_texts=extras)
 
     md, manus_deploy_github_url = run_basic_lp_refactor_stage(
-        canvas_source_code=canvas,
+        claude_source_code=claude_output,
         partner_name=partner_name,
         record_number=record_number,
         hearing_reference_block=hr,
         contract_max_pages=contract_max_pages,
     )
 
-    refactor_key, canvas_key = BRANCH_REGISTRY[work_branch].manus_keys
+    refactor_key, source_key = BRANCH_REGISTRY[work_branch].manus_keys
     requirements_result: dict[str, Any] = {
         "plan_type": work_branch.value,
-        "site_build_prompt": f"[Manus再開] Canvas {len(canvas)} chars → refactor {len(md)} chars",
+        "site_build_prompt": f"[Manus再開] Claude出力 {len(claude_output)} chars → refactor {len(md)} chars",
     }
     spec: dict[str, Any] = {
-        canvas_key: canvas,
+        source_key: claude_output,
         refactor_key: md,
     }
     if manus_deploy_github_url:
@@ -458,8 +512,17 @@ class WebsiteBot:
         #   public/scripts/ga4-cta-tracking.js を配置する（modules.ga4_injector）。
         #   GA4_INJECT_TRACKING=true なら ID なしでもタグだけ注入（後から ID 追加可能）
         # 出力: 注入成功ログ。GA4_INJECT_TRACKING=false かつ ID 未設定ならスキップ
+        #
+        # Manus フロー: Vercel は Manus の GitHub から直接ビルドするため、
+        # ローカルへの GA4 注入はデプロイに反映されない → スキップ
         if GA4_INJECT_TRACKING:
-            inject_ga4_tracking(site_dir, measurement_id=GA4_MEASUREMENT_ID)
+            if manus_git_for_fallback:
+                logger.info(
+                    "GA4 注入スキップ: Manus の GitHub からデプロイするため"
+                    " ローカルへの注入は本番に反映されない"
+                )
+            else:
+                inject_ga4_tracking(site_dir, measurement_id=GA4_MEASUREMENT_ID)
 
         return site_dir
 
@@ -479,6 +542,18 @@ class WebsiteBot:
         処理: package.json 存在確認 → npm build or 実装検証
         出力: なし（失敗時は RuntimeError）
         """
+        # Manus はビルド成功後にのみ GitHub push する（orchestration_prompt Step 3）。
+        # push 済みなら Vercel が GitHub から直接ビルドするのでローカル検証は不要。
+        # ローカル Node.js バージョン差による偽エラーでパイプラインを止めない。
+        manus_git = (spec.get("manus_deploy_github_url") or "").strip()
+        if manus_git:
+            logger.info(
+                "【フェーズ4】スキップ — Manus がビルド検証済み＆GitHub push 済み"
+                "（Vercel が %s から直接ビルド）",
+                manus_git,
+            )
+            return
+
         if SITE_BUILD_ENABLED or SITE_IMPLEMENTATION_ENABLED:
             pkg = site_dir / "package.json"
             if not pkg.is_file():
@@ -706,13 +781,48 @@ def _emit_startup_validation(result: StartupValidationResult, *, to_stdout: bool
     return result.ok
 
 
+_CAFFEINATE_PID_FILE = Path(__file__).resolve().parent / ".caffeinate.pid"
+
+
+def _kill_orphaned_caffeinate() -> None:
+    """前回実行で孤立した caffeinate がいれば終了させる。"""
+    if not _CAFFEINATE_PID_FILE.exists():
+        return
+    try:
+        pid = int(_CAFFEINATE_PID_FILE.read_text().strip())
+        os.kill(pid, signal.SIGKILL)
+        logger.info("前回の孤立 caffeinate (pid=%s) を終了しました", pid)
+    except (ValueError, ProcessLookupError, PermissionError):
+        pass
+    finally:
+        _CAFFEINATE_PID_FILE.unlink(missing_ok=True)
+
+
+def _stop_caffeinate(proc: subprocess.Popen[Any]) -> None:
+    """caffeinate プロセスを停止し PID ファイルを削除する。"""
+    if proc.poll() is not None:
+        _CAFFEINATE_PID_FILE.unlink(missing_ok=True)
+        return
+    proc.terminate()
+    try:
+        proc.wait(timeout=5)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+    _CAFFEINATE_PID_FILE.unlink(missing_ok=True)
+    logger.info("スリープ抑止を解除しました")
+
+
 @contextlib.contextmanager
 def _prevent_sleep() -> Iterator[None]:
     """macOS の caffeinate でアイドル／システムスリープを抑止する。
 
-    Bot 終了時（正常・例外・KeyboardInterrupt いずれでも）に自動解除される。
+    PID ファイルで caffeinate のライフサイクルを管理する。
+    - 起動時: 前回の孤立プロセスがあればクリーンアップ
+    - 終了時: finally + atexit + SIGTERM ハンドラの三重保護で確実に停止
     caffeinate が使えない環境では warning だけ出して続行する。
     """
+    _kill_orphaned_caffeinate()
+
     try:
         proc = subprocess.Popen(
             ["caffeinate", "-i", "-s"],
@@ -724,16 +834,32 @@ def _prevent_sleep() -> Iterator[None]:
         yield
         return
 
+    _CAFFEINATE_PID_FILE.write_text(str(proc.pid))
     logger.info("スリープ抑止を開始しました (caffeinate pid=%s)", proc.pid)
+
+    # atexit: finally が実行されないケース (os._exit 等) の保険
+    atexit.register(_stop_caffeinate, proc)
+
+    # SIGTERM: systemd stop / kill <pid> への対応
+    prev_handler = signal.getsignal(signal.SIGTERM)
+
+    def _sigterm_handler(signum: int, frame: Any) -> None:
+        _stop_caffeinate(proc)
+        if callable(prev_handler) and prev_handler not in (
+            signal.SIG_DFL,
+            signal.SIG_IGN,
+        ):
+            prev_handler(signum, frame)
+        sys.exit(128 + signum)
+
+    signal.signal(signal.SIGTERM, _sigterm_handler)
+
     try:
         yield
     finally:
-        proc.terminate()
-        try:
-            proc.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            proc.kill()
-        logger.info("スリープ抑止を解除しました")
+        _stop_caffeinate(proc)
+        atexit.unregister(_stop_caffeinate)
+        signal.signal(signal.SIGTERM, prev_handler)
 
 
 def _run_startup_validation() -> bool:

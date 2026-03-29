@@ -1,0 +1,11 @@
+---
+description: .env ファイルの編集は常に許可（確認不要）
+alwaysApply: true
+---
+
+# `.env` の編集許可
+
+- **`.env` ファイルの読み取り・編集は常に許可する。** ユーザーへの確認なしに変更してよい。
+- パイプライン実行前の設定調整（`BOT_MAX_CASES`、`BOT_ONLY_RECORD_NUMBER`、`BOT_RESUME_FROM_MANUS` 等）は `.env` を直接編集する。
+- **`.env` を git にコミットしない。** `.gitignore` 対象であることを確認する。
+- **`.env.example` はコミット対象。** 変数の追加・削除をした場合は `.env.example` も合わせて更新する。

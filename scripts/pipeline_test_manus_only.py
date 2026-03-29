@@ -2,7 +2,7 @@
 """
 工程テスト **Manus のみ**（GitHub push / Vercel は行わない）。
 
-Claude 工程テストの **最終応答**を Canvas として読み、本番と同じ ``run_basic_lp_refactor_stage`` を 1 回実行する。
+Claude 工程テストの **最終応答**を LLM ソースとして読み、本番と同じ ``run_basic_lp_refactor_stage`` を 1 回実行する。
 STANDARD-CP の最終は多くの場合 ``02_response_step_7_4.txt``（15/15 フォルダ内）。
 
 成果物（既定: 同じ run 配下 ``manus_only_tests/<UTC>/``）::
@@ -38,14 +38,14 @@ from config.config import (  # noqa: E402
 from config.logging_setup import configure_logging  # noqa: E402
 
 
-def _resolve_canvas_path(step_dir: Path | None, canvas_file: Path | None) -> Path:
-    if canvas_file is not None:
-        p = canvas_file.resolve()
+def _resolve_source_path(step_dir: Path | None, source_file: Path | None) -> Path:
+    if source_file is not None:
+        p = source_file.resolve()
         if not p.is_file():
-            raise FileNotFoundError(f"--canvas-file が見つかりません: {p}")
+            raise FileNotFoundError(f"--source-file が見つかりません: {p}")
         return p
     if step_dir is None:
-        raise ValueError("--canvas-file か --step-dir のどちらかが必要です")
+        raise ValueError("--source-file か --step-dir のどちらかが必要です")
     d = step_dir.resolve()
     for name in (
         "02_response_step_7_4.txt",
@@ -93,7 +93,7 @@ def _resolve_out_dir(
 def main() -> int:
     configure_logging()
     parser = argparse.ArgumentParser(description="工程テスト: Manus のみ")
-    parser.add_argument("--canvas-file", type=Path, default=None, metavar="PATH")
+    parser.add_argument("--source-file", type=Path, default=None, metavar="PATH")
     parser.add_argument("--step-dir", type=Path, default=None, metavar="DIR")
     parser.add_argument("--phase1-dir", type=Path, default=None, metavar="DIR")
     parser.add_argument("--partner-name", type=str, default=None)
@@ -101,8 +101,8 @@ def main() -> int:
     parser.add_argument("--out-dir", type=Path, default=None, metavar="DIR")
     args = parser.parse_args()
 
-    canvas_path = _resolve_canvas_path(args.step_dir, args.canvas_file)
-    canvas = canvas_path.read_text(encoding="utf-8")
+    source_path = _resolve_source_path(args.step_dir, args.source_file)
+    claude_source = source_path.read_text(encoding="utf-8")
 
     partner = args.partner_name
     record = args.record_number
@@ -127,7 +127,7 @@ def main() -> int:
     (out / "00_source.json").write_text(
         json.dumps(
             {
-                "canvas_file": str(canvas_path),
+                "source_file": str(source_path),
                 "partner_name": partner,
                 "record_number": record,
                 "phase1_dir": str(args.phase1_dir) if args.phase1_dir else None,
@@ -141,12 +141,12 @@ def main() -> int:
 
     from modules.basic_lp_refactor_claude import run_basic_lp_refactor_stage
 
-    print(f"Canvas: {canvas_path} ({len(canvas)} chars)")
+    print(f"Source: {source_path} ({len(claude_source)} chars)")
     print(f"partner={partner!r} record={record!r}")
     print("Manus タスク実行中（完了までポーリング）…")
 
     md, gh_url = run_basic_lp_refactor_stage(
-        canvas_source_code=canvas,
+        claude_source_code=claude_source,
         partner_name=partner,
         record_number=record,
     )

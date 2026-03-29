@@ -23,7 +23,7 @@ def test_write_pre_manus_checkpoint_under_output_dir(
         model="claude-opus-4-6",
         steps={"step_1_1": "resp"},
         step_prompts={"step_1_1": "ask"},
-        canvas_markdown="# canvas",
+        claude_source_code="# claude output",
         partner_name="Acme",
         record_number="42",
     )
@@ -44,7 +44,7 @@ def test_write_pre_manus_checkpoint_under_output_dir(
         / "standard_cp_manual_claude"
         / "step_1_1_prompt.txt"
     ).read_text(encoding="utf-8") == "ask"
-    assert (out / "canvas_before_manus.md").read_text(encoding="utf-8") == "# canvas"
+    assert (out / "claude_output_before_manus.md").read_text(encoding="utf-8") == "# claude output"
     meta = json.loads((out / "00_checkpoint.json").read_text(encoding="utf-8"))
     assert meta["work_branch"] == "standard"
     assert meta["manual_meta_key"] == "standard_cp_manual_claude"
@@ -84,7 +84,7 @@ def test_pre_manus_checkpoint_keeps_unicode_site_folder(
         model="m",
         steps={"a": "b"},
         step_prompts={},
-        canvas_markdown="",
+        claude_source_code="",
         partner_name="株式会社アンカートレーディング",
         record_number="16308",
     )
@@ -98,7 +98,7 @@ def test_write_spec_and_steps(tmp_path: Path) -> None:
     site.mkdir()
     spec = {
         "basic_lp_refactored_source_markdown": "```tsx\napp/page.tsx\nx\n```",
-        "basic_lp_manual_claude_final": "canvas final body",
+        "basic_lp_manual_claude_final": "claude final body",
     }
     req = {
         "site_build_prompt": "build me a site",
@@ -117,7 +117,7 @@ def test_write_spec_and_steps(tmp_path: Path) -> None:
     assert n == 8
     assert (site / "llm_raw_output" / "basic_lp_manual_claude_final.md").read_text(
         encoding="utf-8"
-    ) == "canvas final body"
+    ) == "claude final body"
     assert (site / "llm_raw_output" / "site_build_prompt.txt").read_text(
         encoding="utf-8"
     ).startswith("build me")
@@ -187,7 +187,7 @@ def test_manus_only_style_writes_test_like_layout(tmp_path: Path) -> None:
         site,
         spec={
             "basic_lp_refactored_source_markdown": "# fenced\n",
-            "basic_lp_manual_claude_final": "canvas",
+            "basic_lp_manual_claude_final": "claude",
             "manus_deploy_github_url": "https://github.com/o/r.git",
         },
         work_branch=ContractWorkBranch.BASIC_LP,

@@ -11,7 +11,6 @@ import logging
 import shutil
 import subprocess
 import uuid
-from collections.abc import Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -251,15 +250,6 @@ def client_hp_and_mood_placeholders() -> tuple[str, str]:
     )
 
 
-def reference_url_block(
-    hearing_sheet_content: str,
-    *,
-    extra_texts: Sequence[str] = (),
-) -> str:
-    """後方互換用。LLM 抽出版 ``reference_url_block_from_extracted`` を使うこと。"""
-    return "（参考サイトURLの記載なし。手順1-3およびヒアリング本文を参照）"
-
-
 # ---------------------------------------------------------------------------
 # LLM による参考サイト URL 抽出（Python 正規表現に代わる新工程）
 # ---------------------------------------------------------------------------
@@ -383,7 +373,7 @@ def reference_url_block_from_extracted(urls: list[dict[str, str]]) -> str:
 
 def run_manus_refactor_block(
     *,
-    canvas_markdown: str,
+    claude_source_code: str,
     partner_name: str,
     record_number: str,
     work_branch: ContractWorkBranch,
@@ -397,7 +387,7 @@ def run_manus_refactor_block(
 ) -> tuple[str, str | None, str]:
     """Manus リファクタの共通フロー。
 
-    引数: Claude チェーン完了後の canvas / 案件メタ / チェックポイント保存用の steps 等
+    引数: Claude チェーン完了後のソースコード / 案件メタ / チェックポイント保存用の steps 等
     処理: pre_manus チェックポイント書き出し → Manus プロンプト組み立て → Manus タスク実行
     出力: (refactored_md, manus_deploy_github_url, manus_refactor_prompt)
           呼び出し元が outs に代入する
@@ -415,7 +405,7 @@ def run_manus_refactor_block(
         model=model,
         steps=dict(steps),
         step_prompts=dict(step_prompts),
-        canvas_markdown=canvas_markdown,
+        claude_source_code=claude_source_code,
         partner_name=partner_name,
         record_number=record_number,
     )
@@ -429,9 +419,9 @@ def run_manus_refactor_block(
     if preface_dir is not None:
         refactor_kw["preface_dir"] = preface_dir
 
-    prompt = build_basic_lp_refactor_user_prompt(canvas_markdown, **refactor_kw)
+    prompt = build_basic_lp_refactor_user_prompt(claude_source_code, **refactor_kw)
     md, manus_deploy_github_url = run_basic_lp_refactor_stage(
-        canvas_source_code=canvas_markdown, model=model, **refactor_kw,
+        claude_source_code=claude_source_code, model=model, **refactor_kw,
     )
 
     return md, manus_deploy_github_url, prompt

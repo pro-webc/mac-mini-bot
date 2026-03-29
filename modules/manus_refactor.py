@@ -1,9 +1,11 @@
 """最終リファクタ: Manus API（`POST /v1/tasks` → ポーリング）でフェンス付きマークダウンを取得する。
 
 マニュアル本編は Claude Code CLI。リファクタのみ Manus。
+手作業と同様、リファクタ指示書・LLM ソースは ``attachments`` で分離して送る。
 """
 from __future__ import annotations
 
+import base64
 import logging
 import re
 import time
@@ -159,6 +161,74 @@ def _headers() -> dict[str, str]:
     }
 
 
+def _upload_file_to_manus(filename: str, content: str) -> str:
+    """Manus Files API でファイルをアップロードし file_id を返す。
+
+    引数: filename — ファイル名, content — テキストコンテンツ
+    処理: POST /v1/files → presigned URL 取得 → PUT でアップロード
+    出力: file_id（Create Task の attachments で参照用）
+    """
+    base = MANUS_API_BASE
+    r = requests.post(
+        f"{base}/v1/files",
+        headers=_headers(),
+        json={"filename": filename},
+        timeout=30,
+    )
+    if r.status_code != 200:
+        raise RuntimeError(
+            f"Manus ファイル作成失敗 HTTP {r.status_code}: {(r.text or '')[:400]}"
+        )
+    data = r.json()
+    file_id = data.get("id") or ""
+    upload_url = data.get("upload_url") or ""
+    if not file_id or not upload_url:
+        raise RuntimeError(f"Manus ファイル作成: id/upload_url が不足: {data!r}")
+
+    put_r = requests.put(
+        upload_url,
+        data=content.encode("utf-8"),
+        headers={"Content-Type": "text/plain; charset=utf-8"},
+        timeout=60,
+    )
+    if put_r.status_code not in (200, 201, 204):
+        raise RuntimeError(
+            f"Manus ファイルアップロード失敗 HTTP {put_r.status_code}: {(put_r.text or '')[:400]}"
+        )
+    logger.info("Manus ファイルアップロード完了: %s → file_id=%s", filename, file_id)
+    return file_id
+
+
+def _build_attachments_for_api(
+    raw_attachments: list[dict[str, str]],
+) -> list[dict[str, str]]:
+    """添付ファイルリストを Manus API の attachments 形式に変換する。
+
+    引数: raw_attachments — [{"filename": str, "content": str}, ...]
+    処理: Files API でアップロードを試み、失敗時は base64 フォールバック
+    出力: Manus Create Task API の attachments 配列
+    """
+    api_attachments: list[dict[str, str]] = []
+    for att in raw_attachments:
+        filename = att["filename"]
+        content = att["content"]
+        try:
+            file_id = _upload_file_to_manus(filename, content)
+            api_attachments.append({"filename": filename, "file_id": file_id})
+        except Exception:
+            logger.warning(
+                "Manus Files API アップロード失敗 (%s)、base64 フォールバックを使用",
+                filename,
+                exc_info=True,
+            )
+            encoded = base64.b64encode(content.encode("utf-8")).decode("ascii")
+            api_attachments.append({
+                "filename": filename,
+                "fileData": f"data:text/plain;base64,{encoded}",
+            })
+    return api_attachments
+
+
 def _extract_assistant_markdown(task: dict[str, Any]) -> str:
     """Get Task の ``output`` から assistant の output_text / text を連結。
 
@@ -193,7 +263,7 @@ def _extract_assistant_markdown(task: dict[str, Any]) -> str:
 
 def run_manus_refactor_stage(
     *,
-    canvas_source_code: str,
+    claude_source_code: str,
     preface_dir: Path | None = None,
     partner_name: str | None = None,
     record_number: str | None = None,
@@ -202,18 +272,23 @@ def run_manus_refactor_stage(
 ) -> str:
     """
     Manus にリファクタ用プロンプトを渡し、完了までポーリングして本文を返す。
+
+    手作業と同じ「プロンプト + 2 ファイル」構成で送信する。
+    リファクタ指示書と LLM ソースは attachments として分離し、
+    Manus がソースコードを確実に読めるようにする。
     """
-    # 遅延 import: basic_lp_refactor_claude が本モジュールを import するため
     from modules import basic_lp_refactor_claude as _ref
 
-    prompt = _ref.build_basic_lp_refactor_user_prompt(
-        canvas_source_code,
+    # --- 添付ファイル分離版でプロンプトと添付を構築 ---
+    prompt, raw_attachments = _ref.build_manus_refactor_prompt_and_attachments(
+        claude_source_code,
         preface_dir=preface_dir,
         partner_name=partner_name,
         record_number=record_number,
         hearing_reference_block=hearing_reference_block,
         contract_max_pages=contract_max_pages,
     )
+
     from modules.llm.llm_step_trace import record_llm_turn
 
     if preface_dir == _ref.ADVANCE_CP_REFACTOR_PREFACE_DIR:
@@ -225,10 +300,18 @@ def run_manus_refactor_stage(
     else:
         _branch = "BASIC LP"
 
+    # --- 添付ファイルを Manus API 形式に変換（Files API → base64 フォールバック） ---
+    api_attachments = _build_attachments_for_api(raw_attachments)
+    att_summary = ", ".join(
+        f"{a.get('filename', '?')}({'file_id' if 'file_id' in a else 'base64'})"
+        for a in api_attachments
+    )
+
     base = MANUS_API_BASE
     url_create = f"{base}/v1/tasks"
     body: dict[str, Any] = {
         "prompt": prompt,
+        "attachments": api_attachments,
         "agentProfile": MANUS_AGENT_PROFILE,
         "interactiveMode": MANUS_INTERACTIVE_MODE,
     }
@@ -238,12 +321,13 @@ def run_manus_refactor_stage(
         body["connectors"] = list(MANUS_TASK_CONNECTOR_IDS)
 
     logger.info(
-        "%s Manus: 最終リファクタ タスク作成… agentProfile=%s taskMode=%s interactiveMode=%s connectors=%s",
+        "%s Manus: 最終リファクタ タスク作成… agentProfile=%s taskMode=%s interactiveMode=%s connectors=%s attachments=[%s]",
         _branch,
         MANUS_AGENT_PROFILE,
         MANUS_TASK_MODE or "(default)",
         MANUS_INTERACTIVE_MODE,
         len(MANUS_TASK_CONNECTOR_IDS) if MANUS_TASK_CONNECTOR_IDS else 0,
+        att_summary,
     )
     try:
         r = requests.post(
@@ -257,6 +341,7 @@ def run_manus_refactor_stage(
             kind="manus_refactor",
             input_text=prompt,
             error_text=f"{type(e).__name__}: {e}",
+            attachments=raw_attachments,
         )
         raise
     if r.status_code != 200:
@@ -264,6 +349,7 @@ def run_manus_refactor_stage(
             kind="manus_refactor",
             input_text=prompt,
             error_text=f"タスク作成 HTTP {r.status_code}: {(r.text or '')[:800]}",
+            attachments=raw_attachments,
         )
         raise RuntimeError(
             f"Manus タスク作成失敗 HTTP {r.status_code}: {(r.text or '')[:800]}"
@@ -376,6 +462,7 @@ def run_manus_refactor_stage(
                         kind="manus_refactor",
                         input_text=prompt,
                         output_text=text,
+                        attachments=raw_attachments,
                     )
                     logger.info(
                         "%s Manus: リファクタ完了 task_id=%s chars=%s",
@@ -419,5 +506,6 @@ def run_manus_refactor_stage(
             kind="manus_refactor",
             input_text=prompt,
             error_text=f"{type(e).__name__}: {e}",
+            attachments=raw_attachments,
         )
         raise

@@ -10,7 +10,7 @@ alwaysApply: true
 ## 必須の作業
 
 1. **類似パターンを検索する**  
-   `if` / `elif` の並び、`try` の後続、別関数のコピペ実装、`*_gemini_manual.py` 間の対応ステップなど、同じ意図の別ルートを grep・目視で洗い出す。
+   `if` / `elif` の並び、`try` の後続、別関数のコピペ実装、`*_claude_manual.py` 間の対応ステップなど、同じ意図の別ルートを grep・目視で洗い出す。
 
 2. **片方だけ直さない**  
    例: URL 判定・HTML 変換・スプレッドシート列の解釈など、**一箇所で直したロジック**が他分岐にもあるなら、同じバグや不整合が再発する。そこも同じ修正または共通化する。
@@ -22,7 +22,7 @@ alwaysApply: true
 
 - `ContractWorkBranch` を増やしたら、**``modules.contract_workflow.BRANCH_REGISTRY`` にエントリを追加**する（片方だけ更新しない）。
 - `SpecGenerator.fetch_hearing_sheet`: 「長文コピペ」と「文中 URL」の扱いを変えたら、**先頭が `http` の分岐**と**セル貼り付け**の両方で前提が矛盾していないか確認する。
-- 同じヒアリング列の解釈は **`modules/hearing_url_utils.py`** に集約し、`*_gemini_manual` の参考URL・既存サイト推定、`spreadsheet_schema` の URL 正規表現、`fetch_hearing_sheet` の閾値を **一箇所の定数・正規表現**で揃える。
+- 同じヒアリング列の解釈は **`modules/hearing_url_utils.py`** に集約し、`*_claude_manual` の参考URL・既存サイト推定、`spreadsheet_schema` の URL 正規表現、`fetch_hearing_sheet` の閾値を **一箇所の定数・正規表現**で揃える。
 
 ## 書かないこと
 

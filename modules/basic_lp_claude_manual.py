@@ -30,7 +30,6 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -296,7 +295,7 @@ def run_basic_lp_claude_manual_pipeline(
         from modules.claude_manual_common import run_manus_refactor_block
 
         md, manus_deploy_github_url, _prompt = run_manus_refactor_block(
-            canvas_markdown=outs.step_8_3,
+            claude_source_code=outs.step_8_3,
             partner_name=partner_name,
             record_number=record_number,
             work_branch=ContractWorkBranch.BASIC_LP,

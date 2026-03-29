@@ -11,7 +11,7 @@
 - **タブ②**: 手順1-2 と 1-3 を **1メッセージに連結**して送信 → 1回（手作業マニュアルと同じ）
 - **タブ③**: 手順2 → 3 → 2回（構成プロンプトのみ。手順4はタブ④）
 - **タブ④**: 手順4 → 5 → 6 → 3回（雰囲気・配色 → デザイン指示書）
-- **タブ⑤**: 手順7-1 → 7-2 → 7-3 → 3回（コード生成。Canvas 想定）
+- **タブ⑤**: 手順7-1 → 7-2 → 7-3 → 3回（コード生成）
 
 **手順7の「複数タブで3パターン」について**
 
@@ -296,7 +296,7 @@ def run_basic_cp_claude_manual_pipeline(
             hearing_sheet_content, extra_texts=_extras,
         )
         md, manus_deploy_github_url, _prompt = run_manus_refactor_block(
-            canvas_markdown=outs.step_7_3,
+            claude_source_code=outs.step_7_3,
             partner_name=partner_name,
             record_number=record_number,
             work_branch=ContractWorkBranch.BASIC,

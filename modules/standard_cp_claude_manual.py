@@ -12,7 +12,7 @@
 - **タブ③**: 手順2（6ページ構成）→ 1回
 - **タブ④**: 手順3-1 → … → 3-5 → 5回（ページ別・同一チャット）
 - **タブ⑤**: 手順4 → 5 → 6 → 3回（配色・デザイン指示書）
-- **タブ⑥**: 手順7-1 → 7-2 → 7-3 → 7-4 → 7-5 → 5回（コード・Canvas 想定）
+- **タブ⑥**: 手順7-1 → 7-2 → 7-3 → 7-4 → 7-5 → 5回（コード生成）
 
 **手順7-3 / 7-4**: 下層ページを2群に分け、7-3 は手順3-2・3-3、7-4 は手順3-4・3-5 の構成を渡す。
 **手順7-5**: 最終仕上げ（元の手順7-4 に相当）。
@@ -1191,7 +1191,7 @@ def run_standard_cp_claude_manual_pipeline(
     outs.raw["step_7_5"] = outs.step_7_5
     outs.raw_prompts["step_7_5"] = p75
 
-    canvas_final = (outs.step_7_5 or "").strip() or outs.step_7_4
+    claude_final = (outs.step_7_5 or "").strip() or outs.step_7_4
 
     _ref_plan = get_contract_plan_info(contract_plan)
     _manus_contract_pages = int(_ref_plan.get("pages") or 6)
@@ -1205,7 +1205,7 @@ def run_standard_cp_claude_manual_pipeline(
             hearing_sheet_content, extra_texts=_extras,
         )
         md, manus_deploy_github_url, _prompt = run_manus_refactor_block(
-            canvas_markdown=canvas_final,
+            claude_source_code=claude_final,
             partner_name=partner_name,
             record_number=record_number,
             work_branch=ContractWorkBranch.STANDARD,
@@ -1254,7 +1254,7 @@ def run_standard_cp_claude_manual_pipeline(
         contract_plan,
         partner_name,
     )
-    spec["standard_manual_claude_final"] = canvas_final
+    spec["standard_manual_claude_final"] = claude_final
     spec["standard_refactored_source_markdown"] = outs.step_refactor or ""
     if manus_deploy_github_url:
         spec["manus_deploy_github_url"] = manus_deploy_github_url.strip()
@@ -1264,7 +1264,7 @@ def run_standard_cp_claude_manual_pipeline(
     logger.info(
         "STANDARD-CP Claude 完了 model=%s chars_final=%s chars_refactor=%s",
         CLAUDE_STANDARD_CP_MODEL,
-        len(canvas_final),
+        len(claude_final),
         len(outs.step_refactor or ""),
     )
     return requirements_result, spec, outs

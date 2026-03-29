@@ -33,7 +33,7 @@
 
 TEXT_LLM だけをフェーズ1成果物から再実行する場合は **`scripts/phase2_from_phase1_snapshot.py`**（`phase2_snapshots/` に保存）。
 
-工程テストと同じ run 配下に段階的な TEXT_LLM（Claude Code CLI）試験を残す場合は、**`scripts/standard_cp_step1_from_phase1.py`** から **`standard_cp_step10_from_phase1.py`**（10/15・タブ⑤・手順5）まで（`step7` は本番の手順7-1とは別）。出力は **`claude_step_tests/<UTC>/`**。
+工程テストと同じ run 配下に段階的な TEXT_LLM（Claude Code CLI）試験を残す場合は、**`scripts/standard_cp_step1_from_phase1.py`** から **`standard_cp_step15_from_phase1.py`**（15/15・タブ⑥・手順7-5）まで（`step7` は本番の手順7-1とは別）。出力は **`claude_step_tests/<UTC>/`**。
 
 詳細な LLM 割当は **`docs/LLM_PIPELINE.md`**。
 

@@ -34,7 +34,7 @@ class BranchConfig:
     """
 
     refactor_key: str
-    canvas_key: str
+    source_key: str
     manual_meta_key: str
     extra_spec_keys: tuple[str, ...]
     use_claude_flag: str
@@ -45,15 +45,15 @@ class BranchConfig:
 
     @property
     def manus_keys(self) -> tuple[str, str]:
-        """(リファクタ出力キー, Claude Canvas キー) — Manus 前後で参照。"""
-        return (self.refactor_key, self.canvas_key)
+        """(リファクタ出力キー, Claude ソースキー) — Manus 前後で参照。"""
+        return (self.refactor_key, self.source_key)
 
     @property
     def spec_llm_keys(self) -> tuple[str, ...]:
         """spec に載りうる LLM テキストキーの全量（llm_raw_output 書き出し用）。"""
         return (
             self.refactor_key,
-            self.canvas_key,
+            self.source_key,
             *self.extra_spec_keys,
             "manus_deploy_github_url",
         )
@@ -62,7 +62,7 @@ class BranchConfig:
 BRANCH_REGISTRY: dict[ContractWorkBranch, BranchConfig] = {
     ContractWorkBranch.BASIC_LP: BranchConfig(
         refactor_key="basic_lp_refactored_source_markdown",
-        canvas_key="basic_lp_manual_claude_final",
+        source_key="basic_lp_manual_claude_final",
         manual_meta_key="basic_lp_manual_claude",
         extra_spec_keys=(
             "basic_lp_manual_claude_step_4_wireframe",
@@ -76,7 +76,7 @@ BRANCH_REGISTRY: dict[ContractWorkBranch, BranchConfig] = {
     ),
     ContractWorkBranch.BASIC: BranchConfig(
         refactor_key="basic_refactored_source_markdown",
-        canvas_key="basic_manual_claude_final",
+        source_key="basic_manual_claude_final",
         manual_meta_key="basic_cp_manual_claude",
         extra_spec_keys=(
             "basic_manual_claude_step_2_structure",
@@ -90,7 +90,7 @@ BRANCH_REGISTRY: dict[ContractWorkBranch, BranchConfig] = {
     ),
     ContractWorkBranch.STANDARD: BranchConfig(
         refactor_key="standard_refactored_source_markdown",
-        canvas_key="standard_manual_claude_final",
+        source_key="standard_manual_claude_final",
         manual_meta_key="standard_cp_manual_claude",
         extra_spec_keys=(
             "standard_manual_claude_step_2",
@@ -104,7 +104,7 @@ BRANCH_REGISTRY: dict[ContractWorkBranch, BranchConfig] = {
     ),
     ContractWorkBranch.ADVANCE: BranchConfig(
         refactor_key="advance_refactored_source_markdown",
-        canvas_key="advance_manual_claude_final",
+        source_key="advance_manual_claude_final",
         manual_meta_key="advance_cp_manual_claude",
         extra_spec_keys=(
             "advance_manual_claude_step_2",

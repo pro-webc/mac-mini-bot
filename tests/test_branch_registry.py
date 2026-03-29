@@ -22,17 +22,17 @@ def test_all_branches_registered() -> None:
 def test_registry_keys_are_non_empty_strings() -> None:
     for branch, cfg in BRANCH_REGISTRY.items():
         assert cfg.refactor_key, f"{branch}: refactor_key が空"
-        assert cfg.canvas_key, f"{branch}: canvas_key が空"
+        assert cfg.source_key, f"{branch}: source_key が空"
         assert cfg.manual_meta_key, f"{branch}: manual_meta_key が空"
         assert cfg.use_claude_flag, f"{branch}: use_claude_flag が空"
         assert cfg.refactor_flag, f"{branch}: refactor_flag が空"
         assert cfg.plan_label, f"{branch}: plan_label が空"
 
 
-def test_manus_keys_match_refactor_and_canvas() -> None:
+def test_manus_keys_match_refactor_and_source() -> None:
     for branch, cfg in BRANCH_REGISTRY.items():
-        assert cfg.manus_keys == (cfg.refactor_key, cfg.canvas_key), (
-            f"{branch}: manus_keys が (refactor_key, canvas_key) と一致しない"
+        assert cfg.manus_keys == (cfg.refactor_key, cfg.source_key), (
+            f"{branch}: manus_keys が (refactor_key, source_key) と一致しない"
         )
 
 

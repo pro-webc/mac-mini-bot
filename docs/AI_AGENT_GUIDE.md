@@ -90,11 +90,13 @@ mac-mini-bot/
 - `BranchConfig` のフィールドを変えたら全エントリを確認
 - `*_claude_manual.py` のパイプライン関数シグネチャを変えたら `BranchConfig.pipeline_function` の呼び出し側（`text_llm_stage.py`）が期待する戻り値と合わせる
 
-### 3. エラー処理の原則
+### 3. エラー処理とログ診断の原則
 
 - フォールバック・握りつぶしは禁止
 - 失敗時は `RuntimeError` 等で明示的に例外。メッセージにモジュール名を含める
 - `_subst` のプレースホルダ未置換検出は品質ガードレールの一部
+- **ログを読まずに原因を推測しない**。設定変更の前にログ上の因果を確認する。詳細は `.cursor/rules/log-reading-discipline.mdc`
+- 障害対応の手順は `docs/RESUME_AND_TROUBLESHOOTING.md` を参照
 
 ### 4. YAGNI / SOLID
 
@@ -146,6 +148,8 @@ URL 判定・長文閾値の定数は `modules/hearing_url_utils.py` に集約�
 |------|------|
 | **`README.md`** | プロジェクト概要・クイックスタート |
 | **`docs/AI_AGENT_GUIDE.md`**（本書） | AI エージェント向けシステム理解の単一エントリポイント |
+| **`docs/AI_WORKFLOW_ARCHITECTURE.md`** | AI ワークフローとしてのシステム全体像・3 層の役割分担 |
+| **`docs/RESUME_AND_TROUBLESHOOTING.md`** | 再開スクリプトの選択フロー・フェーズ別の障害対応表 |
 | **`docs/DIRECTORY_GUIDE.md`** | リポジトリの 3 軸構成（制御・記録・改善） |
 | **`docs/LLM_PIPELINE.md`** | 多段チェーンの設計思想・LLM 割当詳細 |
 | **`docs/OUTPUT_LAYOUT.md`** | 多段 LLM の入出力トレース・品質問題の特定手順・トレース API |

@@ -40,7 +40,7 @@ LLM に「このヒアリングからサイトを作って」と 1 回で頼む�
 | TEXT_LLM 多段チェーン（`*_claude_manual.py` 経由。実行エンジンは Claude Code CLI） | テキスト・デザイン・コード生成 | 情報設計からコードまでの品質を段階的に積み上げる |
 | Manus リファクタ | リポジトリ作成・App Router 分割・画像生成・ビルド・push | 単一ファイルを実デプロイ可能な構成に仕上げる |
 
-TEXT_LLM の出力（単一 Canvas tsx）と Manus のリファクタ結果は**それぞれ独立に記録**されるため、「TEXT_LLM（Claude CLI）の出力品質」と「Manus のリファクタ品質」を別々に評価・改善できる。
+TEXT_LLM の出力（単一 tsx ソース）と Manus のリファクタ結果は**それぞれ独立に記録**されるため、「TEXT_LLM（Claude CLI）の出力品質」と「Manus のリファクタ品質」を別々に評価・改善できる。
 
 ---
 
@@ -104,7 +104,7 @@ TEXT_LLM の出力（単一 Canvas tsx）と Manus のリファクタ結果は**
 1. `config/prompts/manus/orchestration_prompt.txt` — 手作業のオーケストレーション（Repo 作成・リファクタ・nanobanana・build・push）。`{{MANUS_REPO_NAME}}` を `test-run-レコード番号`（GitHub 向け正規化）、`{{MANUS_REPO_DESCRIPTION}}` をパートナー名のみに展開。レコード番号・パートナー名は `main` の案件メタから `run_text_llm_stage` 経由で各 `*_claude_manual` に渡る。
 2. 区切り `---`
 3. `config/prompts/manus/refactoring_instruction_handwork.txt` — 手作業のリファクタリング指示書本文。
-4. `===== BEGIN_CANVAS_SOURCE =====` … TEXT_LLM（Claude CLI）が出力した Canvas 単一ファイル … `END_CANVAS_SOURCE`
+4. `===== BEGIN_CLAUDE_SOURCE =====` … TEXT_LLM（Claude CLI）が出力した単一ソースファイル … `END_CLAUDE_SOURCE`
 
 `MANUS_PROVIDES_DEPLOY_GITHUB_URL=true`（既定）のときはさらに末尾へ `config/prompts/manus/bot_deploy_instruction.txt`（＋任意で `bot_deploy_repo_hint_line.txt` と `MANUS_DEPLOY_GITHUB_REPO_HINT`）を連結する（手作業マニュアルには無い API 用。`false` で無効化可）。**GitHub トークンやパスワードは Manus に渡さない**（認証は Manus の GitHub コネクタ側）。
 

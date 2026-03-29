@@ -2,12 +2,12 @@
 
 ## 手作業でやっていること（要約）
 
-**タイミング**: TEXT_LLM（Claude CLI・Canvas 相当）で単一ファイルのソースが出た直後。
+**タイミング**: TEXT_LLM（Claude CLI）で単一ファイルのソースが出た直後。
 
 **Manus に任せる一連作業**（GitHub 連携前提で、ここまで完了するとリモートに push 済みになる想定）:
 
 1. **Git リポジトリ作成** — `propagate-webcreation` ワークスペース、private、`propagate-webcreation/DefaultSetting` テンプレ。**リポジトリ名**は `{レコード番号}-{ASCII部分}`（GitHub は日本語非対応のため、パートナー名の英数字部分のみ付加。ASCII 部分が無ければ `{レコード番号}` のみ。ボットは `build_basic_lp_refactor_user_prompt` で展開）。**ディスクリプション**は `レコード番号 パートナー名`（スプレッドシートそのまま、半角スペース区切り）。工程テスト・本番共通。同名リポジトリが既にあれば**即終了**。
-2. **リファクタリング** — クローンし、リファクタ指示書どおりに単一 Canvas ソースを App Router 構成へ分割。
+2. **リファクタリング** — クローンし、リファクタ指示書どおりに単一 LLM ソースを App Router 構成へ分割。
 3. **画像** — `ImagePlaceholder` 等を洗い出し、nanobananaPro で生成し `/public/images/` に実装、`next/image` へ置換。
 4. **検証と push** — `npm run build`、失敗時は自己修復ループ、成功後に push。
 
@@ -43,7 +43,7 @@
 1. `orchestration_prompt.txt`（`{{MANUS_REPO_NAME}}`・`{{MANUS_REPO_DESCRIPTION}}` を `record_number`・`partner_name`（パートナー名列）から展開済み）
 2. 区切り `---`
 3. `refactoring_instruction_handwork.txt` 全文
-4. `===== BEGIN_CANVAS_SOURCE =====` … TEXT_LLM（Claude CLI）出力 … `===== END_CANVAS_SOURCE =====`
+4. `===== BEGIN_CLAUDE_SOURCE =====` … TEXT_LLM（Claude CLI）出力 … `===== END_CLAUDE_SOURCE =====`
 5. （既定）`MANUS_PROVIDES_DEPLOY_GITHUB_URL=true` のとき、`bot_deploy_instruction.txt`（＋任意で `bot_deploy_repo_hint_line.txt`）を末尾に追加（手作業マニュアルには無い API 用。`false` で無効化可）
 
 **API 送信**: `modules/manus_refactor.py` が `POST {MANUS_API_BASE}/v1/tasks` に上記を `prompt` として渡す。`MANUS_TASK_CONNECTORS`（未設定時は公式の GitHub コネクタ UUID 1 件）を `connectors` に付与。OAuth は [Connectors](https://open.manus.im/docs/connectors) のとおり manus.im で事前連携。`MANUS_AGENT_PROFILE`・`MANUS_TASK_MODE` は `config.config`。
@@ -52,7 +52,7 @@
 
 ## 工程テストで切り出すときの観点
 
-- **入力（Canvas 相当の本文）**: **TEXT_LLM 工程テストの最終ステップの応答ファイル**をそのまま使う。
+- **入力（LLM ソース本文）**: **TEXT_LLM 工程テストの最終ステップの応答ファイル**をそのまま使う。
   - **STANDARD-CP**: `scripts/standard_cp_step15_from_phase1.py`（**15/15・手順7-4**）が保存する **`claude_step_tests/<UTC>/02_response_step_7_4.txt`**
   - **BASIC LP** など他プラン: マニュアルチェーンの **最終手順の `02_response_*.txt`**（LP は多くの場合 **手順8-3** の `02_response_step_8_3.txt`）
 - **案件メタ**: 同じ run の `phase1_snapshots/<UTC>/01_case_meta.json` の **パートナー名・レコード番号**（Manus の「先方名」はパートナー名と同一）。

@@ -77,7 +77,7 @@ def test_run_manus_refactor_stage_polls_until_completed(monkeypatch: pytest.Monk
         ["bbb0df76-66bd-4a24-ae4f-2aac4750d90b"],
     )
     out = mr.run_manus_refactor_stage(
-        canvas_source_code="export default function Page() { return null }"
+        claude_source_code="export default function Page() { return null }"
     )
     assert "app/page.tsx" in out
     assert get_n["i"] >= 2
@@ -125,7 +125,7 @@ def test_run_manus_refactor_stage_omits_connectors_when_empty(
     import modules.manus_refactor as mr
 
     monkeypatch.setattr(mr, "MANUS_TASK_CONNECTOR_IDS", [])
-    mr.run_manus_refactor_stage(canvas_source_code="x")
+    mr.run_manus_refactor_stage(claude_source_code="x")
     assert "connectors" not in (captured.get("json") or {})
 
 
@@ -179,7 +179,7 @@ def test_run_manus_refactor_stage_retries_on_initial_404(
 
     import modules.manus_refactor as mr
 
-    out = mr.run_manus_refactor_stage(canvas_source_code="export default function Page() { return null }")
+    out = mr.run_manus_refactor_stage(claude_source_code="export default function Page() { return null }")
     assert out == "ok"
     assert get_n["i"] >= 3
 
@@ -433,7 +433,7 @@ def test_interactive_mode_false_sent_in_body(monkeypatch: pytest.MonkeyPatch) ->
 
     import modules.manus_refactor as mr
 
-    mr.run_manus_refactor_stage(canvas_source_code="x")
+    mr.run_manus_refactor_stage(claude_source_code="x")
     assert captured["json"]["interactiveMode"] is False
 
 
@@ -472,8 +472,217 @@ def test_interactive_mode_true_sent_in_body(monkeypatch: pytest.MonkeyPatch) -> 
     import modules.manus_refactor as mr
 
     monkeypatch.setattr(mr, "MANUS_INTERACTIVE_MODE", True)
-    mr.run_manus_refactor_stage(canvas_source_code="x")
+    mr.run_manus_refactor_stage(claude_source_code="x")
     assert captured["json"]["interactiveMode"] is True
+
+
+def test_task_body_contains_attachments_with_base64_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """attachments がタスク作成リクエストに含まれ、base64 形式であること。"""
+    monkeypatch.setattr(cfg, "MANUS_API_KEY", "test-key")
+    captured: dict[str, Any] = {}
+
+    def fake_post(
+        url: str,
+        headers: dict[str, str],
+        json: dict[str, Any] | None = None,
+        timeout: float | None = None,
+        **kw: Any,
+    ) -> _OkJson:
+        if json and "prompt" in json:
+            captured["json"] = json
+        return _OkJson({"task_id": "t-att", "task_url": "https://example/manus/t-att"})
+
+    def fake_get(
+        url: str, headers: dict[str, str], timeout: float | None = None
+    ) -> _OkJson:
+        return _OkJson(
+            {
+                "status": "completed",
+                "output": [
+                    {
+                        "role": "assistant",
+                        "content": [{"type": "output_text", "text": "ok"}],
+                    }
+                ],
+            }
+        )
+
+    monkeypatch.setattr("modules.manus_refactor.requests.post", fake_post)
+    monkeypatch.setattr("modules.manus_refactor.requests.get", fake_get)
+
+    import modules.manus_refactor as mr
+
+    mr.run_manus_refactor_stage(
+        claude_source_code="export default function Page() { return null }",
+        partner_name="テスト株式会社",
+        record_number="99999",
+    )
+    body = captured["json"]
+    assert "attachments" in body
+    atts = body["attachments"]
+    assert len(atts) == 2
+    filenames = {a["filename"] for a in atts}
+    assert "refactoring_instructions.md" in filenames
+    assert "claude_source.tsx" in filenames
+    for a in atts:
+        assert "fileData" in a, f"{a['filename']} should use base64 fallback in test"
+        assert a["fileData"].startswith("data:text/plain;base64,")
+
+
+def test_task_body_attachments_with_file_upload(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Files API が成功するとき file_id 形式で添付されること。"""
+    monkeypatch.setattr(cfg, "MANUS_API_KEY", "test-key")
+    captured: dict[str, Any] = {}
+    upload_calls: list[str] = []
+
+    class _PutOk:
+        status_code = 200
+        text = ""
+
+    def fake_post(
+        url: str,
+        headers: dict[str, str],
+        json: dict[str, Any] | None = None,
+        timeout: float | None = None,
+        **kw: Any,
+    ) -> _OkJson:
+        if json and "filename" in json and "prompt" not in json:
+            return _OkJson({
+                "id": f"file-{json['filename']}",
+                "upload_url": f"https://s3.example/{json['filename']}",
+            })
+        if json and "prompt" in json:
+            captured["json"] = json
+        return _OkJson({"task_id": "t-fu", "task_url": "https://example/manus/t-fu"})
+
+    def fake_put(url: str, data: Any = None, headers: Any = None, timeout: Any = None) -> _PutOk:
+        upload_calls.append(url)
+        return _PutOk()
+
+    def fake_get(
+        url: str, headers: dict[str, str], timeout: float | None = None
+    ) -> _OkJson:
+        return _OkJson(
+            {
+                "status": "completed",
+                "output": [
+                    {
+                        "role": "assistant",
+                        "content": [{"type": "output_text", "text": "ok"}],
+                    }
+                ],
+            }
+        )
+
+    monkeypatch.setattr("modules.manus_refactor.requests.post", fake_post)
+    monkeypatch.setattr("modules.manus_refactor.requests.put", fake_put)
+    monkeypatch.setattr("modules.manus_refactor.requests.get", fake_get)
+
+    import modules.manus_refactor as mr
+
+    mr.run_manus_refactor_stage(
+        claude_source_code="export default function Page() { return null }",
+    )
+    body = captured["json"]
+    atts = body["attachments"]
+    assert len(atts) == 2
+    assert all("file_id" in a for a in atts)
+    assert atts[0]["file_id"] == "file-refactoring_instructions.md"
+    assert atts[1]["file_id"] == "file-claude_source.tsx"
+    assert len(upload_calls) == 2
+
+
+def test_prompt_is_shorter_than_full_embed(monkeypatch: pytest.MonkeyPatch) -> None:
+    """attachments 分離版の prompt はソースコード非埋め込みのため短い。"""
+    monkeypatch.setattr(cfg, "MANUS_API_KEY", "test-key")
+    captured: dict[str, Any] = {}
+
+    def fake_post(
+        url: str,
+        headers: dict[str, str],
+        json: dict[str, Any] | None = None,
+        timeout: float | None = None,
+        **kw: Any,
+    ) -> _OkJson:
+        if json and "prompt" in json:
+            captured["json"] = json
+        return _OkJson({"task_id": "t-sz", "task_url": "https://example/manus/t-sz"})
+
+    def fake_get(
+        url: str, headers: dict[str, str], timeout: float | None = None
+    ) -> _OkJson:
+        return _OkJson(
+            {
+                "status": "completed",
+                "output": [
+                    {
+                        "role": "assistant",
+                        "content": [{"type": "output_text", "text": "ok"}],
+                    }
+                ],
+            }
+        )
+
+    monkeypatch.setattr("modules.manus_refactor.requests.post", fake_post)
+    monkeypatch.setattr("modules.manus_refactor.requests.get", fake_get)
+
+    big_source = "export default function Page() { return <div>" + ("x" * 50_000) + "</div> }"
+
+    import modules.manus_refactor as mr
+
+    mr.run_manus_refactor_stage(claude_source_code=big_source)
+    prompt_text = captured["json"]["prompt"]
+    assert len(prompt_text) < 50_000, (
+        f"prompt should not contain full source: {len(prompt_text)} chars"
+    )
+    assert "```tsx\nexport default function Page()" not in prompt_text
+    assert "添付ファイル" in prompt_text
+
+
+def test_build_manus_refactor_prompt_and_attachments_structure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """分離版が正しい構造を返すこと。"""
+    import modules.basic_lp_refactor_claude as refactor_mod
+
+    monkeypatch.setattr(refactor_mod, "MANUS_PROVIDES_DEPLOY_GITHUB_URL", True)
+    prompt, atts = refactor_mod.build_manus_refactor_prompt_and_attachments(
+        "export default function Page() { return null }",
+        partner_name="テスト商事",
+        record_number="12345",
+        contract_max_pages=6,
+    )
+    assert "添付ファイル" in prompt
+    assert "claude_source.tsx" in prompt
+    assert "refactoring_instructions.md" in prompt
+    assert "```tsx\nexport default function" not in prompt
+    assert "BOT_DEPLOY_GITHUB_URL:" in prompt
+    assert "12345" in prompt
+    assert "テスト商事" in prompt
+
+    assert len(atts) == 2
+    assert atts[0]["filename"] == "refactoring_instructions.md"
+    assert atts[1]["filename"] == "claude_source.tsx"
+    assert "export default function Page()" in atts[1]["content"]
+    assert "契約ページ数" in atts[0]["content"]
+
+
+def test_build_manus_refactor_prompt_and_attachments_no_deploy(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """MANUS_PROVIDES_DEPLOY_GITHUB_URL=false で deploy ブロックが省かれること。"""
+    import modules.basic_lp_refactor_claude as refactor_mod
+
+    monkeypatch.setattr(refactor_mod, "MANUS_PROVIDES_DEPLOY_GITHUB_URL", False)
+    prompt, atts = refactor_mod.build_manus_refactor_prompt_and_attachments(
+        "export default function Page() { return null }",
+    )
+    assert "BOT_DEPLOY_GITHUB_URL:" not in prompt
+    assert len(atts) == 2
 
 
 def test_pending_hang_detection(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -508,4 +717,4 @@ def test_pending_hang_detection(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr(mr, "_PENDING_HANG_THRESHOLD", 0.01)
     with pytest.raises(RuntimeError, match="pending のまま"):
-        mr.run_manus_refactor_stage(canvas_source_code="x")
+        mr.run_manus_refactor_stage(claude_source_code="x")

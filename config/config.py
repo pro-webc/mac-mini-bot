@@ -14,20 +14,6 @@ load_dotenv()
 PROJECT_ROOT = Path(__file__).parent.parent
 
 
-def _parse_positive_int(
-    name: str, default: int, *, minimum: int = 1, maximum: int = 100
-) -> int:
-    """環境変数を正の整数として解釈（不正時は default、範囲クランプ）"""
-    raw = os.getenv(name)
-    if raw is None or not str(raw).strip():
-        return default
-    try:
-        v = int(str(raw).strip(), 10)
-        return max(minimum, min(maximum, v))
-    except ValueError:
-        return default
-
-
 def _parse_float_env(
     name: str, default: float, *, minimum: float, maximum: float
 ) -> float:
@@ -126,7 +112,7 @@ except ValueError:
 # 未処理キューのうちこのレコード番号（B列 record_id の表示値と完全一致）だけ処理。空で無効
 BOT_ONLY_RECORD_NUMBER = (os.getenv("BOT_ONLY_RECORD_NUMBER") or "").strip()
 
-# Claude 多段チェーンをスキップし、保存済み Canvas から Manus 以降のみ再実行する。
+# Claude 多段チェーンをスキップし、保存済み Claude CLI 出力から Manus 以降のみ再実行する。
 # BOT_ONLY_RECORD_NUMBER と併用必須。R列のステータスに関係なく対象案件を取得する。
 BOT_RESUME_FROM_MANUS = os.getenv(
     "BOT_RESUME_FROM_MANUS", "false"
@@ -148,7 +134,7 @@ CLAUDE_BASIC_LP_MODEL = (
     os.getenv("CLAUDE_BASIC_LP_MODEL", _DEFAULT_CLAUDE_SITE_MODEL)
     or _DEFAULT_CLAUDE_SITE_MODEL
 ).strip()
-# subprocess タイムアウト（秒）。大規模 Canvas 出力は長時間かかりうる
+# subprocess タイムアウト（秒）。大規模コード出力は長時間かかりうる
 CLAUDE_CLI_TIMEOUT_SEC = _parse_float_env(
     "CLAUDE_CLI_TIMEOUT_SEC", 900.0, minimum=60.0, maximum=3600.0
 )
@@ -387,18 +373,12 @@ def latest_phase1_snapshot_dir(*, run_root: Path | None = None) -> Path | None:
 
 
 # スプレッドシート列定義（config/spreadsheet_schema.py から re-export）
-from config.spreadsheet_schema import (  # noqa: F401, E402, I001
-    SPREADSHEET_COLUMN_ALIASES,
-    SPREADSHEET_HEADER_LABELS,
-    SPREADSHEET_REQUIRED_CASE_FIELDS,
-)
+# SPREADSHEET_HEADER_LABELS はスクリプトが config.config 経由で参照
+from config.spreadsheet_schema import SPREADSHEET_HEADER_LABELS  # noqa: F401, E402, I001
 
 # 契約プラン情報（config/contract_plans.py から re-export）
-from config.contract_plans import (  # noqa: F401, E402
-    CONTRACT_PLANS,
-    _normalize_plan_name,
-    get_contract_plan_info,
-)
+# get_contract_plan_info は modules/ 全域が config.config 経由で参照
+from config.contract_plans import get_contract_plan_info  # noqa: F401, E402
 
 # プラン共通の技術・スタイリング要件（仕様書・コード生成の双方で参照）
 COMMON_TECHNICAL_SPEC = {

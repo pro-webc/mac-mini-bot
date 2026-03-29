@@ -97,7 +97,7 @@ def write_pre_manus_llm_checkpoint(
     model: str,
     steps: dict[str, Any],
     step_prompts: dict[str, Any],
-    canvas_markdown: str,
+    claude_source_code: str,
     partner_name: str,
     record_number: str,
 ) -> Path:
@@ -109,9 +109,9 @@ def write_pre_manus_llm_checkpoint(
     （Manus で長時間ブロックしても Claude マニュアル分はディスクに残る）。
 
     引数: site_name（main と同じ ``{partner}-{record}``） / work_branch / manual_meta_key /
-          model・steps・step_prompts（この時点の outs） / canvas_markdown（Manus に渡す Canvas 相当） /
+          model・steps・step_prompts（この時点の outs） / claude_source_code（Manus に渡す Claude CLI 最終出力） /
           partner_name・record_number（メタ用）。
-    処理: ``llm_raw_output/claude_steps/...`` 互換ツリー + ``canvas_before_manus.md`` + JSON メタ。
+    処理: ``llm_raw_output/claude_steps/...`` 互換ツリー + ``claude_output_before_manus.md`` + JSON メタ。
     出力: チェックポイントディレクトリ（絶対パス）。
     """
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -132,7 +132,7 @@ def write_pre_manus_llm_checkpoint(
         model=model,
         step_prompts=step_prompts,
     )
-    _write_text(checkpoint_dir / "canvas_before_manus.md", canvas_markdown or "")
+    _write_text(checkpoint_dir / "claude_output_before_manus.md", claude_source_code or "")
 
     stamp = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     meta = {
@@ -143,7 +143,7 @@ def write_pre_manus_llm_checkpoint(
         "claude_model": model,
         "partner_name": (partner_name or "").strip() or None,
         "record_number": (record_number or "").strip() or None,
-        "canvas_chars": len(canvas_markdown or ""),
+        "source_chars": len(claude_source_code or ""),
         "claude_artifact_files": n_steps,
         "note": "Manus 完了前のスナップショット。完了後は output/sites/.../llm_raw_output/ が正本。",
     }
@@ -162,7 +162,7 @@ def write_pre_manus_llm_checkpoint(
                 f"UTC: {stamp}",
                 "",
                 "- llm_raw_output/claude_steps/ … サイト正本と同形式（応答 .md / 入力 *_prompt.txt）",
-                "- canvas_before_manus.md … Manus に渡す Canvas 相当テキスト",
+                "- claude_output_before_manus.md … Manus に渡す Claude CLI 最終出力",
                 "- 00_checkpoint.json … メタデータ",
                 "",
                 "Manus が完了し main がフェーズ3に進むと output/sites/<site_name>/llm_raw_output/ に",
@@ -318,13 +318,13 @@ def write_manus_only_style_run_artifacts(
     Manus リファクタが spec に載っていない（空 MD かつ deploy URL なし）ときは何も作成しない。
 
     引数: site_dir（generate_site 済み） / spec・work_branch（フェーズ2 出力） / 案件メタ。
-    処理: プラン別の refactored・canvas キーを解決し、タイムスタンプ 1 フォルダに JSON・テキストを書く。
+    処理: プラン別の refactored・source キーを解決し、タイムスタンプ 1 フォルダに JSON・テキストを書く。
     出力: 作成したラン用ディレクトリ（相対パス追跡用）。未作成時は None。
     """
     branch_cfg = BRANCH_REGISTRY.get(work_branch)
     if not branch_cfg:
         return None
-    refactor_key, canvas_key = branch_cfg.manus_keys
+    refactor_key, source_key = branch_cfg.manus_keys
     raw_md = spec.get(refactor_key)
     md_body = raw_md if isinstance(raw_md, str) else ""
     md_for_trigger = md_body.strip()
@@ -338,7 +338,7 @@ def write_manus_only_style_run_artifacts(
     out = site_dir / _RAW_OUTPUT_DIR / _MANUS_ONLY_TESTS_SUBDIR / stamp
     out.mkdir(parents=True, exist_ok=True)
 
-    canvas_ref = (spec.get(canvas_key) if isinstance(spec.get(canvas_key), str) else "") or ""
+    source_ref = (spec.get(source_key) if isinstance(spec.get(source_key), str) else "") or ""
     (out / "00_source.json").write_text(
         json.dumps(
             {
@@ -346,9 +346,9 @@ def write_manus_only_style_run_artifacts(
                 "partner_name": (partner_name or "").strip() or None,
                 "record_number": (record_number or "").strip() or None,
                 "work_branch": work_branch.value,
-                "canvas_spec_key": canvas_key,
+                "source_spec_key": source_key,
                 "refactored_spec_key": refactor_key,
-                "canvas_chars": len(canvas_ref),
+                "source_chars": len(source_ref),
                 "phase1_dir": None,
             },
             ensure_ascii=False,

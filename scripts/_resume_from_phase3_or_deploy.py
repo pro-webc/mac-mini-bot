@@ -155,7 +155,13 @@ def run() -> None:
         logger.info("Manus 工程テスト互換: %s", manus_snap.relative_to(site_dir.resolve()))
 
     if GA4_INJECT_TRACKING:
-        inject_ga4_tracking(site_dir, measurement_id=GA4_MEASUREMENT_ID)
+        if manus_github_url:
+            logger.info(
+                "GA4 注入スキップ: Manus の GitHub からデプロイするため"
+                " ローカルへの注入は本番に反映されない"
+            )
+        else:
+            inject_ga4_tracking(site_dir, measurement_id=GA4_MEASUREMENT_ID)
 
     logger.info("【Phase 4】ビルド検証…")
     bot._phase4_build(case, spec, site_dir, work_branch, plan_info)

@@ -122,7 +122,7 @@ output/pipeline_test_runs/<run_UTC>/
 | **Manus 工程テストのみ**（Vercel / ローカル push はしない） | `python3 scripts/pipeline_test_manus_only.py --step-dir .../claude_step_tests/<15回目UTC>/ --phase1-dir .../phase1_snapshots/<UTC>/`（`02_response_step_7_4.txt` を自動選択。出力は同じ run 配下 **`manus_only_tests/<UTC>/`**） |
 | **Vercel デプロイ工程テストのみ**（Manus しない） | `python3 scripts/pipeline_test_deploy_only.py --manus-out-dir .../manus_only_tests/<UTC>/`（`03` 優先・空なら `01` から URL 抽出）／または `--url-file .../03_deploy_github_url.txt`／`--github-url https://github.com/owner/repo.git` |
 
-**Manus 工程テストに渡す TEXT_LLM 最終出力（STANDARD-CP）**: 段階テストを最後まで進めた **15 回目**のフォルダ `claude_step_tests/<UTC>/` 内の **`02_response_step_7_4.txt`** が、いわゆる「工程テストの最後の応答」（Canvas 単一ファイル相当の本文）。案件メタは同じ run の `phase1_snapshots/.../01_case_meta.json` と揃える。詳細は **`config/prompts/manus/README.md`**（工程テストの観点）。**BASIC LP** などは `--canvas-file` で最終 `02_response_*.txt` を直接指定可能。
+**Manus 工程テストに渡す TEXT_LLM 最終出力（STANDARD-CP）**: 段階テストを最後まで進めた **15 回目**のフォルダ `claude_step_tests/<UTC>/` 内の **`02_response_step_7_4.txt`** が、いわゆる「工程テストの最後の応答」（Claude CLI 単一ファイル相当の本文）。案件メタは同じ run の `phase1_snapshots/.../01_case_meta.json` と揃える。詳細は **`config/prompts/manus/README.md`**（工程テストの観点）。**BASIC LP** などは `--source-file` で最終 `02_response_*.txt` を直接指定可能。
 
 `.env` の **`PIPELINE_TEST_RUN_DIR`** を親に合わせると、各スクリプトの既定出力先がその配下になります（`config.config.pipeline_run_root_for_resolve`）。**同じ親に後から足す**ときは、上表のスクリプトを同じ順で実行すればよい（`phase1` が `.../phase1_snapshots/...` にある場合、一部スクリプトは `--run-dir` を省略できる）。
 

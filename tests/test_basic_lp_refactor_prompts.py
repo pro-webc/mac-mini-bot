@@ -7,8 +7,7 @@ from modules.basic_lp_refactor_claude import (
     ADVANCE_CP_REFACTOR_PREFACE_DIR,
     BASIC_CP_REFACTOR_PREFACE_DIR,
     STANDARD_CP_REFACTOR_PREFACE_DIR,
-    _normalize_canvas_source_for_manus,
-    _normalize_deploy_url_via_claude_cli,
+    _normalize_source_for_manus,
     _verify_github_url_reachable,
     build_basic_lp_refactor_user_prompt,
 )
@@ -17,8 +16,8 @@ from modules.basic_lp_refactor_claude import (
 def test_refactor_prompt_contains_markers(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(refactor_mod, "MANUS_PROVIDES_DEPLOY_GITHUB_URL", True)
     p = build_basic_lp_refactor_user_prompt("export default function X() { return null }")
-    assert "===== BEGIN_CANVAS_SOURCE =====" in p
-    assert "===== END_CANVAS_SOURCE =====" in p
+    assert "===== BEGIN_CLAUDE_SOURCE =====" in p
+    assert "===== END_CLAUDE_SOURCE =====" in p
     assert "export default function X()" in p
     assert "リファクタリング指示書" in p
     assert "propagate-webcreation" in p
@@ -97,7 +96,7 @@ def test_refactor_prompt_includes_hearing_reference_when_passed(
         hearing_reference_block="【再掲】参考 https://example.com/ シンプル希望",
     )
     assert "【再掲】参考" in p
-    assert "BEGIN_CANVAS_SOURCE" in p
+    assert "BEGIN_CLAUDE_SOURCE" in p
 
 
 def test_refactor_prompt_includes_contract_pages_when_passed(
@@ -114,7 +113,7 @@ def test_refactor_prompt_includes_contract_pages_when_passed(
     assert "app/privacy/page.tsx" in p
 
 
-def test_normalize_canvas_source_extracts_tsx_block_from_prose() -> None:
+def test_normalize_source_extracts_tsx_block_from_prose() -> None:
     src = """
 最初の説明文です。
 
@@ -126,12 +125,12 @@ export default function Page() {
 }
 ```
 """
-    out = _normalize_canvas_source_for_manus(src)
+    out = _normalize_source_for_manus(src)
     assert "最初の説明文" not in out
     assert "export default function Page()" in out
 
 
-def test_refactor_prompt_wraps_normalized_canvas_source_in_fence(
+def test_refactor_prompt_wraps_normalized_source_in_fence(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(refactor_mod, "MANUS_PROVIDES_DEPLOY_GITHUB_URL", False)
@@ -144,7 +143,7 @@ export default function X() { return <main className="x" /> }
 ```
 """,
     )
-    assert "説明文" not in p.split("===== BEGIN_CANVAS_SOURCE =====", 1)[1]
+    assert "説明文" not in p.split("===== BEGIN_CLAUDE_SOURCE =====", 1)[1]
     assert "以下がリファクタリング元のソースコードです。" in p
     assert "```tsx\nexport default function X()" in p
 
@@ -166,74 +165,6 @@ def test_cp_preface_dir_ignored_same_as_handwork(monkeypatch: pytest.MonkeyPatch
         preface_dir=ADVANCE_CP_REFACTOR_PREFACE_DIR,
     )
     assert base == p_cp == p_st == p_adv
-
-
-# ---------------------------------------------------------------------------
-# Claude CLI URL 正規化
-# ---------------------------------------------------------------------------
-
-
-def test_normalize_deploy_url_via_claude_cli_extracts_clean_url(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Claude CLI が正規形 URL を返したらそのまま採用する。"""
-    monkeypatch.setattr(
-        "modules.claude_manual_common.generate_text",
-        lambda prompt, model, module_name="": "https://github.com/org/repo.git",
-    )
-    url = _normalize_deploy_url_via_claude_cli(
-        "some manus response", record_number="123",
-    )
-    assert url == "https://github.com/org/repo.git"
-
-
-def test_normalize_deploy_url_via_claude_cli_returns_none_for_NONE_response(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Claude CLI が NONE を返したら None。"""
-    monkeypatch.setattr(
-        "modules.claude_manual_common.generate_text",
-        lambda prompt, model, module_name="": "NONE",
-    )
-    assert _normalize_deploy_url_via_claude_cli("no url here") is None
-
-
-def test_normalize_deploy_url_via_claude_cli_extracts_from_noisy_response(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Claude CLI が補足文付きで返しても URL 部分を抽出する。"""
-    monkeypatch.setattr(
-        "modules.claude_manual_common.generate_text",
-        lambda prompt, model, module_name="": (
-            "以下が正規化した URL です：\nhttps://github.com/acme/site.git"
-        ),
-    )
-    url = _normalize_deploy_url_via_claude_cli("manus text")
-    assert url == "https://github.com/acme/site.git"
-
-
-def test_normalize_deploy_url_via_claude_cli_falls_back_on_exception(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Claude CLI が例外を投げたら None（正規表現フォールバックに委ねる）。"""
-    def _boom(*a, **kw):
-        raise RuntimeError("CLI unavailable")
-
-    monkeypatch.setattr(
-        "modules.claude_manual_common.generate_text", _boom,
-    )
-    assert _normalize_deploy_url_via_claude_cli("manus text") is None
-
-
-def test_normalize_deploy_url_via_claude_cli_invalid_format_returns_none(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Claude CLI が GitHub URL 以外を返したら None。"""
-    monkeypatch.setattr(
-        "modules.claude_manual_common.generate_text",
-        lambda prompt, model, module_name="": "https://gitlab.com/org/repo.git",
-    )
-    assert _normalize_deploy_url_via_claude_cli("manus text") is None
 
 
 # ---------------------------------------------------------------------------

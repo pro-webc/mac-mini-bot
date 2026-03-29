@@ -4,7 +4,7 @@ from __future__ import annotations
 import pytest
 
 import config.config as cfg
-from config.config import _normalize_plan_name
+from config.contract_plans import _normalize_plan_name
 from modules.contract_workflow import (
     ContractWorkBranch,
     claude_manual_enabled_for_branch,
