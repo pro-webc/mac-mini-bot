@@ -367,6 +367,7 @@ def resume_case(record_number: str) -> None:
         plan_info = get_contract_plan_info((case.get("contract_plan") or "").strip())
         max_pages = int(plan_info.get("pages") or 6)
 
+        _factual_manus = hearing_factual_data_block_for_prompt(hs, extra_texts=_extras)
         md, manus_deploy_github_url, _prompt = run_manus_refactor_block(
             claude_source_code=claude_final,
             partner_name=case["partner_name"],
@@ -379,6 +380,7 @@ def resume_case(record_number: str) -> None:
             hearing_reference_block=_hr,
             contract_max_pages=max_pages,
             preface_dir=STANDARD_CP_REFACTOR_PREFACE_DIR,
+            hearing_factual_block=_factual_manus,
         )
         outs.raw_prompts["manus_refactor_task"] = _prompt
         outs.step_refactor = md

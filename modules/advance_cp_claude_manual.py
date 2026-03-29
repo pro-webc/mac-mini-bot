@@ -86,11 +86,12 @@ def _gen(prompt: str) -> str:
     )
 
 
-def _new_chat() -> ClaudeCLIChat:
+def _new_chat(*, system_prompt: str | None = None) -> ClaudeCLIChat:
     """マルチターンチャットのショートハンド。"""
     return ClaudeCLIChat(
         model=CLAUDE_ADVANCE_CP_MODEL,
         module_name=_MODULE_NAME,
+        system_prompt=system_prompt,
     )
 
 
@@ -323,7 +324,7 @@ def run_advance_cp_claude_manual_pipeline(
     )
 
     logger.info("ADVANCE-CP Claude: 手順7-1〜7-4（タブ⑥）…")
-    chat6 = _new_chat()
+    chat6 = _new_chat(system_prompt=_factual)
     outs.step_7_1 = chat6.send_message(p71)
     outs.raw["step_7_1"] = outs.step_7_1
     outs.raw_prompts["step_7_1"] = p71
@@ -361,6 +362,7 @@ def run_advance_cp_claude_manual_pipeline(
             hearing_reference_block=_hr,
             contract_max_pages=_manus_contract_pages,
             preface_dir=ADVANCE_CP_REFACTOR_PREFACE_DIR,
+            hearing_factual_block=_factual,
         )
         outs.raw_prompts["manus_refactor_task"] = _prompt
         outs.step_refactor = md

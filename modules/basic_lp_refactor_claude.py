@@ -164,6 +164,7 @@ def build_basic_lp_refactor_user_prompt(
     record_number: str | None = None,
     hearing_reference_block: str | None = None,
     contract_max_pages: int | None = None,
+    hearing_factual_block: str | None = None,
 ) -> str:
     """
     手作業 Manus マニュアルと同じオーケストレーション + リファクタ指示書 + LLM ソース。
@@ -190,6 +191,14 @@ def build_basic_lp_refactor_user_prompt(
     legal = _manus_contract_pages_and_legal_block(contract_max_pages)
     hr = (hearing_reference_block or "").strip()
     hr_block = ("\n\n---\n\n" + hr) if hr else ""
+    hf = (hearing_factual_block or "").strip()
+    hf_block = (
+        "\n\n---\n\n"
+        "【ファクトチェック用データ（リファクタ時の事実検証に使用）】\n"
+        "以下の事実データ（会社名・代表者名・住所・電話番号・メール・料金等）がコード内で"
+        "プレースホルダや別の値に置き換わっていないか検証し、相違があれば原本に合わせること。\n"
+        + hf
+    ) if hf else ""
 
     base = (
         orch
@@ -197,6 +206,7 @@ def build_basic_lp_refactor_user_prompt(
         + refactor
         + legal
         + hr_block
+        + hf_block
         + "\n\n===== BEGIN_CLAUDE_SOURCE =====\n"
         + "以下がリファクタリング元のソースコードです。"
         + " 外部ファイルの添付や参照ではなく、このブロック内のコードを直接入力として扱ってください。\n\n"
@@ -236,6 +246,7 @@ def build_manus_refactor_prompt_and_attachments(
     record_number: str | None = None,
     hearing_reference_block: str | None = None,
     contract_max_pages: int | None = None,
+    hearing_factual_block: str | None = None,
 ) -> tuple[str, list[dict[str, str]]]:
     """手作業と同じ「プロンプト + 2 ファイル」構成を API 用に返す。
 
@@ -259,6 +270,14 @@ def build_manus_refactor_prompt_and_attachments(
     legal = _manus_contract_pages_and_legal_block(contract_max_pages)
     hr = (hearing_reference_block or "").strip()
     hr_block = ("\n\n---\n\n" + hr) if hr else ""
+    hf = (hearing_factual_block or "").strip()
+    hf_block = (
+        "\n\n---\n\n"
+        "【ファクトチェック用データ（リファクタ時の事実検証に使用）】\n"
+        "以下の事実データ（会社名・代表者名・住所・電話番号・メール・料金等）がコード内で"
+        "プレースホルダや別の値に置き換わっていないか検証し、相違があれば原本に合わせること。\n"
+        + hf
+    ) if hf else ""
 
     prompt = (
         _ATTACHMENT_OVERRIDE_NOTE
@@ -266,6 +285,7 @@ def build_manus_refactor_prompt_and_attachments(
         + orch
         + legal
         + hr_block
+        + hf_block
     )
     if MANUS_PROVIDES_DEPLOY_GITHUB_URL:
         prompt += "\n\n" + _manus_bot_deploy_instruction_block()
@@ -482,6 +502,7 @@ def run_basic_lp_refactor_stage(
     hearing_reference_block: str | None = None,
     contract_max_pages: int | None = None,
     model: str | None = None,
+    hearing_factual_block: str | None = None,
 ) -> tuple[str, str | None]:
     """Manus にリファクタ用プロンプトを送り、完了まで待つ。
 
@@ -507,6 +528,7 @@ def run_basic_lp_refactor_stage(
         record_number=record_number,
         hearing_reference_block=hearing_reference_block,
         contract_max_pages=contract_max_pages,
+        hearing_factual_block=hearing_factual_block,
     )
     if not MANUS_PROVIDES_DEPLOY_GITHUB_URL:
         return raw, None

@@ -37,10 +37,12 @@ def _run_claude_cli(
     session_id: str | None = None,
     resume: bool = False,
     module_name: str = "",
+    append_system_prompt: str | None = None,
 ) -> dict[str, Any]:
     """claude -p でプロンプトを実行し、JSON レスポンスを返す。
 
     引数: prompt — 送信テキスト / model — CLI の --model / session_id・resume — マルチターン用
+          append_system_prompt — セッション開始時にシステムプロンプトとして注入するテキスト
     処理: subprocess.run → claude CLI → JSON parse。exit code != 0 かつ result 空で RuntimeError
     出力: CLI の JSON レスポンス辞書（type, result, usage 等）
     """
@@ -54,6 +56,8 @@ def _run_claude_cli(
         "--output-format", "json",
         "--model", model,
     ]
+    if append_system_prompt:
+        cmd.extend(["--append-system-prompt", append_system_prompt])
     if resume and session_id:
         cmd.extend(["--resume", session_id])
     elif session_id:
@@ -152,12 +156,14 @@ class ClaudeCLIChat:
         model: str,
         module_name: str = "",
         history: list[dict[str, str]] | None = None,
+        system_prompt: str | None = None,
     ) -> None:
         self._model = model
         self._module_name = module_name
         self._session_id = str(uuid.uuid4())
         self._turn_count = 0
         self._pending_history = history
+        self._system_prompt = system_prompt
 
     def send_message(self, content: str) -> str:
         """メッセージを送信し、応答テキストを返す。
@@ -185,6 +191,7 @@ class ClaudeCLIChat:
             session_id=self._session_id,
             resume=resume,
             module_name=self._module_name,
+            append_system_prompt=self._system_prompt if self._turn_count == 0 else None,
         )
         text = _extract_cli_text(data, module_name=self._module_name)
         self._turn_count += 1
@@ -384,6 +391,7 @@ def run_manus_refactor_block(
     hearing_reference_block: str,
     contract_max_pages: int,
     preface_dir: Path | None = None,
+    hearing_factual_block: str = "",
 ) -> tuple[str, str | None, str]:
     """Manus リファクタの共通フロー。
 
@@ -415,6 +423,7 @@ def run_manus_refactor_block(
         record_number=record_number,
         hearing_reference_block=hearing_reference_block,
         contract_max_pages=contract_max_pages,
+        hearing_factual_block=hearing_factual_block,
     )
     if preface_dir is not None:
         refactor_kw["preface_dir"] = preface_dir

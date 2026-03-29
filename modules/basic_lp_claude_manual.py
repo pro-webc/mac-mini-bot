@@ -43,7 +43,10 @@ from config.config import (
 
 from modules.basic_lp_refactor_claude import BASIC_LP_REFACTOR_MANUS_TASKS
 from modules.contract_workflow import ContractWorkBranch
-from modules.hearing_url_utils import hearing_reference_design_block_for_prompt
+from modules.hearing_url_utils import (
+    hearing_factual_data_block_for_prompt,
+    hearing_reference_design_block_for_prompt,
+)
 from modules.llm.basic_lp_spec import build_basic_lp_spec_dict
 from modules.llm.llm_pipeline_common import MIN_SITE_BUILD_PROMPT_CHARS, finalize_plain_prompt
 
@@ -294,6 +297,9 @@ def run_basic_lp_claude_manual_pipeline(
     if BASIC_LP_REFACTOR_AFTER_MANUAL:
         from modules.claude_manual_common import run_manus_refactor_block
 
+        _lp_factual = hearing_factual_data_block_for_prompt(
+            hearing_sheet_content, extra_texts=_extras,
+        )
         md, manus_deploy_github_url, _prompt = run_manus_refactor_block(
             claude_source_code=outs.step_8_3,
             partner_name=partner_name,
@@ -305,6 +311,7 @@ def run_basic_lp_claude_manual_pipeline(
             step_prompts=outs.raw_prompts,
             hearing_reference_block=_hr_block,
             contract_max_pages=_manus_contract_pages,
+            hearing_factual_block=_lp_factual,
         )
         outs.raw_prompts["manus_refactor_task"] = _prompt
         outs.step_refactor = md

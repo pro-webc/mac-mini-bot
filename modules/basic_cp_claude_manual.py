@@ -307,6 +307,7 @@ def run_basic_cp_claude_manual_pipeline(
             hearing_reference_block=_hr,
             contract_max_pages=_manus_contract_pages,
             preface_dir=BASIC_CP_REFACTOR_PREFACE_DIR,
+            hearing_factual_block=_factual,
         )
         outs.raw_prompts["manus_refactor_task"] = _prompt
         outs.step_refactor = md

@@ -12,3 +12,4 @@
 | [TECH_REQUIREMENTS.md](./TECH_REQUIREMENTS.md) | **品質ガードレール** — 過去の品質問題から蒸留されたルール集と運用サイクル |
 | [RESUME_AND_TROUBLESHOOTING.md](./RESUME_AND_TROUBLESHOOTING.md) | **再開ガイド & 障害対応表** — 再開スクリプトの選択フロー・フェーズ別の障害原因と対応 |
 | [../PIPELINE_TESTING.md](../PIPELINE_TESTING.md) | **工程テスト** — スナップショットによる A/B 検証・コマンド早見・検証知見 |
+| [knowledge/](./knowledge/README.md) | **運用ナレッジベース** — 実案件から得た問題分析・修正効果・プロンプト改善の記録 |

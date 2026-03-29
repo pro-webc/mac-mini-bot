@@ -90,12 +90,17 @@ def _gen(prompt: str) -> str:
     )
 
 
-def _new_chat(*, history: list[dict[str, str]] | None = None) -> ClaudeCLIChat:
+def _new_chat(
+    *,
+    history: list[dict[str, str]] | None = None,
+    system_prompt: str | None = None,
+) -> ClaudeCLIChat:
     """マルチターンチャットのショートハンド。"""
     return ClaudeCLIChat(
         model=CLAUDE_STANDARD_CP_MODEL,
         module_name=_MODULE_NAME,
         history=history,
+        system_prompt=system_prompt,
     )
 
 
@@ -785,7 +790,11 @@ def run_standard_cp_claude_api_call_12_of_15(
         sales_notes=sales_notes,
     )
     logger.info("STANDARD-CP Claude: 手順7-1のみ（段階テスト・API 12/15・タブ⑥）…")
-    chat6 = _new_chat()
+    _extras = [s for s in (appo_memo, sales_notes) if (s or "").strip()]
+    _sys = hearing_factual_data_block_for_prompt(
+        hearing_sheet_content, extra_texts=_extras,
+    )
+    chat6 = _new_chat(system_prompt=_sys)
     text = chat6.send_message(prompt)
     return prompt, text
 
@@ -828,7 +837,7 @@ def run_standard_cp_claude_api_call_13_of_15(
         [(step_7_1_prompt, step_7_1_response)]
     )
     logger.info("STANDARD-CP Claude: 手順7-2のみ（段階テスト・API 13/15・タブ⑥継続）…")
-    chat6 = _new_chat(history=hist)
+    chat6 = _new_chat(history=hist, system_prompt=_factual)
     text = chat6.send_message(prompt)
     return prompt, text
 
@@ -872,7 +881,7 @@ def run_standard_cp_claude_api_call_14_of_16(
         ]
     )
     logger.info("STANDARD-CP Claude: 手順7-3のみ（段階テスト・API 14/16・タブ⑥継続・下層1群目）…")
-    chat6 = _new_chat(history=hist)
+    chat6 = _new_chat(history=hist, system_prompt=_factual)
     text = chat6.send_message(prompt)
     return prompt, text
 
@@ -919,7 +928,7 @@ def run_standard_cp_claude_api_call_15_of_16(
         ]
     )
     logger.info("STANDARD-CP Claude: 手順7-4のみ（段階テスト・API 15/16・タブ⑥継続・下層2群目）…")
-    chat6 = _new_chat(history=hist)
+    chat6 = _new_chat(history=hist, system_prompt=_factual)
     text = chat6.send_message(prompt)
     return prompt, text
 
@@ -934,6 +943,9 @@ def run_standard_cp_claude_api_call_16_of_16(
     step_7_3_response: str,
     step_7_4_prompt: str,
     step_7_4_response: str,
+    hearing_sheet_content: str = "",
+    appo_memo: str = "",
+    sales_notes: str = "",
 ) -> tuple[str, str]:
     """
     STANDARD-CP マニュアル chain の **Claude 16/16**（タブ⑥の5通目・手順7-5・最終仕上げ）。
@@ -946,7 +958,14 @@ def run_standard_cp_claude_api_call_16_of_16(
             "modules.standard_cp_claude_manual: STANDARD_CP_USE_CLAUDE_MANUAL が無効です。"
         )
 
-    prompt = _load_step("step_7_5.txt")
+    _extras = [s for s in (appo_memo, sales_notes) if (s or "").strip()]
+    _factual = hearing_factual_data_block_for_prompt(
+        hearing_sheet_content, extra_texts=_extras,
+    )
+    prompt = _subst(
+        _load_step("step_7_5.txt"),
+        HEARING_FACTUAL_BLOCK=_factual,
+    )
     hist = _standard_cp_tab4_history_from_user_model_pairs(
         [
             (step_7_1_prompt, step_7_1_response),
@@ -956,7 +975,7 @@ def run_standard_cp_claude_api_call_16_of_16(
         ]
     )
     logger.info("STANDARD-CP Claude: 手順7-5のみ（段階テスト・API 16/16・タブ⑥継続・最終仕上げ）…")
-    chat6 = _new_chat(history=hist)
+    chat6 = _new_chat(history=hist, system_prompt=_factual)
     text = chat6.send_message(prompt)
     return prompt, text
 
@@ -1171,10 +1190,13 @@ def run_standard_cp_claude_manual_pipeline(
         STEP_3_LOWER_BATCH2=batch2,
         HEARING_FACTUAL_BLOCK=_factual_block,
     )
-    p75 = _load_step("step_7_5.txt")
+    p75 = _subst(
+        _load_step("step_7_5.txt"),
+        HEARING_FACTUAL_BLOCK=_factual_block,
+    )
 
     logger.info("STANDARD-CP Claude: 手順7-1〜7-5（タブ⑥・下層2群分割）…")
-    chat6 = _new_chat()
+    chat6 = _new_chat(system_prompt=_factual_block)
     outs.step_7_1 = chat6.send_message(p71)
     outs.raw["step_7_1"] = outs.step_7_1
     outs.raw_prompts["step_7_1"] = p71
@@ -1216,6 +1238,7 @@ def run_standard_cp_claude_manual_pipeline(
             hearing_reference_block=_hr,
             contract_max_pages=_manus_contract_pages,
             preface_dir=STANDARD_CP_REFACTOR_PREFACE_DIR,
+            hearing_factual_block=_factual_block,
         )
         outs.raw_prompts["manus_refactor_task"] = _prompt
         outs.step_refactor = md

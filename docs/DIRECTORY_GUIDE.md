@@ -63,6 +63,7 @@ mac-mini-bot/
 │
 │ ── その他 ────────────────────────────────────
 ├── docs/                     # 本ファイル・LLM_PIPELINE 等
+│   └── knowledge/            # 運用ナレッジ（問題分析・修正効果の記録）
 ├── scripts/                  # 工程テスト・スナップショット用
 ├── tests/                    # pytest（42 ファイル）
 ├── .env / .env.example       # 環境変数（実キーは git 対象外）

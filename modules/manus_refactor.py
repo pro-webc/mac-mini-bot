@@ -269,6 +269,7 @@ def run_manus_refactor_stage(
     record_number: str | None = None,
     hearing_reference_block: str | None = None,
     contract_max_pages: int | None = None,
+    hearing_factual_block: str | None = None,
 ) -> str:
     """
     Manus にリファクタ用プロンプトを渡し、完了までポーリングして本文を返す。
@@ -287,6 +288,7 @@ def run_manus_refactor_stage(
         record_number=record_number,
         hearing_reference_block=hearing_reference_block,
         contract_max_pages=contract_max_pages,
+        hearing_factual_block=hearing_factual_block,
     )
 
     from modules.llm.llm_step_trace import record_llm_turn

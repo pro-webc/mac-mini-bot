@@ -323,7 +323,12 @@ def test_step_7_4_batch2_placeholder() -> None:
     assert "事実抜粋2" in out
 
 
-def test_step_7_5_no_placeholders() -> None:
+def test_step_7_5_has_factual_placeholder() -> None:
+    """step_7_5.txt は {{HEARING_FACTUAL_BLOCK}} を持ち、_subst で展開される。"""
     t = _MANUAL.joinpath("step_7_5.txt").read_text(encoding="utf-8")
-    assert "{{" not in t
     assert "【手順.7-5】" in t
+    assert "{{HEARING_FACTUAL_BLOCK}}" in t
+    from modules.claude_manual_common import subst
+    out = subst(t, module_name="test", HEARING_FACTUAL_BLOCK="テスト事実データ")
+    assert "{{" not in out
+    assert "テスト事実データ" in out
