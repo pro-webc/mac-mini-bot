@@ -1195,7 +1195,11 @@ def run_standard_cp_claude_manual_pipeline(
         HEARING_FACTUAL_BLOCK=_factual_block,
     )
 
-    logger.info("STANDARD-CP Claude: 手順7-1〜7-5（タブ⑥・下層2群分割）…")
+    # 引数: p71〜p74（各下層ページのコード生成プロンプト）
+    # 処理: chat6 で 7-1〜7-4 を実行。7-3/7-4 の出力が大きい（各150KB超）ため
+    #       7-5 は別チャット（chat7）に分離しコンテキスト溢れを防ぐ
+    # 出力: outs.step_7_1〜7_4 に各ステップの React コード
+    logger.info("STANDARD-CP Claude: 手順7-1〜7-4（タブ⑥・下層2群分割）…")
     chat6 = _new_chat(system_prompt=_factual_block)
     outs.step_7_1 = chat6.send_message(p71)
     outs.raw["step_7_1"] = outs.step_7_1
@@ -1209,11 +1213,25 @@ def run_standard_cp_claude_manual_pipeline(
     outs.step_7_4 = chat6.send_message(p74)
     outs.raw["step_7_4"] = outs.step_7_4
     outs.raw_prompts["step_7_4"] = p74
-    outs.step_7_5 = chat6.send_message(p75)
-    outs.raw["step_7_5"] = outs.step_7_5
-    outs.raw_prompts["step_7_5"] = p75
 
-    claude_final = (outs.step_7_5 or "").strip() or outs.step_7_4
+    # 引数: p75（最終ポリッシュプロンプト）+ step_7_4 出力
+    # 処理: chat7（新規チャット）で 7-5 を実行。chat6 の蓄積コンテキスト（~600KB）を
+    #       回避するため、7-4 出力のみを注入して独立セッションにする
+    # 出力: outs.step_7_5 にポリッシュ済みコード
+    logger.info("STANDARD-CP Claude: 手順7-5（タブ⑦・最終ポリッシュ）…")
+    p75_with_source = p75 + "\n\n--- 手順7-4 出力 ---\n" + (outs.step_7_4 or "")
+    chat7 = _new_chat(system_prompt=_factual_block)
+    outs.step_7_5 = chat7.send_message(p75_with_source)
+    outs.raw["step_7_5"] = outs.step_7_5
+    outs.raw_prompts["step_7_5"] = p75_with_source
+
+    from modules.claude_manual_common import has_tsx_content
+
+    raw_7_5 = (outs.step_7_5 or "").strip()
+    if raw_7_5 and has_tsx_content(raw_7_5):
+        claude_final = raw_7_5
+    else:
+        claude_final = (outs.step_7_4 or "").strip() or outs.step_7_3
 
     _ref_plan = get_contract_plan_info(contract_plan)
     _manus_contract_pages = int(_ref_plan.get("pages") or 6)

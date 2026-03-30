@@ -374,6 +374,23 @@ def reference_url_block_from_extracted(urls: list[dict[str, str]]) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Claude 出力のコード検証
+# ---------------------------------------------------------------------------
+
+
+def has_tsx_content(text: str) -> bool:
+    """TSX/JSX ソースコードらしき内容を含むか簡易判定。
+
+    Claude CLI がコンテキスト溢れ等でエラーメッセージだけを返した場合に
+    検出し、前ステップの出力へフォールバックさせるためのガード。
+    """
+    if not text or len(text) < 200:
+        return False
+    indicators = ["export default", "function ", "return (", "className=", "<div"]
+    return sum(1 for ind in indicators if ind in text) >= 2
+
+
+# ---------------------------------------------------------------------------
 # Manus リファクタブロック（4パイプラインで共通の ~30 行パターン）
 # ---------------------------------------------------------------------------
 

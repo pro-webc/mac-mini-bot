@@ -143,12 +143,18 @@ def _find_last_claude_cli_output(record_number: str) -> Path:
             f"Claude CLI 出力が見つかりません（Manus 再開には前回の TEXT_LLM 完走が必要）: {steps_dir}"
         )
 
+    # 複数パイプライン実行の残骸が混在する場合、最大 seq のステップが
+    # レビュー修正パッチ（部分出力）で、完全なソースコードはその直前にある
+    # ことがある。上位 3 ステップのうち最大ファイルサイズを選ぶ。
     cli_candidates.sort(key=lambda t: t[0], reverse=True)
-    best_seq, best_path = cli_candidates[0]
+    top_n = cli_candidates[:3]
+    top_n.sort(key=lambda t: t[1].stat().st_size, reverse=True)
+    best_seq, best_path = top_n[0]
     logger.info(
-        "Manus 再開: 最終 Claude CLI ステップを自動検出 → step=%03d path=%s"
-        " (original_manus_step=%s)",
-        best_seq, best_path, max_manus_seq,
+        "Manus 再開: 最終 Claude CLI ステップを自動検出 → step=%03d path=%s (%d bytes)"
+        " (original_manus_step=%s, candidates_top3=%s)",
+        best_seq, best_path, best_path.stat().st_size, max_manus_seq,
+        [(s, p.stat().st_size) for s, p in cli_candidates[:3]],
     )
     return best_path
 

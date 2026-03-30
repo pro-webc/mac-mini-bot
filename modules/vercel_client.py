@@ -629,6 +629,9 @@ class VercelClient:
                 state = deployment.get("readyState", "")
 
                 if state == "READY":
+                    aliases = deployment.get("alias") or []
+                    if aliases:
+                        return f"https://{aliases[0]}"
                     url_obj = deployment.get("url", "")
                     return f"https://{url_obj}" if url_obj else ""
                 if state == "ERROR":

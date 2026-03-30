@@ -338,7 +338,13 @@ def run_advance_cp_claude_manual_pipeline(
     outs.raw["step_7_4"] = outs.step_7_4
     outs.raw_prompts["step_7_4"] = p74
 
-    claude_final = (outs.step_7_4 or "").strip() or outs.step_7_3
+    from modules.claude_manual_common import has_tsx_content
+
+    raw_7_4 = (outs.step_7_4 or "").strip()
+    if raw_7_4 and has_tsx_content(raw_7_4):
+        claude_final = raw_7_4
+    else:
+        claude_final = (outs.step_7_3 or "").strip() or outs.step_7_2
 
     _ref_plan = get_contract_plan_info(contract_plan)
     _manus_contract_pages = int(_ref_plan.get("pages") or 12)
