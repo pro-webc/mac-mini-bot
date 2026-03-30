@@ -1214,24 +1214,51 @@ def run_standard_cp_claude_manual_pipeline(
     outs.raw["step_7_4"] = outs.step_7_4
     outs.raw_prompts["step_7_4"] = p74
 
-    # 引数: p75（最終ポリッシュプロンプト）+ step_7_4 出力
+    from modules.claude_manual_common import has_tsx_content
+
+    # 引数: p75（最終ポリッシュプロンプト）+ 直前ステップの最善出力
     # 処理: chat7（新規チャット）で 7-5 を実行。chat6 の蓄積コンテキスト（~600KB）を
-    #       回避するため、7-4 出力のみを注入して独立セッションにする
+    #       回避するため、直前の最善コード出力のみを注入して独立セッションにする。
+    #       step_7_4 がコンテキスト圧縮で壊れている場合は step_7_3 をフィードする
     # 出力: outs.step_7_5 にポリッシュ済みコード
+    _best_before_polish = (outs.step_7_4 or "").strip()
+    if not (_best_before_polish and has_tsx_content(_best_before_polish)):
+        _best_before_polish = (outs.step_7_3 or "").strip()
+        logger.warning(
+            "STANDARD-CP Claude: step_7_4 が有効な TSX でないため "
+            "step_7_3 を 7-5 のソースに使用します (7_4 chars=%s)",
+            len(outs.step_7_4 or ""),
+        )
     logger.info("STANDARD-CP Claude: 手順7-5（タブ⑦・最終ポリッシュ）…")
-    p75_with_source = p75 + "\n\n--- 手順7-4 出力 ---\n" + (outs.step_7_4 or "")
+    p75_with_source = p75 + "\n\n--- 直前ステップ出力 ---\n" + _best_before_polish
     chat7 = _new_chat(system_prompt=_factual_block)
     outs.step_7_5 = chat7.send_message(p75_with_source)
     outs.raw["step_7_5"] = outs.step_7_5
     outs.raw_prompts["step_7_5"] = p75_with_source
 
-    from modules.claude_manual_common import has_tsx_content
-
+    # 引数: step_7_5 / step_7_4 / step_7_3 の出力
+    # 処理: 最新ステップから順に has_tsx_content で有効性を検証し、
+    #       最初に合格した出力を Manus に渡す claude_final とする
+    # 出力: claude_final（Manus 送信用の単一ファイル TSX）
     raw_7_5 = (outs.step_7_5 or "").strip()
+    raw_7_4 = (outs.step_7_4 or "").strip()
+    raw_7_3 = (outs.step_7_3 or "").strip()
     if raw_7_5 and has_tsx_content(raw_7_5):
         claude_final = raw_7_5
+        _selected = "step_7_5"
+    elif raw_7_4 and has_tsx_content(raw_7_4):
+        claude_final = raw_7_4
+        _selected = "step_7_4"
+    elif raw_7_3 and has_tsx_content(raw_7_3):
+        claude_final = raw_7_3
+        _selected = "step_7_3"
     else:
-        claude_final = (outs.step_7_4 or "").strip() or outs.step_7_3
+        claude_final = raw_7_3 or raw_7_4 or raw_7_5
+        _selected = "fallback(最善なし)"
+    logger.info(
+        "STANDARD-CP Claude: claude_final を %s から選択 (chars=%s)",
+        _selected, len(claude_final),
+    )
 
     _ref_plan = get_contract_plan_info(contract_plan)
     _manus_contract_pages = int(_ref_plan.get("pages") or 6)

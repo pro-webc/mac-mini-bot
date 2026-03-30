@@ -340,11 +340,29 @@ def run_advance_cp_claude_manual_pipeline(
 
     from modules.claude_manual_common import has_tsx_content
 
+    # 引数: step_7_4 / step_7_3 / step_7_2 の出力
+    # 処理: 最新ステップから順に has_tsx_content で有効性を検証し、
+    #       最初に合格した出力を Manus に渡す claude_final とする
+    # 出力: claude_final（Manus 送信用の単一ファイル TSX）
     raw_7_4 = (outs.step_7_4 or "").strip()
+    raw_7_3 = (outs.step_7_3 or "").strip()
+    raw_7_2 = (outs.step_7_2 or "").strip()
     if raw_7_4 and has_tsx_content(raw_7_4):
         claude_final = raw_7_4
+        _selected = "step_7_4"
+    elif raw_7_3 and has_tsx_content(raw_7_3):
+        claude_final = raw_7_3
+        _selected = "step_7_3"
+    elif raw_7_2 and has_tsx_content(raw_7_2):
+        claude_final = raw_7_2
+        _selected = "step_7_2"
     else:
-        claude_final = (outs.step_7_3 or "").strip() or outs.step_7_2
+        claude_final = raw_7_4 or raw_7_3 or raw_7_2
+        _selected = "fallback(最善なし)"
+    logger.info(
+        "ADVANCE-CP Claude: claude_final を %s から選択 (chars=%s)",
+        _selected, len(claude_final),
+    )
 
     _ref_plan = get_contract_plan_info(contract_plan)
     _manus_contract_pages = int(_ref_plan.get("pages") or 12)

@@ -23,3 +23,4 @@ YYYY-MM-DD_<短い識別名>.md
 |------|----------|------|
 | 2026-03-29 | [2026-03-29_factual-data-loss.md](./2026-03-29_factual-data-loss.md) | Claude CLI step 7-4 でのファクトデータ消失 — 3層防御策の設計と残存リスク |
 | 2026-03-29 | [2026-03-29_lower-page-hero-image.md](./2026-03-29_lower-page-hero-image.md) | 下層ページのヒーローセクションに画像がない — プロンプト曖昧さの解消 |
+| 2026-03-30 | [2026-03-30_claude-final-selection-bug.md](./2026-03-30_claude-final-selection-bug.md) | claude_final 選択バグ — Manus に拒否文・断片のみ渡り下層ページが薄くなる |
