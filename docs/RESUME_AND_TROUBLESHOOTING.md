@@ -30,8 +30,7 @@
   │       └─ _resume_from_phase3_or_deploy.py                     │
   │                                                               │
   └─ Manus のみ再実行（Claude は完了済み）────────────────────────┤
-      └─ BOT_RESUME_FROM_MANUS=true + BOT_ONLY_RECORD_NUMBER      │
-          で main.py を実行                                        │
+      └─ scripts/_resume_from_post_manus.py で再実行               │
 ```
 
 ---
@@ -49,7 +48,6 @@
 
 | 変数 | 用途 |
 |------|------|
-| `BOT_RESUME_FROM_MANUS=true` | `main.py` で Claude をスキップし Manus 以降を再実行 |
 | `BOT_ONLY_RECORD_NUMBER` | 特定案件のみ処理（再開時は必須） |
 | `FORCE_LOCAL_PUSH=true` | `_resume_from_phase3_or_deploy.py` で Manus URL を無視しローカル push |
 | `STANDARD_CP_REFACTOR_AFTER_MANUAL` | 再開時に Manus リファクタを含めるか |

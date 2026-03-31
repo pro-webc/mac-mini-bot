@@ -58,6 +58,7 @@ BASIC_LP_MANUAL_CLAUDE_NEW_CHAT_SESSIONS = 5
 from modules.claude_manual_common import (
     ClaudeCLIChat,
     generate_text as _generate_text,
+    get_claude_tech_requirements as _get_claude_tech_requirements,
     hearing_block as _hearing_block_impl,
     existing_site_url_block as _existing_site_url_block,
     client_hp_and_mood_placeholders as _client_hp_and_mood_placeholders,
@@ -270,6 +271,7 @@ def run_basic_lp_claude_manual_pipeline(
         STEP_7_OUTPUT=outs.step_7,
         STEP_4_OUTPUT=outs.step_4,
         HEARING_REFERENCE_DESIGN_BLOCK=_hr_block,
+        COMMON_TECH_REQUIREMENTS=_get_claude_tech_requirements(),
     )
     p82 = _subst(
         _load_step("step_8_2.txt"),

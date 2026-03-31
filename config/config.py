@@ -113,12 +113,6 @@ except ValueError:
 # 未処理キューのうちこのレコード番号（B列 record_id の表示値と完全一致）だけ処理。空で無効
 BOT_ONLY_RECORD_NUMBER = (os.getenv("BOT_ONLY_RECORD_NUMBER") or "").strip()
 
-# Claude 多段チェーンをスキップし、保存済み Claude CLI 出力から Manus 以降のみ再実行する。
-# BOT_ONLY_RECORD_NUMBER と併用必須。R列のステータスに関係なく対象案件を取得する。
-BOT_RESUME_FROM_MANUS = os.getenv(
-    "BOT_RESUME_FROM_MANUS", "false"
-).strip().lower() in ("1", "true", "yes")
-
 # mac-mini（AV）列のエラー表示の最大文字数（「エラー: 」を除く本文側の上限に近い挙動。50〜500）
 _raw_ai_err = os.getenv("SPREADSHEET_AI_STATUS_ERROR_MAX_LEN", "200").strip()
 try:

@@ -473,9 +473,9 @@ def run_manus_refactor_stage(
                         len(text),
                     )
                     return text
-                if status == "failed":
+                if status in ("failed", "error"):
                     err = (task or {}).get("error") or (task or {}).get("incomplete_details")
-                    raise RuntimeError(f"Manus タスク失敗: {err!r}")
+                    raise RuntimeError(f"Manus タスク失敗 (status={status}): {err!r}")
 
                 # running→pending 遷移の検出: interactiveMode=false なのに pending が続く場合はハング
                 if status == "pending":

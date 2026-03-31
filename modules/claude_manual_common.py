@@ -8,8 +8,10 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import shutil
 import subprocess
+import time
 import uuid
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -23,6 +25,93 @@ from config.config import CLAUDE_CLI_TIMEOUT_SEC
 from modules.hearing_url_utils import existing_site_url_guess_from_hearing
 
 logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Claude CLI アカウントローテーション
+#
+# CLAUDE_EXTRA_CONFIG_DIRS（カンマ区切り）で追加アカウントの設定ディレクトリを指定。
+# レート制限を検知すると自動で次のアカウントに切り替えてリトライする。
+# マルチターンセッションは作成元アカウントに固定される。
+# ---------------------------------------------------------------------------
+
+_RATE_LIMIT_PATTERNS = ("out of extra usage", "rate limit", "too many requests")
+_RATE_LIMIT_COOLDOWN_SEC = 300
+
+_config_dirs: list[str | None] = []
+_active_idx: int = 0
+_rate_limited_until: dict[int, float] = {}
+_session_config: dict[str, int] = {}
+_config_initialized = False
+
+
+def _init_config_dirs() -> None:
+    """CLAUDE_EXTRA_CONFIG_DIRS から追加アカウントの config dir リストを構築する（初回のみ）。"""
+    global _config_dirs, _config_initialized
+    if _config_initialized:
+        return
+    _config_initialized = True
+
+    base = os.environ.get("CLAUDE_CONFIG_DIR") or None
+    _config_dirs.append(base)
+
+    extra = os.environ.get("CLAUDE_EXTRA_CONFIG_DIRS", "")
+    for d in extra.split(","):
+        d = d.strip()
+        if not d:
+            continue
+        expanded = os.path.expanduser(d)
+        if expanded not in _config_dirs:
+            _config_dirs.append(expanded)
+
+    if len(_config_dirs) > 1:
+        labels = [d or "~/.claude" for d in _config_dirs]
+        logger.info(
+            "Claude CLI アカウントローテーション: %d アカウント（%s）",
+            len(_config_dirs), ", ".join(labels),
+        )
+
+
+def _pick_config_dir() -> tuple[int, str | None]:
+    """レート制限されていないアカウントを選択する。戻り値: (index, config_dir)。"""
+    global _active_idx
+    _init_config_dirs()
+    now = time.time()
+    n = len(_config_dirs)
+    for offset in range(n):
+        idx = (_active_idx + offset) % n
+        if now >= _rate_limited_until.get(idx, 0):
+            _active_idx = idx
+            return idx, _config_dirs[idx]
+    soonest_idx = min(_rate_limited_until, key=_rate_limited_until.get)
+    _active_idx = soonest_idx
+    return soonest_idx, _config_dirs[soonest_idx]
+
+
+def _mark_rate_limited(idx: int) -> None:
+    _rate_limited_until[idx] = time.time() + _RATE_LIMIT_COOLDOWN_SEC
+    label = _config_dirs[idx] or "~/.claude"
+    logger.warning("アカウント %s をレート制限としてマーク（%d秒間スキップ）", label, _RATE_LIMIT_COOLDOWN_SEC)
+
+
+def _is_rate_limit_error(data: dict[str, Any]) -> bool:
+    if not data.get("is_error"):
+        return False
+    msg = str(data.get("result", "")).lower()
+    return any(p in msg for p in _RATE_LIMIT_PATTERNS)
+
+
+def _env_for_config_dir(config_dir: str | None) -> dict[str, str] | None:
+    """subprocess に渡す env を返す。None ならデフォルト（~/.claude）。"""
+    if config_dir is None:
+        if "CLAUDE_CONFIG_DIR" in os.environ:
+            env = os.environ.copy()
+            del env["CLAUDE_CONFIG_DIR"]
+            return env
+        return None
+    env = os.environ.copy()
+    env["CLAUDE_CONFIG_DIR"] = config_dir
+    return env
 
 
 # ---------------------------------------------------------------------------
@@ -43,9 +132,11 @@ def _run_claude_cli(
 
     引数: prompt — 送信テキスト / model — CLI の --model / session_id・resume — マルチターン用
           append_system_prompt — セッション開始時にシステムプロンプトとして注入するテキスト
-    処理: subprocess.run → claude CLI → JSON parse。exit code != 0 かつ result 空で RuntimeError
+    処理: subprocess.run → claude CLI → JSON parse。レート制限時は別アカウントで自動リトライ。
     出力: CLI の JSON レスポンス辞書（type, result, usage 等）
     """
+    _init_config_dirs()
+
     cli = shutil.which("claude")
     if not cli:
         raise RuntimeError("claude CLI が見つかりません。npm install -g @anthropic-ai/claude-code を実行してください。")
@@ -66,40 +157,70 @@ def _run_claude_cli(
         cmd.append("--no-session-persistence")
 
     prefix = f"{module_name}: " if module_name else ""
-    logger.debug("%sClaude CLI 実行: model=%s resume=%s", prefix, model, resume)
 
-    try:
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            timeout=float(CLAUDE_CLI_TIMEOUT_SEC),
-            stdin=subprocess.DEVNULL,
-        )
-    except subprocess.TimeoutExpired as e:
-        raise RuntimeError(
-            f"{prefix}Claude CLI がタイムアウトしました（{CLAUDE_CLI_TIMEOUT_SEC}秒）。"
-        ) from e
+    # セッション継続中は作成元アカウントを使う。新規・単発は最適なアカウントを選択。
+    if session_id and session_id in _session_config:
+        config_idx = _session_config[session_id]
+        config_dir = _config_dirs[config_idx]
+        max_attempts = 1
+    else:
+        config_idx, config_dir = _pick_config_dir()
+        max_attempts = len(_config_dirs) if not resume else 1
 
-    stdout = result.stdout.strip()
-    if not stdout:
-        raise RuntimeError(
-            f"{prefix}Claude CLI の出力が空です。stderr: {result.stderr[:500]}"
-        )
+    for attempt in range(max_attempts):
+        config_label = config_dir or "~/.claude"
+        if len(_config_dirs) > 1:
+            logger.debug("%sClaude CLI 実行: model=%s resume=%s account=%s", prefix, model, resume, config_label)
+        else:
+            logger.debug("%sClaude CLI 実行: model=%s resume=%s", prefix, model, resume)
 
-    try:
-        data = json.loads(stdout)
-    except json.JSONDecodeError as e:
-        raise RuntimeError(
-            f"{prefix}Claude CLI の JSON パースに失敗: {e}\nstdout: {stdout[:500]}"
-        ) from e
+        env = _env_for_config_dir(config_dir)
 
-    if data.get("is_error"):
-        raise RuntimeError(
-            f"{prefix}Claude CLI エラー: {data.get('result', '(不明)')}"
-        )
+        try:
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                text=True,
+                timeout=float(CLAUDE_CLI_TIMEOUT_SEC),
+                stdin=subprocess.DEVNULL,
+                env=env,
+            )
+        except subprocess.TimeoutExpired as e:
+            raise RuntimeError(
+                f"{prefix}Claude CLI がタイムアウトしました（{CLAUDE_CLI_TIMEOUT_SEC}秒）。"
+            ) from e
 
-    return data
+        stdout = result.stdout.strip()
+        if not stdout:
+            raise RuntimeError(
+                f"{prefix}Claude CLI の出力が空です。stderr: {result.stderr[:500]}"
+            )
+
+        try:
+            data = json.loads(stdout)
+        except json.JSONDecodeError as e:
+            raise RuntimeError(
+                f"{prefix}Claude CLI の JSON パースに失敗: {e}\nstdout: {stdout[:500]}"
+            ) from e
+
+        if data.get("is_error"):
+            if _is_rate_limit_error(data) and attempt + 1 < max_attempts:
+                _mark_rate_limited(config_idx)
+                config_idx, config_dir = _pick_config_dir()
+                logger.warning(
+                    "%sレート制限 → アカウント切替: %s（リトライ %d/%d）",
+                    prefix, config_dir or "~/.claude", attempt + 2, max_attempts,
+                )
+                continue
+            raise RuntimeError(
+                f"{prefix}Claude CLI エラー: {data.get('result', '(不明)')}"
+            )
+
+        if session_id:
+            _session_config[session_id] = config_idx
+        return data
+
+    raise RuntimeError(f"{prefix}全アカウントがレート制限中です")
 
 
 def _extract_cli_text(
@@ -206,6 +327,15 @@ class ClaudeCLIChat:
 # ---------------------------------------------------------------------------
 # プロンプト読み込み・置換ヘルパー（LLM 非依存）
 # ---------------------------------------------------------------------------
+
+
+_COMMON_PROMPTS_DIR = Path(__file__).resolve().parent.parent / "config" / "prompts" / "common"
+_CLAUDE_TECH_REQ_PATH = _COMMON_PROMPTS_DIR / "claude_tech_requirements.txt"
+
+
+def get_claude_tech_requirements() -> str:
+    """Claude プロンプト共通の ``#技術要件`` テキストを返す（単一ソース）。"""
+    return _CLAUDE_TECH_REQ_PATH.read_text(encoding="utf-8").rstrip()
 
 
 def load_step(manual_dir: Path, filename: str, *, module_name: str = "") -> str:

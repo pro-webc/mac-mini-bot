@@ -33,7 +33,6 @@ configure_logging()
 from config.config import (
     BOT_MAX_CASES,
     BOT_ONLY_RECORD_NUMBER,
-    BOT_RESUME_FROM_MANUS,
     GA4_INJECT_TRACKING,
     GA4_MEASUREMENT_ID,
     OUTPUT_DIR,
@@ -88,129 +87,6 @@ from modules.vercel_client import (
 )
 
 logger = logging.getLogger(__name__)
-
-
-# ---------------------------------------------------------------------------
-# Manus 再開モード: 保存済み Claude 出力から Claude マニュアル段をスキップして Manus 以降を実行
-# ---------------------------------------------------------------------------
-
-
-
-def _find_last_claude_cli_output(record_number: str) -> Path:
-    """Manus 直前の最終 Claude CLI 出力ファイルを自動検出する。
-
-    引数: record_number — 案件番号
-    処理: output/{record}/llm_steps/ を走査し、オリジナルパイプラインの manus_refactor
-          ステップ（最大番号）の直前にある Claude CLI 出力を選ぶ。
-          再開実行で番号が若い manus_refactor（001 等）が混在しても正しく動作する。
-    出力: 最終 Claude CLI output.md の Path
-    """
-    steps_dir = OUTPUT_DIR / record_number / "llm_steps"
-    if not steps_dir.is_dir():
-        raise FileNotFoundError(
-            f"LLM ステップディレクトリが存在しません: {steps_dir}"
-        )
-
-    max_manus_seq: int | None = None
-    cli_candidates: list[tuple[int, Path]] = []
-
-    for d in steps_dir.iterdir():
-        if not d.is_dir():
-            continue
-        name = d.name
-        try:
-            seq = int(name.split("_", 1)[0])
-        except (ValueError, IndexError):
-            continue
-
-        if "manus_refactor" in name:
-            if max_manus_seq is None or seq > max_manus_seq:
-                max_manus_seq = seq
-            continue
-
-        if "claude_cli_chat" not in name and "claude_cli_generate" not in name:
-            continue
-        out = d / "output.md"
-        if not out.is_file():
-            continue
-        cli_candidates.append((seq, out))
-
-    if max_manus_seq is not None:
-        cli_candidates = [(s, p) for s, p in cli_candidates if s < max_manus_seq]
-
-    if not cli_candidates:
-        raise FileNotFoundError(
-            f"Claude CLI 出力が見つかりません（Manus 再開には前回の TEXT_LLM 完走が必要）: {steps_dir}"
-        )
-
-    # 複数パイプライン実行の残骸が混在する場合、最大 seq のステップが
-    # レビュー修正パッチ（部分出力）で、完全なソースコードはその直前にある
-    # ことがある。上位 3 ステップのうち最大ファイルサイズを選ぶ。
-    cli_candidates.sort(key=lambda t: t[0], reverse=True)
-    top_n = cli_candidates[:3]
-    top_n.sort(key=lambda t: t[1].stat().st_size, reverse=True)
-    best_seq, best_path = top_n[0]
-    logger.info(
-        "Manus 再開: 最終 Claude CLI ステップを自動検出 → step=%03d path=%s (%d bytes)"
-        " (original_manus_step=%s, candidates_top3=%s)",
-        best_seq, best_path, best_path.stat().st_size, max_manus_seq,
-        [(s, p.stat().st_size) for s, p in cli_candidates[:3]],
-    )
-    return best_path
-
-
-def _resume_from_manus(
-    *,
-    record_number: str,
-    partner_name: str,
-    hearing_sheet_content: str,
-    appo_memo: str,
-    sales_notes: str,
-    work_branch: ContractWorkBranch,
-    contract_max_pages: int,
-) -> tuple[dict[str, Any], dict[str, Any]]:
-    """保存済み Claude CLI 出力を読み込み、Manus リファクタ以降のみ実行して spec を返す。
-
-    引数: record_number（出力ディレクトリの特定）/ hearing 情報（Manus プロンプト内の参考ブロック用）
-          / work_branch・contract_max_pages（プラン別制御）
-    処理: output/{record}/llm_steps/ から最終 Claude CLI 出力を自動検出し、
-          run_basic_lp_refactor_stage で Manus のみ実行
-    出力: (requirements_result, spec) — process_case のフェーズ3 以降が使う最低限のキーを格納
-    """
-    from modules.basic_lp_refactor_claude import run_basic_lp_refactor_stage
-    from modules.hearing_url_utils import hearing_reference_design_block_for_prompt
-
-    claude_output_path = _find_last_claude_cli_output(record_number)
-    claude_output = claude_output_path.read_text(encoding="utf-8")
-    logger.info(
-        "Manus 再開: 保存済み Claude 出力を読み込みました (%s chars) path=%s",
-        len(claude_output), claude_output_path,
-    )
-
-    extras = [s for s in (appo_memo, sales_notes) if (s or "").strip()]
-    hr = hearing_reference_design_block_for_prompt(hearing_sheet_content, extra_texts=extras)
-
-    md, manus_deploy_github_url = run_basic_lp_refactor_stage(
-        claude_source_code=claude_output,
-        partner_name=partner_name,
-        record_number=record_number,
-        hearing_reference_block=hr,
-        contract_max_pages=contract_max_pages,
-    )
-
-    refactor_key, source_key = BRANCH_REGISTRY[work_branch].manus_keys
-    requirements_result: dict[str, Any] = {
-        "plan_type": work_branch.value,
-        "site_build_prompt": f"[Manus再開] Claude出力 {len(claude_output)} chars → refactor {len(md)} chars",
-    }
-    spec: dict[str, Any] = {
-        source_key: claude_output,
-        refactor_key: md,
-    }
-    if manus_deploy_github_url:
-        spec["manus_deploy_github_url"] = manus_deploy_github_url.strip()
-
-    return requirements_result, spec
 
 
 # ---------------------------------------------------------------------------
@@ -429,29 +305,17 @@ class WebsiteBot:
         plan_info: dict[str, Any],
     ) -> tuple[dict[str, Any], dict[str, Any]]:
         """引数: bundle（フェーズ1 出力）/ work_branch・plan_info（プラン制御）
-        処理: BRANCH_REGISTRY でパイプライン選択。BOT_RESUME_FROM_MANUS 時は Manus のみ再実行
+        処理: BRANCH_REGISTRY でパイプライン選択
         出力: (requirements_result, spec)
         """
-        if BOT_RESUME_FROM_MANUS:
-            logger.info("【フェーズ2・Manus再開】Claude マニュアル段スキップ → Manus のみ実行 branch=%s", work_branch.value)
-            req, spec = _resume_from_manus(
-                record_number=str(case.get("record_number") or ""),
-                partner_name=case["partner_name"],
-                hearing_sheet_content=bundle.hearing_sheet_content,
-                appo_memo=bundle.appo_memo,
-                sales_notes=bundle.sales_notes,
-                work_branch=work_branch,
-                contract_max_pages=int(plan_info.get("pages") or 1),
-            )
-        else:
-            logger.info("【フェーズ2】TEXT_LLM … branch=%s", work_branch.value)
-            req, spec = run_text_llm_stage(
-                bundle,
-                contract_plan=case["contract_plan"],
-                partner_name=case["partner_name"],
-                record_number=str(case.get("record_number") or ""),
-                work_branch=work_branch,
-            )
+        logger.info("【フェーズ2】TEXT_LLM … branch=%s", work_branch.value)
+        req, spec = run_text_llm_stage(
+            bundle,
+            contract_plan=case["contract_plan"],
+            partner_name=case["partner_name"],
+            record_number=str(case.get("record_number") or ""),
+            work_branch=work_branch,
+        )
 
         site_name = f"{case['partner_name']}-{case['record_number']}"
         write_llm_raw_artifacts_phase2_snapshot(
@@ -677,55 +541,33 @@ class WebsiteBot:
             _uc = stream_supports_color(sys.stdout)
             logger.info(startup_title(use_color=_uc))
 
-            # --- Manus 再開モード: R列の状態を無視してレコード番号で直接取得 ---
-            if BOT_RESUME_FROM_MANUS:
-                if not BOT_ONLY_RECORD_NUMBER:
-                    logger.error(
-                        "BOT_RESUME_FROM_MANUS=true には BOT_ONLY_RECORD_NUMBER が必須です"
-                    )
-                    return
-                c = self.spreadsheet.get_case_by_record_number(BOT_ONLY_RECORD_NUMBER)
-                if c is None:
-                    logger.error(
-                        "BOT_RESUME_FROM_MANUS: レコード番号 %r がシートに見つかりません",
-                        BOT_ONLY_RECORD_NUMBER,
-                    )
-                    return
-                cases = [c]
-                logger.info(
-                    "Manus 再開モード: record=%r row=%s を R 列の状態に関係なく取得",
-                    BOT_ONLY_RECORD_NUMBER,
-                    c.get("row_number"),
-                )
-            else:
-                # SPREADSHEET_TARGET_AI_STATUS 等の条件でフィルタ済みのキュー
-                cases = self.spreadsheet.get_pending_cases()
+            cases = self.spreadsheet.get_pending_cases()
 
-                if not cases:
+            if not cases:
+                logger.info(idle_banner(use_color=_uc))
+                return
+
+            if BOT_ONLY_RECORD_NUMBER:
+                want = BOT_ONLY_RECORD_NUMBER
+                filtered = [
+                    c
+                    for c in cases
+                    if str(c.get("record_number") or "").strip() == want
+                ]
+                if not filtered:
+                    logger.warning(
+                        "BOT_ONLY_RECORD_NUMBER=%r に一致する未処理案件がありません（キュー内 %s 件）",
+                        want,
+                        len(cases),
+                    )
                     logger.info(idle_banner(use_color=_uc))
                     return
-
-                if BOT_ONLY_RECORD_NUMBER:
-                    want = BOT_ONLY_RECORD_NUMBER
-                    filtered = [
-                        c
-                        for c in cases
-                        if str(c.get("record_number") or "").strip() == want
-                    ]
-                    if not filtered:
-                        logger.warning(
-                            "BOT_ONLY_RECORD_NUMBER=%r に一致する未処理案件がありません（キュー内 %s 件）",
-                            want,
-                            len(cases),
-                        )
-                        logger.info(idle_banner(use_color=_uc))
-                        return
-                    cases = filtered
-                    logger.info(
-                        "BOT_ONLY_RECORD_NUMBER により %s 件に絞り込み record=%r",
-                        len(cases),
-                        want,
-                    )
+                cases = filtered
+                logger.info(
+                    "BOT_ONLY_RECORD_NUMBER により %s 件に絞り込み record=%r",
+                    len(cases),
+                    want,
+                )
 
             # テスト用: 先頭 N 件だけ処理（未設定なら全件）
             if BOT_MAX_CASES:
@@ -745,7 +587,7 @@ class WebsiteBot:
                     self._refresh_case_row(case)
                     row_n = int(case["row_number"])
                     r_now = self.spreadsheet.get_ai_status_cell(row_n)
-                    if not BOT_RESUME_FROM_MANUS and ai_cell_excludes_from_pending_queue(r_now):
+                    if ai_cell_excludes_from_pending_queue(r_now):
                         logger.info(
                             "スキップ（他プロセスが着手済み、R 列が非空） "
                             "row=%s record=%s R=%r",

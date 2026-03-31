@@ -1,0 +1,7 @@
+・Next.js (App Router), React, Tailwind CSS
+・セクション単位でコンポーネントを作成せよ
+・CSSの@importルール（Google Fontsなど）は、必ずCSSファイルまたは<style>タグの最上部に配置すること。他のCSSルール（:root、セレクタ、プロパティなど）よりも前に記述する必要がある。これを守らないとビルドエラーが発生する。
+・出力する <style> ブロックに以下の日本語折り返し CSS を必ず含めること:
+  h1,h2,h3,h4,h5,h6 { text-wrap: balance; word-break: auto-phrase; }
+  p, li { text-wrap: pretty; word-break: auto-phrase; }
+・word-break: break-all は日本語で不自然な切断になるため使用禁止

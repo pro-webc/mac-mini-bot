@@ -59,6 +59,7 @@ BASIC_CP_MANUAL_CLAUDE_NEW_CHAT_SESSIONS = 5
 from modules.claude_manual_common import (
     ClaudeCLIChat,
     generate_text as _generate_text,
+    get_claude_tech_requirements as _get_claude_tech_requirements,
     hearing_block as _hearing_block_impl,
     existing_site_url_block as _existing_site_url_block,
     client_hp_and_mood_placeholders as _client_hp_and_mood_placeholders,
@@ -262,6 +263,7 @@ def run_basic_cp_claude_manual_pipeline(
         HEARING_REFERENCE_DESIGN_BLOCK=hearing_reference_design_block_for_prompt(
             hearing_sheet_content, extra_texts=_extras,
         ),
+        COMMON_TECH_REQUIREMENTS=_get_claude_tech_requirements(),
     )
     _factual = hearing_factual_data_block_for_prompt(
         hearing_sheet_content, extra_texts=_extras,
