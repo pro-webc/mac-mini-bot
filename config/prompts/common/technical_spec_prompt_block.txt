@@ -40,6 +40,16 @@
 - プライバシーポリシー・利用規約などは **契約で定めたページ数には含めない**。**新規の `app/**/page.tsx`（例: `app/privacy/page.tsx`）を増やして独立ルートにしない**。
 - 全文が必要な場合は **既存のいずれかのページ上**で `Dialog` / `Sheet` / `Drawer` / `<details>` 等により表示する。フッターからは **同一ページ内の UI** で開く（**/privacy 等への `Link` 新設は禁止**）。
 
+【日本語テキスト折り返し最適化（全プラン共通・必須）】
+- 出力する単一 TSX の `<style>` ブロック（または globals.css 相当）に以下を**必ず含める**。Manus リファクタで globals.css に移植される前提
+```css
+h1, h2, h3, h4, h5, h6 { text-wrap: balance; word-break: auto-phrase; }
+p, li { text-wrap: pretty; word-break: auto-phrase; }
+```
+- `word-break: break-all` は日本語で文節途中の不自然な切断になるため**使用禁止**
+- `white-space: nowrap` を **h1〜h6・p・li** に適用しない（SP でオーバーフローの原因。ヘッダーナビ・ボタンラベル等の短い UI 要素は対象外）
+- 折り返し位置の調整に素の `<br />` を新規挿入しない。SP/PC で改行を分けたい場合は `<br className="md:hidden" />`（SP のみ）/ `<br className="hidden md:inline" />`（PC のみ）を使う
+
 【レイアウト・レスポンシブ（全プラン共通）】
 - **モバイルファースト**: 狭い幅で破綻しないことを先に満たし、`sm:` `md:` 等で段階的に余白・段組・タイポを足す
 - **幅の制御**: 本文ブロックは `max-w-prose` または仕様のコンテナ幅に合わせ、`w-screen` や固定 `px` の乱用で viewport をはみ出さない。必要ならラッパーに `overflow-x-hidden` を検討（アニメ・横長要素で横スクロールが出る場合）

@@ -1,0 +1,39 @@
+# 日本語テキスト折り返し最適化（必須）
+
+## globals.css への必須記述
+
+生成サイトの `app/globals.css` に以下を**常に含める**。`@import` / `@theme` の直後、他のカスタム CSS の前に配置する。
+
+```css
+/* 日本語テキスト折り返し最適化 ※必須 — 削除・変更禁止 */
+h1, h2, h3, h4, h5, h6 {
+  text-wrap: balance;
+  word-break: auto-phrase;
+}
+
+p, li {
+  text-wrap: pretty;
+  word-break: auto-phrase;
+}
+```
+
+## 禁止事項
+
+- `word-break: break-all` の使用（日本語で文節途中の不自然な切断になる）
+- `white-space: nowrap` を **h1〜h6・p・li** に適用すること（SP でオーバーフローの原因。ヘッダーナビ・ボタンラベル等の短い UI 要素は対象外）
+- 折り返し位置調整のために素の `<br />` を新規挿入すること
+
+## `<br>` の使い分け
+
+`text-wrap: balance` が自動最適化するため、見出しへの `<br>` は原則不要。SP/PC で改行位置を分けたい場合のみ以下を使う。
+
+| 用途 | 記述 |
+|---|---|
+| SP のみ改行 | `<br className="md:hidden" />` |
+| PC のみ改行 | `<br className="hidden md:inline" />` |
+| SP/PC 両方 | `<br />` |
+
+## パイプラインでの保証
+
+- **TEXT_LLM（Claude CLI）**: `technical_spec_prompt_block.txt` で `<style>` ブロックへの記述を指示済み
+- **Manus リファクタ**: `refactoring_instruction_handwork.txt` / `orchestration_prompt.txt` で globals.css への必須記述を指示済み（「例外2」として元コード有無に関わらず常に記述）

@@ -72,9 +72,10 @@ SPREADSHEET_TARGET_AI_STATUS = os.getenv(
 SPREADSHEET_BOT_REQUIRE_EMPTY_TEST_SITE_URL = os.getenv(
     "SPREADSHEET_BOT_REQUIRE_EMPTY_TEST_SITE_URL", "true"
 ).strip().lower() in ("1", "true", "yes")
-# true のとき: ヒアリング列が URL（http/https 始まり）の行はスキップ。本文が入っている行のみ着手
+# true のとき: ヒアリング列が URL のみの行はスキップ（本文が入っている行のみ着手）。
+# false のとき: URL のみの行も着手し、URL 先を取得してヒアリング本文として使う。
 SPREADSHEET_REQUIRE_HEARING_BODY_NOT_URL = os.getenv(
-    "SPREADSHEET_REQUIRE_HEARING_BODY_NOT_URL", "true"
+    "SPREADSHEET_REQUIRE_HEARING_BODY_NOT_URL", "false"
 ).strip().lower() in ("1", "true", "yes")
 
 # フェーズ期限日（T 列）がこの日付「以降」の行のみ着手。

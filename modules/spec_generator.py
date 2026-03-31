@@ -15,6 +15,11 @@ from modules.hearing_url_utils import HEARING_HTTP_URL_RE, HEARING_PASTE_BODY_MI
 
 logger = logging.getLogger(__name__)
 
+# Google Sheets URL から spreadsheet_id / gid / 列範囲を抽出する正規表現
+_GSHEETS_ID_RE = re.compile(r"/spreadsheets/d/([a-zA-Z0-9_-]+)")
+_GSHEETS_GID_RE = re.compile(r"gid=(\d+)")
+_GSHEETS_RANGE_RE = re.compile(r"range=([A-Z]{1,3}:[A-Z]{1,3})")
+
 
 def _looks_like_html(text: str) -> bool:
     """レスポンス本文やセル貼り付けが HTML かざっくり判定する。"""
@@ -203,11 +208,93 @@ def compose_spec_input_briefing(
     return out
 
 
+def _fetch_google_sheet_via_api(
+    sheets_service: Any,
+    url: str,
+) -> Optional[str]:
+    """Google Sheets URL を Sheets API で読み込み、質問＋回答をテキスト化して返す。
+
+    Args:
+        sheets_service: ``googleapiclient`` の sheets v4 service オブジェクト
+        url: ``https://docs.google.com/spreadsheets/d/<ID>/edit...`` 形式
+    Returns:
+        セル値を改行連結したテキスト。読み取り不可なら None。
+    """
+    m_id = _GSHEETS_ID_RE.search(url)
+    if not m_id:
+        return None
+    spreadsheet_id = m_id.group(1)
+
+    m_gid = _GSHEETS_GID_RE.search(url)
+    gid = int(m_gid.group(1)) if m_gid else 0
+
+    # gid → シート名を解決
+    try:
+        meta = (
+            sheets_service.spreadsheets()
+            .get(spreadsheetId=spreadsheet_id, fields="sheets.properties")
+            .execute()
+        )
+    except Exception as exc:
+        logger.warning("ヒアリング Sheets メタデータ取得失敗 spreadsheet_id=%s: %s", spreadsheet_id, exc)
+        return None
+
+    target_sheet: Optional[str] = None
+    for s in meta.get("sheets", []):
+        props = s.get("properties", {})
+        if props.get("sheetId") == gid:
+            target_sheet = props.get("title")
+            break
+    if target_sheet is None:
+        sheets_list = [s["properties"]["title"] for s in meta.get("sheets", [])]
+        if sheets_list:
+            target_sheet = sheets_list[0]
+            logger.info("gid=%s に一致するシートがないため先頭シート %r を使用", gid, target_sheet)
+        else:
+            return None
+
+    # URL に range= が含まれていればその列、なければ全列
+    m_range = _GSHEETS_RANGE_RE.search(url)
+    col_range = m_range.group(1) if m_range else "A:Z"
+    api_range = f"{target_sheet}!{col_range}"
+
+    try:
+        result = (
+            sheets_service.spreadsheets()
+            .values()
+            .get(spreadsheetId=spreadsheet_id, range=api_range)
+            .execute()
+        )
+    except Exception as exc:
+        logger.warning("ヒアリング Sheets データ取得失敗 range=%s: %s", api_range, exc)
+        return None
+
+    values = result.get("values", [])
+    if not values:
+        return None
+
+    lines: list[str] = []
+    for row in values:
+        row_text = "\t".join(str(c) for c in row).strip()
+        if row_text:
+            lines.append(row_text)
+
+    text = "\n".join(lines)
+    logger.info(
+        "ヒアリング Sheets API で取得しました sheet=%r range=%s 行数=%s 文字数=%s",
+        target_sheet,
+        col_range,
+        len(values),
+        len(text),
+    )
+    return text
+
+
 class SpecGenerator:
     """ヒアリングシート取得（セル URL / 長文貼り付け）。"""
 
-    def __init__(self) -> None:
-        pass
+    def __init__(self, *, sheets_service: Any = None) -> None:
+        self._sheets_service = sheets_service
 
     def fetch_hearing_sheet(self, url: str) -> Optional[str]:
         """
@@ -249,21 +336,29 @@ class SpecGenerator:
                 )
                 return _maybe_strip_html_pasted_text(raw)
 
-            # Google Sheets URLの場合
-            if "docs.google.com/spreadsheets" in raw:
-                # 簡易的な取得（実際はGoogle Sheets APIを使用）
-                response = requests.get(raw, timeout=60)
-                if response.status_code == 200:
-                    text = _http_response_as_plain_text(response)
-                    logger.info("ヒアリングシートを取得しました（HTML はプレーンテキスト化）")
-                    return text
-            else:
-                # その他のURL（HTML 応答はタグを除去してテキスト化）
-                response = requests.get(raw, timeout=60)
-                if response.status_code == 200:
-                    return _http_response_as_plain_text(response)
+            # Google Sheets URL → Sheets API で読み込み（認証済みサービスがある場合）
+            if "docs.google.com/spreadsheets" in raw and self._sheets_service:
+                api_text = _fetch_google_sheet_via_api(self._sheets_service, raw)
+                if api_text:
+                    return api_text
+                logger.warning(
+                    "Sheets API での取得に失敗したため HTTP フォールバックを試みます URL=%s",
+                    raw[:120],
+                )
 
-            return None
+            # その他の URL / Sheets API フォールバック
+            response = requests.get(raw, timeout=60, headers={"User-Agent": "MacMiniBot/1.0"})
+            if response.status_code != 200:
+                logger.warning(
+                    "ヒアリング URL 取得失敗 status=%s URL=%s",
+                    response.status_code,
+                    raw[:120],
+                )
+                return None
+            text = _http_response_as_plain_text(response)
+            if "docs.google.com/spreadsheets" in raw:
+                logger.info("ヒアリングシートを HTTP 経由で取得しました（HTML テキスト化、品質に注意）")
+            return text
         except Exception as e:
-            logger.error(f"ヒアリングシート取得エラー: {e}")
+            logger.error("ヒアリングシート取得エラー: %s URL=%s", e, (url or "")[:120])
             return None

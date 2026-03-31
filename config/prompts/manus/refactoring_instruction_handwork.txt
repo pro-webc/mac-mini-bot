@@ -254,9 +254,31 @@ app/components/
 - **スクロールアニメーション用の CSS**（`.reveal { opacity: 0; transform: ... }` 等）
 
 ### 判断基準（厳守）
-- 元コードの `<style>` が **空**なら、`app/globals.css` も **空（最小）**
-- 元コードに存在しないCSSを **新規に追加することは禁止**
+- 元コードの `<style>` が **空**なら、`app/globals.css` も **空（最小）**（ただし下記「例外2」は常に記述）
+- 元コードに存在しないCSSを **新規に追加することは禁止**（ただし下記「例外2」は除く）
 - 移植は **"そのままコピー"**が原則（意味を変える編集禁止）
+
+### 例外2（日本語テキスト折り返し最適化 — 元コードの有無に関わらず常に記述。削除・変更禁止）
+
+以下の CSS ブロックは `app/globals.css` に**必ず記述**する。`@import` / `@theme` の後ろ、他のカスタム CSS の前に配置する。
+
+```css
+/* 日本語テキスト折り返し最適化 ※必須 — 削除・変更禁止 */
+h1, h2, h3, h4, h5, h6 {
+  text-wrap: balance;
+  word-break: auto-phrase;
+}
+
+p, li {
+  text-wrap: pretty;
+  word-break: auto-phrase;
+}
+```
+
+- `text-wrap: balance` … 見出しの行長を均等化（Baseline 2024: Chrome/Firefox/Safari 対応）
+- `text-wrap: pretty` … 段落末の孤立文字（orphan）を防止（同上）
+- `word-break: auto-phrase` … 日本語の文節境界で改行（Chrome 119+。未対応ブラウザは通常の折り返しにフォールバック、副作用なし）
+- **`word-break: break-all` は日本語で不自然な切断になるため使用禁止**
 
 ### CSS アニメーション初期状態の動作保証（必須）
 

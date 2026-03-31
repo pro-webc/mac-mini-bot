@@ -89,7 +89,18 @@ globals.cssやCSSファイルを作成・編集する際は、以下のルール
 @import "tailwindcss";
 :root { /* CSS変数 */ }
 @theme { /* Tailwind設定 */ }
-/* その他のCSS */
+
+/* 日本語テキスト折り返し最適化 ※必須 — 削除・変更禁止 */
+h1, h2, h3, h4, h5, h6 {
+  text-wrap: balance;
+  word-break: auto-phrase;
+}
+p, li {
+  text-wrap: pretty;
+  word-break: auto-phrase;
+}
+
+/* その他のCSS（元コード <style> の移植等） */
 ```
 実装完了後、指示書の「追加の絶対制約」に違反していないか必ず自己レビューを行い、修正してから次の手順に進んでください。
 

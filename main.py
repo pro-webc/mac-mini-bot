@@ -267,7 +267,7 @@ class WebsiteBot:
     def __init__(self) -> None:
         """SpreadsheetClient を常に初期化する。"""
         self.spreadsheet = SpreadsheetClient()
-        self.spec_generator = SpecGenerator()
+        self.spec_generator = SpecGenerator(sheets_service=self.spreadsheet.service)
         self.site_implementer = SiteImplementer()
         self.site_generator = SiteGenerator()
         self._github_client: GitHubClient | None = None
