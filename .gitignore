@@ -1,4 +1,6 @@
 .env
+# このPC限定の Cursor ルール（共有しない）
+.cursor/rules/local-only-*.mdc
 __pycache__/
 *.pyc
 *.pyo

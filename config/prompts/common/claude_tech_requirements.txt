@@ -5,3 +5,4 @@
   h1,h2,h3,h4,h5,h6 { text-wrap: balance; word-break: auto-phrase; }
   p, li { text-wrap: pretty; word-break: auto-phrase; }
 ・word-break: break-all は日本語で不自然な切断になるため使用禁止
+・所在地を Google Maps（iframe 埋め込み）で示す場合、詳細な住所が原稿・仕様で特定できるときは赤ピン（マーカー）が付くよう、Google マップの「共有」→「地図を埋め込む」で得られる正式な iframe 用 URL を用いること。マップ表示エリアに画像・プレースホルダは置かない
