@@ -149,7 +149,7 @@ output/<record>/
 
 **現段階で焦らないこと**: 宣言的ワークフロー定義やプラグインアーキテクチャは、AI 層の要件が具体化してから導入する（YAGNI）。現在はトレース基盤とルールの蓄積が優先。
 
-> **次のステップ**: 自律化に向けた具体的な計画は [EVOLUTION_ROADMAP.md](./EVOLUTION_ROADMAP.md) を参照。Phase A（自動スコアリング）から段階的に進める。
+> **次のステップ**: 自律化に向けた具体的な計画は [EVOLUTION_ROADMAP.md](../roadmap/EVOLUTION_ROADMAP.md) を参照。Phase A（自動スコアリング）から段階的に進める。
 
 ---
 
@@ -159,7 +159,7 @@ output/<record>/
 |------|------|
 | [AI_AGENT_GUIDE.md](./AI_AGENT_GUIDE.md) | コード変更時のエージェント向けガイド |
 | [RESUME_AND_TROUBLESHOOTING.md](./RESUME_AND_TROUBLESHOOTING.md) | 障害対応の実務手順 |
-| [LLM_PIPELINE.md](./LLM_PIPELINE.md) | Claude / Manus の多段チェーン設計 |
-| [OUTPUT_LAYOUT.md](./OUTPUT_LAYOUT.md) | トレースの 3 層構造と読み方 |
+| [LLM_PIPELINE.md](../pipeline/LLM_PIPELINE.md) | Claude / Manus の多段チェーン設計 |
+| [OUTPUT_LAYOUT.md](../pipeline/OUTPUT_LAYOUT.md) | トレースの 3 層構造と読み方 |
 | [DIRECTORY_GUIDE.md](./DIRECTORY_GUIDE.md) | リポジトリの構成と読み方 |
-| [EVOLUTION_ROADMAP.md](./EVOLUTION_ROADMAP.md) | 自律化に向けたロードマップと詳細設計 |
+| [EVOLUTION_ROADMAP.md](../roadmap/EVOLUTION_ROADMAP.md) | 自律化に向けたロードマップと詳細設計 |

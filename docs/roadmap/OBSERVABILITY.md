@@ -224,5 +224,5 @@ modules/
 |------|------|
 | [EVOLUTION_ROADMAP.md](./EVOLUTION_ROADMAP.md) | 全体ロードマップ |
 | [AUTO_SCORING.md](./AUTO_SCORING.md) | 評価基盤（品質メトリクスの源泉） |
-| [OUTPUT_LAYOUT.md](./OUTPUT_LAYOUT.md) | 既存の出力構造 |
-| [RESUME_AND_TROUBLESHOOTING.md](./RESUME_AND_TROUBLESHOOTING.md) | 障害対応（アラートからの導線） |
+| [OUTPUT_LAYOUT.md](../pipeline/OUTPUT_LAYOUT.md) | 既存の出力構造 |
+| [RESUME_AND_TROUBLESHOOTING.md](../system-rules/RESUME_AND_TROUBLESHOOTING.md) | 障害対応（アラートからの導線） |

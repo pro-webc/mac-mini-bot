@@ -59,4 +59,4 @@
 - **期待**: 手作業と同じプロンプト構造になること（中身の diff は `orchestration` / `refactoring` の改訂で管理）。
 - **検証**: Manus 返答のフェンス群・任意の `BOT_DEPLOY_GITHUB_URL` 行（有効時）。
 
-詳細はリポジトリ直下の **`PIPELINE_TESTING.md`**（工程テスト）および **`docs/LLM_PIPELINE.md`**（Manus 節）を参照。
+詳細は **`docs/pipeline/PIPELINE_TESTING.md`**（工程テスト）および **`docs/pipeline/LLM_PIPELINE.md`**（Manus 節）を参照。

@@ -115,16 +115,17 @@ CI（`.github/workflows/ci.yml`）は **限定パス**で `ruff` と `pytest` �
 
 | 文書 | 内容 |
 |------|------|
-| **`docs/AI_AGENT_GUIDE.md`** | **AI エージェント向けガイド** — システム理解の単一エントリポイント |
-| **`PIPELINE_TESTING.md`** | **工程テスト・段階 TEXT_LLM テスト**のまとめ（ディレクトリ説明・コマンド早見・検証知見） |
-| **`docs/DIRECTORY_GUIDE.md`** | **リポジトリの地図**（工程とフォルダの対応） |
-| **`docs/OUTPUT_LAYOUT.md`** | **多段 LLM の入出力トレース**（ステップ番号の対応・品質問題の特定手順・トレース API） |
-| `docs/LLM_PIPELINE.md` | どの工程がどの LLM / API か |
-| `docs/README.md` | `docs/` 内の短い索引 |
+| **`docs/README.md`** | **`docs/` の索引** — system-rules / site-rules / pipeline / roadmap / knowledge |
+| **`docs/system-rules/AI_AGENT_GUIDE.md`** | **AI エージェント向けガイド** — システム理解の単一エントリポイント |
+| **`docs/pipeline/PIPELINE_TESTING.md`** | **工程テスト・段階 TEXT_LLM テスト**（ディレクトリ説明・コマンド早見・検証知見） |
+| **`docs/system-rules/DIRECTORY_GUIDE.md`** | **リポジトリの地図**（工程とフォルダの対応） |
+| **`docs/pipeline/OUTPUT_LAYOUT.md`** | **多段 LLM の入出力トレース**（ステップ番号・品質問題の追い方・トレース API） |
+| `docs/pipeline/LLM_PIPELINE.md` | どの工程がどの LLM / API か |
 | `modules/README.md` | `modules/` のパイプライン順インデックス |
 | `SETUP.md` | 認証・スプレッドシート列・定期実行など |
 | `DEPLOYMENT.md` | 別 PC への複製チェックリスト |
-| `docs/TECH_REQUIREMENTS.md` | 生成サイトの技術・デザイン制約 |
+| `docs/site-rules/TECH_REQUIREMENTS.md` | 生成サイトの技術・デザイン制約 |
+| `config/prompts/README.md` | 工程内で渡すプロンプト（`common/`・`*_manual/`・`manus/`） |
 | `.env.example` | 環境変数テンプレート |
 
 ## 処理フロー（概要）
@@ -142,7 +143,7 @@ CI（`.github/workflows/ci.yml`）は **限定パス**で `ruff` と `pytest` �
 
 ## リポジトリ構成（抜粋）
 
-詳細は **`docs/DIRECTORY_GUIDE.md`**。
+詳細は **`docs/system-rules/DIRECTORY_GUIDE.md`**。
 
 ```
 mac-mini-bot/
@@ -160,7 +161,7 @@ mac-mini-bot/
 │   ├── phase2_llm_checkpoints/  Manus 待機中の TEXT_LLM 正本退避
 │   ├── phase2_complete/      #    フェーズ2完了時のスナップショット
 │   └── sites/                #    デプロイ対象のサイトファイル
-├── docs/                     # LLM 割当・ディレクトリ案内など
+├── docs/                     # 索引・system-rules / site-rules / pipeline / roadmap / knowledge
 ├── scripts/                  # 工程テスト・スナップショット用
 └── tests/                    # pytest（42 ファイル）
 ```

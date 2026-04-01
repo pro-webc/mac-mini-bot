@@ -4,7 +4,7 @@
 
 **`output/` はこのシステムの自己改善サイクルの根幹**です。全案件の全 LLM 呼び出しが記録されており、プロンプト改善の根拠データとして機能します。
 
-**工程テスト**（preflight〜`claude_step_tests` 等のフォルダ説明・コマンド・検証知見）は **[`PIPELINE_TESTING.md`](../PIPELINE_TESTING.md)**（リポジトリ直下）。
+**工程テスト**（preflight〜`claude_step_tests` 等のフォルダ説明・コマンド・検証知見）は **[`PIPELINE_TESTING.md`](./PIPELINE_TESTING.md)**。
 
 ---
 

@@ -171,7 +171,7 @@ output/<record>/
 
 ### 4. YAGNI を守る
 
-[AI_WORKFLOW_ARCHITECTURE.md](./AI_WORKFLOW_ARCHITECTURE.md) の方針を継承。宣言的ワークフロー定義やプラグインアーキテクチャは、各フェーズの要件が具体化してから導入する。
+[AI_WORKFLOW_ARCHITECTURE.md](../system-rules/AI_WORKFLOW_ARCHITECTURE.md) の方針を継承。宣言的ワークフロー定義やプラグインアーキテクチャは、各フェーズの要件が具体化してから導入する。
 
 ---
 
@@ -182,6 +182,6 @@ output/<record>/
 | [AUTO_SCORING.md](./AUTO_SCORING.md) | Phase A 詳細設計 |
 | [FEEDBACK_LOOP.md](./FEEDBACK_LOOP.md) | Phase B 詳細設計 |
 | [OBSERVABILITY.md](./OBSERVABILITY.md) | Phase D 詳細設計 |
-| [AI_WORKFLOW_ARCHITECTURE.md](./AI_WORKFLOW_ARCHITECTURE.md) | 現在のアーキテクチャ定義 |
-| [OUTPUT_LAYOUT.md](./OUTPUT_LAYOUT.md) | トレース構造（評価の入力データ） |
-| [LLM_PIPELINE.md](./LLM_PIPELINE.md) | 多段チェーン設計（改善対象の理解） |
+| [AI_WORKFLOW_ARCHITECTURE.md](../system-rules/AI_WORKFLOW_ARCHITECTURE.md) | 現在のアーキテクチャ定義 |
+| [OUTPUT_LAYOUT.md](../pipeline/OUTPUT_LAYOUT.md) | トレース構造（評価の入力データ） |
+| [LLM_PIPELINE.md](../pipeline/LLM_PIPELINE.md) | 多段チェーン設計（改善対象の理解） |

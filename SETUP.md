@@ -5,7 +5,7 @@
 - Python 3.10 以上推奨。**venv の利用を推奨**（`README.md` の最短手順参照）
 - Node.js 18 以上と **npm**（生成サイトの `npm run build`）
 - Google Cloud Platform（Sheets API）・GitHub・Vercel（本番パイプライン実行時）
-- **TEXT_LLM**: Claude Code CLI（マニュアル多段・サブスクリプション認証）およびプランに応じた Manus API（`docs/LLM_PIPELINE.md`）
+- **TEXT_LLM**: Claude Code CLI（マニュアル多段・サブスクリプション認証）およびプランに応じた Manus API（`docs/pipeline/LLM_PIPELINE.md`）
 - **Claude Code CLI**: `npm install -g @anthropic-ai/claude-code` + `claude auth login` で事前認証
 
 ## セットアップ手順
@@ -191,7 +191,7 @@ python main.py
 |------|------|
 | `SITE_IMPLEMENTATION_ENABLED` | `true`（既定）で仕様書に基づきサイトディレクトリを用意し `npm build` を検証 |
 | `SITE_BUILD_ENABLED` | `true`（既定）で `npm install` + `npm run build` をローカル検証 |
-| テキスト LLM・モデル名 | `CLAUDE_*` / `MANUS_*` 等は `config/config.py` と `docs/LLM_PIPELINE.md` を参照 |
+| テキスト LLM・モデル名 | `CLAUDE_*` / `MANUS_*` 等は `config/config.py` と `docs/pipeline/LLM_PIPELINE.md` を参照 |
 
 ## 定期実行の設定（macOS）
 

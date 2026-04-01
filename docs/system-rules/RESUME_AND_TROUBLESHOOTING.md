@@ -167,4 +167,4 @@ cat output/<record>/llm_steps/<NNN>_*/output.md | head -50
 | `pipeline_test_deploy_only.py` | GitHub URL を入力に Vercel デプロイのみ実行 |
 | `pipeline_test_snapshots.py` | プリフライト → Phase 1 → 作業分岐のスナップショット一括取得 |
 
-詳細は [PIPELINE_TESTING.md](../PIPELINE_TESTING.md) を参照。
+詳細は [PIPELINE_TESTING.md](../pipeline/PIPELINE_TESTING.md) を参照。

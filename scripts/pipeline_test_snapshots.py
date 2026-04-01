@@ -111,7 +111,7 @@ def main() -> None:
                 "",
                 "00_pipeline_test_manifest.json に各タイムスタンプ付きディレクトリのパスを記録。",
                 "",
-                "フォルダ・ファイルの読み方: PIPELINE_TESTING.md",
+                "フォルダ・ファイルの読み方: docs/pipeline/PIPELINE_TESTING.md",
                 "",
             ]
         ),

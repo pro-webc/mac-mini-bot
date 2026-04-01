@@ -8,7 +8,7 @@
 
 ## AI エージェント向け
 
-コード変更の前に **[`docs/AI_AGENT_GUIDE.md`](./AI_AGENT_GUIDE.md)** を読むと、パイプライン構成・変更パターン・注意事項が一箇所で分かります。
+コード変更の前に **[`docs/system-rules/AI_AGENT_GUIDE.md`](./AI_AGENT_GUIDE.md)** を読むと、パイプライン構成・変更パターン・注意事項が一箇所で分かります。
 
 ## 開発ルール（設計原則・AI 向け）
 
@@ -35,7 +35,7 @@ TEXT_LLM だけをフェーズ1成果物から再実行する場合は **`script
 
 工程テストと同じ run 配下に段階的な TEXT_LLM（Claude Code CLI）試験を残す場合は、**`scripts/standard_cp_step1_from_phase1.py`** から **`standard_cp_step15_from_phase1.py`**（15/15・タブ⑥・手順7-5）まで（`step7` は本番の手順7-1とは別）。出力は **`claude_step_tests/<UTC>/`**。
 
-詳細な LLM 割当は **`docs/LLM_PIPELINE.md`**。
+詳細な LLM 割当は **`docs/pipeline/LLM_PIPELINE.md`**。
 
 ## ルート直下（3 つの軸で分類）
 
@@ -62,8 +62,12 @@ mac-mini-bot/
 │   └── sites/                #   デプロイ対象サイト
 │
 │ ── その他 ────────────────────────────────────
-├── docs/                     # 本ファイル・LLM_PIPELINE 等
-│   └── knowledge/            # 運用ナレッジ（問題分析・修正効果の記録）
+├── docs/                     # 索引 README.md・system-rules / site-rules / pipeline / roadmap / knowledge
+│   ├── system-rules/         #   統合CLI向け（エージェントガイド・地図・障害対応）
+│   ├── site-rules/           #   生成サイトの品質基準
+│   ├── pipeline/             #   パイプライン設計・入出力トレース・工程テスト
+│   ├── roadmap/              #   自律化ロードマップ
+│   └── knowledge/            #   運用ナレッジ（問題分析・修正効果の記録）
 ├── scripts/                  # 工程テスト・スナップショット用
 ├── tests/                    # pytest（42 ファイル）
 ├── .env / .env.example       # 環境変数（実キーは git 対象外）
@@ -97,4 +101,4 @@ mac-mini-bot/
 
 **品質改善の手順**: 特定案件の `llm_steps/` を開き、問題のあるステップの `input.md`（プロンプト）と `output.md`（応答）を比較して、`config/prompts/` のどのファイルを改善すべきかを判断する。
 
-詳細は **`docs/OUTPUT_LAYOUT.md`**（記録の 3 層構造）。工程テストは **`PIPELINE_TESTING.md`**（リポジトリ直下）。
+詳細は **`docs/pipeline/OUTPUT_LAYOUT.md`**（記録の 3 層構造）。工程テストは **`docs/pipeline/PIPELINE_TESTING.md`**。

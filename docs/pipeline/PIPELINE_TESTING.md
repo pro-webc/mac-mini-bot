@@ -97,7 +97,7 @@ output/pipeline_test_runs/<run_UTC>/
 | `meta.json` | 文字数・`step`・`claude_call_index_1based`（1〜15。意味は TEXT_LLM ステップ番号） |
 | `README.txt` | 説明 |
 
-本番の **BASIC-CP / STANDARD-CP / ADVANCE-CP / BASIC LP** でも、タブ②はいずれも **手順1-2と1-3を連結した1送信**です（TEXT_LLM 呼び出し総数はプランごとに異なる）。詳細は **`docs/LLM_PIPELINE.md`**。
+本番の **BASIC-CP / STANDARD-CP / ADVANCE-CP / BASIC LP** でも、タブ②はいずれも **手順1-2と1-3を連結した1送信**です（TEXT_LLM 呼び出し総数はプランごとに異なる）。詳細は **`docs/pipeline/LLM_PIPELINE.md`**。
 
 ---
 
@@ -138,7 +138,7 @@ output/pipeline_test_runs/<run_UTC>/
 | フェーズ2 TEXT_LLM | `phase2_snapshots`（単体）／本番は続けて `output/sites/...` |
 | STANDARD-CP の TEXT_LLM 多段（合計 **15 ステップ**（Claude Code CLI）・段階テストは step1〜**step15**） | `claude_step_tests`（**最終応答**は多くの場合 **`02_response_step_7_4.txt`**） |
 
-本番の TEXT_LLM 呼び出し回数・モジュール対応は **`docs/LLM_PIPELINE.md`** の表を正とします。
+本番の TEXT_LLM 呼び出し回数・モジュール対応は **`docs/pipeline/LLM_PIPELINE.md`** の表を正とします。
 
 ---
 
@@ -182,8 +182,8 @@ output/pipeline_test_runs/<run_UTC>/
 
 | パス | 内容 |
 |------|------|
-| **`docs/OUTPUT_LAYOUT.md`** | `output/` 全般・`output/sites/...` |
-| **`docs/DIRECTORY_GUIDE.md`** | リポジトリ全体の地図 |
-| **`docs/LLM_PIPELINE.md`** | TEXT_LLM（Claude CLI）/ Manus の割当・タブ②連結の注記 |
+| **`docs/pipeline/OUTPUT_LAYOUT.md`** | `output/` 全般・`output/sites/...` |
+| **`docs/system-rules/DIRECTORY_GUIDE.md`** | リポジトリ全体の地図 |
+| **`docs/pipeline/LLM_PIPELINE.md`** | TEXT_LLM（Claude CLI）/ Manus の割当・タブ②連結の注記 |
 
 単体テスト（pytest）と CI 用 ruff は **`README.md`** の「品質・Lint」を参照してください。

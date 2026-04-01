@@ -74,7 +74,7 @@ mac-mini-bot/
 │       └── llm_pipeline_common.py  # 共通ユーティリティ・出力検証
 ├── scripts/                    # 工程テスト・スナップショット駆動
 ├── tests/                      # pytest（42 ファイル）
-├── docs/                       # 本ファイルを含む設計ドキュメント
+├── docs/                       # 索引 README・system-rules / site-rules / pipeline / roadmap / knowledge
 └── output/                     # 実行時の LLM 記録（git 対象外）
 ```
 
@@ -96,7 +96,7 @@ mac-mini-bot/
 - 失敗時は `RuntimeError` 等で明示的に例外。メッセージにモジュール名を含める
 - `_subst` のプレースホルダ未置換検出は品質ガードレールの一部
 - **ログを読まずに原因を推測しない**。設定変更の前にログ上の因果を確認する。詳細は `.cursor/rules/log-reading-discipline.mdc`
-- 障害対応の手順は `docs/RESUME_AND_TROUBLESHOOTING.md` を参照
+- 障害対応の手順は `docs/system-rules/RESUME_AND_TROUBLESHOOTING.md` を参照
 
 ### 4. YAGNI / SOLID
 
@@ -137,25 +137,25 @@ URL 判定・長文閾値の定数は `modules/hearing_url_utils.py` に集約�
 | 環境変数の読み込み | `config/config.py` |
 | 契約プラン定義 | `config/contract_plans.py` |
 | プラン分岐の全体像 | `modules/contract_workflow.py`（`BRANCH_REGISTRY`） |
-| LLM 割当の詳細 | `docs/LLM_PIPELINE.md` |
-| 出力レイアウト | `docs/OUTPUT_LAYOUT.md` |
-| 工程テストの方法 | `PIPELINE_TESTING.md` |
-| 技術要件（ガードレール） | `config/prompts/common/technical_spec_prompt_block.txt` + `docs/TECH_REQUIREMENTS.md` |
+| LLM 割当の詳細 | `docs/pipeline/LLM_PIPELINE.md` |
+| 出力レイアウト | `docs/pipeline/OUTPUT_LAYOUT.md` |
+| 工程テストの方法 | `docs/pipeline/PIPELINE_TESTING.md` |
+| 技術要件（ガードレール） | `config/prompts/common/technical_spec_prompt_block.txt` + `docs/site-rules/TECH_REQUIREMENTS.md` |
 
 ## ドキュメント索引
 
 | 文書 | 内容 |
 |------|------|
 | **`README.md`** | プロジェクト概要・クイックスタート |
-| **`docs/AI_AGENT_GUIDE.md`**（本書） | AI エージェント向けシステム理解の単一エントリポイント |
-| **`docs/AI_WORKFLOW_ARCHITECTURE.md`** | AI ワークフローとしてのシステム全体像・3 層の役割分担 |
-| **`docs/RESUME_AND_TROUBLESHOOTING.md`** | 再開スクリプトの選択フロー・フェーズ別の障害対応表 |
-| **`docs/DIRECTORY_GUIDE.md`** | リポジトリの 3 軸構成（制御・記録・改善） |
-| **`docs/LLM_PIPELINE.md`** | 多段チェーンの設計思想・LLM 割当詳細 |
-| **`docs/OUTPUT_LAYOUT.md`** | 多段 LLM の入出力トレース・品質問題の特定手順・トレース API |
-| **`docs/TECH_REQUIREMENTS.md`** | 生成サイトの品質ガードレール |
+| **`docs/system-rules/AI_AGENT_GUIDE.md`**（本書） | AI エージェント向けシステム理解の単一エントリポイント |
+| **`docs/system-rules/AI_WORKFLOW_ARCHITECTURE.md`** | AI ワークフローとしてのシステム全体像・3 層の役割分担 |
+| **`docs/system-rules/RESUME_AND_TROUBLESHOOTING.md`** | 再開スクリプトの選択フロー・フェーズ別の障害対応表 |
+| **`docs/system-rules/DIRECTORY_GUIDE.md`** | リポジトリの 3 軸構成（制御・記録・改善） |
+| **`docs/pipeline/LLM_PIPELINE.md`** | 多段チェーンの設計思想・LLM 割当詳細 |
+| **`docs/pipeline/OUTPUT_LAYOUT.md`** | 多段 LLM の入出力トレース・品質問題の特定手順・トレース API |
+| **`docs/site-rules/TECH_REQUIREMENTS.md`** | 生成サイトの品質ガードレール |
 | **`modules/README.md`** | modules/ のパイプライン順インデックス |
 | **`config/prompts/README.md`** | プロンプト改善のフィードバックループ |
-| **`PIPELINE_TESTING.md`** | 工程テスト・段階テストの手順 |
+| **`docs/pipeline/PIPELINE_TESTING.md`** | 工程テスト・段階テストの手順 |
 | **`SETUP.md`** | 認証・スプレッドシート設定 |
 | **`DEPLOYMENT.md`** | 別マシンへの複製手順 |

@@ -11,7 +11,7 @@
   5. ビルド検証（失敗時も成果物の自動修正は行わない）
   6. GitHub push → Vercel デプロイ → site-annotator 登録 → スプレッドシートに公開 URL
 
-各段の LLM 割当は ``docs/LLM_PIPELINE.md`` を参照。
+各段の LLM 割当は ``docs/pipeline/LLM_PIPELINE.md`` を参照。
 """
 from __future__ import annotations
 

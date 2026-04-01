@@ -231,6 +231,6 @@ modules/
 |------|------|
 | [EVOLUTION_ROADMAP.md](./EVOLUTION_ROADMAP.md) | 全体ロードマップ |
 | [AUTO_SCORING.md](./AUTO_SCORING.md) | 評価基盤（Phase A、本設計の前提） |
-| [OUTPUT_LAYOUT.md](./OUTPUT_LAYOUT.md) | llm_steps/ 構造（リプレイの入力） |
-| [LLM_PIPELINE.md](./LLM_PIPELINE.md) | 多段チェーン設計（改善対象の理解） |
-| [../PIPELINE_TESTING.md](../PIPELINE_TESTING.md) | 既存の A/B 検証手順 |
+| [OUTPUT_LAYOUT.md](../pipeline/OUTPUT_LAYOUT.md) | llm_steps/ 構造（リプレイの入力） |
+| [LLM_PIPELINE.md](../pipeline/LLM_PIPELINE.md) | 多段チェーン設計（改善対象の理解） |
+| [PIPELINE_TESTING.md](../pipeline/PIPELINE_TESTING.md) | 既存の A/B 検証手順 |

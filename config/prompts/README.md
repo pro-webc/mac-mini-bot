@@ -43,6 +43,11 @@ git diff で差分管理                         ← プロンプトの変更履
 
 契約プラン別の `*_manual/*.txt` は **各 `*_claude_manual.py`（実行エンジンは Claude Code CLI）が直接読みます**（`common/` のテキストとは自動結合されません）。
 
+## 関連ドキュメント（ルールと索引）
+
+- **`docs/README.md`** — `docs/` 全体の索引（`system-rules` / `site-rules` / `pipeline` / `roadmap` / `knowledge`）
+- **`docs/site-rules/TECH_REQUIREMENTS.md`** — 生成サイトの品質基準（人間向け要約。LLM 注入の正本は上記 `common/technical_spec_prompt_block.txt`）
+
 ## プレースホルダ規約
 
 | 種類 | 記法 | 用途 |

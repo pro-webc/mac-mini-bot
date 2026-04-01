@@ -70,7 +70,7 @@
 
 | 文書 | 内容 |
 |------|------|
-| **`docs/LLM_PIPELINE.md`** | 多段チェーンの設計思想・各工程の LLM 割当 |
-| **`docs/OUTPUT_LAYOUT.md`** | 記録の 3 層構造（ステップトレース・チェックポイント・構造化メタ） |
-| **`docs/DIRECTORY_GUIDE.md`** | リポジトリ全体の地図 |
-| **`PIPELINE_TESTING.md`** | 工程テストの実行方法と検証知見 |
+| **`docs/pipeline/LLM_PIPELINE.md`** | 多段チェーンの設計思想・各工程の LLM 割当 |
+| **`docs/pipeline/OUTPUT_LAYOUT.md`** | 記録の 3 層構造（ステップトレース・チェックポイント・構造化メタ） |
+| **`docs/system-rules/DIRECTORY_GUIDE.md`** | リポジトリ全体の地図 |
+| **`docs/pipeline/PIPELINE_TESTING.md`** | 工程テストの実行方法と検証知見 |

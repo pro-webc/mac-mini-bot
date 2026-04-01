@@ -243,5 +243,5 @@ EVALUATION_SCORE_THRESHOLD=60                  # この値未満で警告
 |------|------|
 | [EVOLUTION_ROADMAP.md](./EVOLUTION_ROADMAP.md) | 全体ロードマップ |
 | [FEEDBACK_LOOP.md](./FEEDBACK_LOOP.md) | スコアを使った改善ループ（Phase B） |
-| [OUTPUT_LAYOUT.md](./OUTPUT_LAYOUT.md) | 既存トレース構造（評価の入力） |
-| [TECH_REQUIREMENTS.md](./TECH_REQUIREMENTS.md) | 品質ガードレール（評価基準の根拠） |
+| [OUTPUT_LAYOUT.md](../pipeline/OUTPUT_LAYOUT.md) | 既存トレース構造（評価の入力） |
+| [TECH_REQUIREMENTS.md](../site-rules/TECH_REQUIREMENTS.md) | 品質ガードレール（評価基準の根拠） |
