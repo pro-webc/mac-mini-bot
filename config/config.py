@@ -411,7 +411,7 @@ COMMON_TECHNICAL_SPEC = {
     "maps": {
         "location": "所在地表示時は Google Maps を埋め込み（iframe/embed）。マップ表示エリアに画像・プレースホルダーは置かない",
         "service_area": "「対応エリア」用の画像・イラストは生成・配置とも禁止",
-        "pin": "会社所在地が明確な場合は地図にピン表示",
+        "pin": "詳細住所が原稿・仕様で特定できる場合は埋め込み地図に赤ピン表示（公式の埋め込み URL）",
     },
     "styling_policy": {
         "tailwind_refactor": "Next.js + Tailwind へのリファクタ前提で実装",
