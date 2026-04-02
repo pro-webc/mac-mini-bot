@@ -10,8 +10,10 @@ from config.config import (
     GOOGLE_CLOUD_PROJECT,
     GOOGLE_SHEETS_AUTH_MODE,
     GOOGLE_SHEETS_BASIC_SITE_TYPE_SHEET_NAME,
+    GOOGLE_SHEETS_BASIC_SITE_TYPE_SHEET_NAME_2,
     GOOGLE_SHEETS_BASIC_SITE_TYPE_SKIP_HEADER,
     GOOGLE_SHEETS_BASIC_SITE_TYPE_SPREADSHEET_ID,
+    GOOGLE_SHEETS_BASIC_SITE_TYPE_SPREADSHEET_ID_2,
     GOOGLE_SHEETS_CREDENTIALS_PATH,
     GOOGLE_SHEETS_SHEET_NAME,
     GOOGLE_SHEETS_SPREADSHEET_ID,
@@ -425,20 +427,8 @@ class SpreadsheetClient:
     # BASIC サイトタイプ照合
     # ------------------------------------------------------------------
 
-    def lookup_basic_is_landing_page(self, record_number: str, partner_name: str) -> bool | None:
-        """
-        BASIC 契約時に別シート（B列=パートナー名・G列=サイトタイプ）を参照する。
-
-        - G列が ``lp``（大小・空白のゆれ可）→ ``True``（BASIC_LP）
-        - G列が ``cp_basic`` → ``False``（BASIC・コーポレート1ページ）
-        - 行なし・G空欄・未対応の値・API失敗 → ``None``（分岐を上書きしない＝契約列の BASIC のまま）
-
-        ``GOOGLE_SHEETS_BASIC_SITE_TYPE_SPREADSHEET_ID`` が空のときは ``None``。
-        """
-        sid = GOOGLE_SHEETS_BASIC_SITE_TYPE_SPREADSHEET_ID
-        if not sid:
-            return None
-        sheet = GOOGLE_SHEETS_BASIC_SITE_TYPE_SHEET_NAME
+    def _fetch_site_type_rows(self, sid: str, sheet: str) -> list[list] | None:
+        """サイトタイプシートの A:G を取得する。失敗時は None。"""
         range_name = a1_range(sheet, "A:G")
         try:
             result = (
@@ -465,24 +455,72 @@ class SpreadsheetClient:
                         _adc_quota_project_help("lookup_basic_is_landing_page")
                     ) from e
             return None
+        return result.get("values") or []
 
-        values = result.get("values") or []
-        is_lp, mismatch = resolve_basic_lp_from_site_type_rows(
-            values,
-            record_number,
-            partner_name,
-            skip_header=GOOGLE_SHEETS_BASIC_SITE_TYPE_SKIP_HEADER,
-        )
-        if mismatch:
-            logger.warning("BASIC サイトタイプ照合: %s", mismatch)
+    def lookup_basic_is_landing_page(self, record_number: str, partner_name: str) -> bool | None:
+        """
+        BASIC 契約時に別シート（B列=パートナー名・G列=サイトタイプ）を参照する。
+
+        2つのサイトタイプシートを順に参照し、最初に確定した結果（True/False）を返す。
+
+        - G列が ``lp``（大小・空白のゆれ可）→ ``True``（BASIC_LP）
+        - G列が ``cp_basic`` → ``False``（BASIC・コーポレート1ページ）
+        - 両シートとも行なし・G空欄・未対応の値・API失敗 → ``None``（分岐を上書きしない）
+        """
+        sheets_to_check: list[tuple[str, str, str]] = []
+        if GOOGLE_SHEETS_BASIC_SITE_TYPE_SPREADSHEET_ID:
+            sheets_to_check.append((
+                GOOGLE_SHEETS_BASIC_SITE_TYPE_SPREADSHEET_ID,
+                GOOGLE_SHEETS_BASIC_SITE_TYPE_SHEET_NAME,
+                "1",
+            ))
+        if (
+            GOOGLE_SHEETS_BASIC_SITE_TYPE_SPREADSHEET_ID_2
+            and GOOGLE_SHEETS_BASIC_SITE_TYPE_SPREADSHEET_ID_2
+            != GOOGLE_SHEETS_BASIC_SITE_TYPE_SPREADSHEET_ID
+        ):
+            sheets_to_check.append((
+                GOOGLE_SHEETS_BASIC_SITE_TYPE_SPREADSHEET_ID_2,
+                GOOGLE_SHEETS_BASIC_SITE_TYPE_SHEET_NAME_2,
+                "2",
+            ))
+
+        if not sheets_to_check:
+            return None
+
+        for sid, sheet, label in sheets_to_check:
+            values = self._fetch_site_type_rows(sid, sheet)
+            if values is None:
+                continue
+            is_lp, mismatch = resolve_basic_lp_from_site_type_rows(
+                values,
+                record_number,
+                partner_name,
+                skip_header=GOOGLE_SHEETS_BASIC_SITE_TYPE_SKIP_HEADER,
+            )
+            if mismatch:
+                logger.warning(
+                    "BASIC サイトタイプ照合（シート%s）: %s", label, mismatch,
+                )
+            if is_lp is not None:
+                logger.info(
+                    "BASIC サイトタイプ照合（シート%s）: record=%r partner=%r → "
+                    "is_landing_page=%s（True=lp / False=cp_basic）",
+                    label, record_number, partner_name, is_lp,
+                )
+                return is_lp
+            logger.info(
+                "BASIC サイトタイプ照合（シート%s）: record=%r partner=%r → "
+                "判定不可（None）、次のシートを参照します",
+                label, record_number, partner_name,
+            )
+
         logger.info(
             "BASIC サイトタイプ照合: record=%r partner=%r → "
-            "is_landing_page=%s（True=lp / False=cp_basic / None=参照不可・未設定）",
-            record_number,
-            partner_name,
-            is_lp,
+            "is_landing_page=None（全シートで参照不可・未設定）",
+            record_number, partner_name,
         )
-        return is_lp
+        return None
 
     # ------------------------------------------------------------------
     # 案件取得

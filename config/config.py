@@ -62,6 +62,24 @@ GOOGLE_SHEETS_BASIC_SITE_TYPE_SHEET_NAME = os.getenv(
 GOOGLE_SHEETS_BASIC_SITE_TYPE_SKIP_HEADER = os.getenv(
     "GOOGLE_SHEETS_BASIC_SITE_TYPE_SKIP_HEADER", "true"
 ).strip().lower() in ("1", "true", "yes")
+# 2つ目のサイトタイプシート（1つ目で判定できなかった場合にフォールバック参照）
+_GOOGLE_SHEETS_BASIC_SITE_TYPE_SPREADSHEET_ID_2_RAW = os.getenv(
+    "GOOGLE_SHEETS_BASIC_SITE_TYPE_SPREADSHEET_ID_2"
+)
+if _GOOGLE_SHEETS_BASIC_SITE_TYPE_SPREADSHEET_ID_2_RAW is None:
+    # .env 未設定時: 1つ目とデフォルトが異なれば、デフォルトを2つ目として使う
+    GOOGLE_SHEETS_BASIC_SITE_TYPE_SPREADSHEET_ID_2 = (
+        _BASIC_SITE_TYPE_DEFAULT_ID
+        if GOOGLE_SHEETS_BASIC_SITE_TYPE_SPREADSHEET_ID != _BASIC_SITE_TYPE_DEFAULT_ID
+        else ""
+    )
+else:
+    GOOGLE_SHEETS_BASIC_SITE_TYPE_SPREADSHEET_ID_2 = str(
+        _GOOGLE_SHEETS_BASIC_SITE_TYPE_SPREADSHEET_ID_2_RAW
+    ).strip()
+GOOGLE_SHEETS_BASIC_SITE_TYPE_SHEET_NAME_2 = os.getenv(
+    "GOOGLE_SHEETS_BASIC_SITE_TYPE_SHEET_NAME_2", "シート1"
+).strip() or "シート1"
 # ADC 利用時のクォータプロジェクト（任意・未設定だと UserWarning が出る場合あり）
 GOOGLE_CLOUD_PROJECT = os.getenv("GOOGLE_CLOUD_PROJECT", "").strip()
 # Bot が処理する行の条件（1）AI統合ステータス列は「フェーズ」用。次の値と完全一致する行のみ。
