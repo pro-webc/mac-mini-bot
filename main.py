@@ -34,6 +34,7 @@ from config.config import (
     GA4_INJECT_TRACKING,
     GA4_MEASUREMENT_ID,
     OUTPUT_DIR,
+    REFLECT_CHECK_ENABLED,
     SITE_PROVISION_API_KEY,
     SITE_PROVISION_API_URL,
     SPREADSHEET_AI_STATUS_ERROR_MAX_LEN,
@@ -213,6 +214,7 @@ class WebsiteBot:
 
                 req, spec = self._phase2_text_llm(case, bundle, work_branch, plan_info)
                 site_dir = self._phase3_prepare_site(case, req, spec, work_branch)
+                self._phase_reflect_check(case, bundle, spec, site_dir)
                 return self._phase5_deploy(case, spec, site_dir)
             finally:
                 end_case_llm_trace()
@@ -387,6 +389,55 @@ class WebsiteBot:
                 inject_ga4_tracking(site_dir, measurement_id=GA4_MEASUREMENT_ID)
 
         return site_dir
+
+    # ------------------------------------------------------------------
+    # 反映率チェック＋欠落補充
+    # ------------------------------------------------------------------
+
+    def _phase_reflect_check(
+        self,
+        case: CaseRecord,
+        bundle: "ExtractedHearingBundle",
+        spec: dict[str, Any],
+        site_dir: Path,
+    ) -> None:
+        """ヒアリング情報の反映率をチェックし、欠落があれば補充する。"""
+        if not REFLECT_CHECK_ENABLED:
+            return
+
+        manus_git = (spec.get("manus_deploy_github_url") or "").strip()
+        if not manus_git:
+            logger.info("反映率チェックスキップ: manus_deploy_github_url なし")
+            return
+
+        logger.info("【反映率チェック】ヒアリング情報の反映率を検証…")
+        try:
+            from modules.reflect_check import run_reflect_check_and_fix
+
+            result = run_reflect_check_and_fix(
+                hearing_sheet=bundle.hearing_sheet_content,
+                appo_memo=bundle.appo_memo,
+                sales_notes=bundle.sales_notes,
+                site_dir=site_dir,
+            )
+            logger.info(
+                "反映率チェック完了: score=%.1f%% missing=%d fixed=%d",
+                result.score * 100,
+                len(result.missing_items),
+                result.fixed_count,
+            )
+            if result.fixed_count > 0:
+                logger.info("› 修正を GitHub に push…")
+                self.github_client.add_commit_and_push(
+                    site_dir,
+                    manus_git,
+                    f"fix: 反映率チェックによる欠落情報の補充 (score={result.score:.0%})",
+                )
+        except Exception:
+            logger.warning(
+                "反映率チェックでエラーが発生しましたが、デプロイは続行します",
+                exc_info=True,
+            )
 
     # ------------------------------------------------------------------
     # フェーズ5: GitHub push → Vercel デプロイ → site-annotator 登録 → スプレッドシート更新

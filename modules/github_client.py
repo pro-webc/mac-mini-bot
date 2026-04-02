@@ -267,6 +267,33 @@ npm start
             logger.error(f"GitHubプッシュエラー: {e}")
             raise
 
+    def add_commit_and_push(
+        self,
+        site_dir: Path,
+        clone_url: str,
+        commit_message: str = "fix: 反映率チェックによる欠落情報の補充",
+    ) -> None:
+        """既存の shallow clone リポに変更を commit して push する。"""
+        repo = Repo(site_dir)
+
+        # リモートが無ければ追加、あれば URL を更新
+        auth_url = authenticated_https_clone_url(clone_url)
+        try:
+            origin = repo.remote("origin")
+            with origin.config_writer as cw:
+                cw.set("url", auth_url)
+        except ValueError:
+            origin = repo.create_remote("origin", auth_url)
+
+        repo.git.add(A=True)
+        if not repo.is_dirty(index=True):
+            logger.info("変更なし — push スキップ")
+            return
+
+        repo.index.commit(commit_message)
+        origin.push(refspec="HEAD:main")
+        logger.info("反映率補充の追加 commit を push しました: %s", clone_url)
+
     def shallow_clone_repo_into_site_dir(
         self,
         clone_url: str,

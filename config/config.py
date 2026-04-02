@@ -80,6 +80,14 @@ else:
 GOOGLE_SHEETS_BASIC_SITE_TYPE_SHEET_NAME_2 = os.getenv(
     "GOOGLE_SHEETS_BASIC_SITE_TYPE_SHEET_NAME_2", "シート1"
 ).strip() or "シート1"
+# 反映率チェック＋欠落補充
+REFLECT_CHECK_ENABLED = os.getenv(
+    "REFLECT_CHECK_ENABLED", "true"
+).strip().lower() in ("1", "true", "yes")
+REFLECT_CHECK_MODEL = (
+    os.getenv("REFLECT_CHECK_MODEL", "claude-sonnet-4-6")
+    or "claude-sonnet-4-6"
+).strip()
 # ADC 利用時のクォータプロジェクト（任意・未設定だと UserWarning が出る場合あり）
 GOOGLE_CLOUD_PROJECT = os.getenv("GOOGLE_CLOUD_PROJECT", "").strip()
 # Bot が処理する行の条件（1）AI統合ステータス列は「フェーズ」用。次の値と完全一致する行のみ。
