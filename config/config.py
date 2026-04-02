@@ -228,7 +228,7 @@ MANUS_REFACTOR_POLL_INTERVAL_SEC = _parse_float_env(
     "MANUS_REFACTOR_POLL_INTERVAL_SEC", 5.0, minimum=1.0, maximum=120.0
 )
 MANUS_REFACTOR_TIMEOUT_SEC = _parse_float_env(
-    "MANUS_REFACTOR_TIMEOUT_SEC", 2700.0, minimum=60.0, maximum=7200.0
+    "MANUS_REFACTOR_TIMEOUT_SEC", 3600.0, minimum=60.0, maximum=7200.0
 )
 # true（既定）: Manus に GitHub push まで任せ、返答末尾の `BOT_DEPLOY_GITHUB_URL:` 行をシステムが Vercel デプロイに使い、ローカルからの GitHub push をスキップ
 MANUS_PROVIDES_DEPLOY_GITHUB_URL = os.getenv(
