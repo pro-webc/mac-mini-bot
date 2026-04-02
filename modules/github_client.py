@@ -273,8 +273,21 @@ npm start
         clone_url: str,
         commit_message: str = "fix: 反映率チェックによる欠落情報の補充",
     ) -> None:
-        """既存の shallow clone リポに変更を commit して push する。"""
+        """既存の shallow clone リポに変更を commit して push する。
+
+        llm_raw_output/ 等のローカル専用ディレクトリは除外し、
+        サイトソースの変更のみを commit する。
+        """
         repo = Repo(site_dir)
+
+        # .gitignore にローカル専用ディレクトリを追加
+        gitignore = site_dir / ".gitignore"
+        ignore_dirs = ["llm_raw_output/", "TECH_REQUIREMENTS.md"]
+        existing = gitignore.read_text(encoding="utf-8") if gitignore.is_file() else ""
+        additions = [d for d in ignore_dirs if d not in existing]
+        if additions:
+            with open(gitignore, "a", encoding="utf-8") as f:
+                f.write("\n" + "\n".join(additions) + "\n")
 
         # リモートが無ければ追加、あれば URL を更新
         auth_url = authenticated_https_clone_url(clone_url)
