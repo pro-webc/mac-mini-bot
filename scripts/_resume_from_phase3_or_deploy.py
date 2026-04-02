@@ -163,9 +163,6 @@ def run() -> None:
         else:
             inject_ga4_tracking(site_dir, measurement_id=GA4_MEASUREMENT_ID)
 
-    logger.info("【Phase 4】ビルド検証…")
-    bot._phase4_build(case, spec, site_dir, work_branch, plan_info)
-
     logger.info("【Phase 5】デプロイ…")
     deploy_url = bot._phase5_deploy(case, spec, site_dir)
     logger.info("完了！デプロイ URL: %s", deploy_url)

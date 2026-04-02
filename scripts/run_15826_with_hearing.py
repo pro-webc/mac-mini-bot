@@ -214,10 +214,6 @@ def run() -> None:
         logger.info("【Phase 3】サイト出力先準備…")
         site_dir = bot._phase3_prepare_site(case, req, spec, work_branch)
 
-        # --- Phase 4: ビルド ---
-        logger.info("【Phase 4】ビルド検証…")
-        bot._phase4_build(case, spec, site_dir, work_branch, plan_info)
-
         # --- Phase 5: デプロイ ---
         logger.info("【Phase 5】デプロイ…")
         deploy_url = bot._phase5_deploy(case, spec, site_dir)

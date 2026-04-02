@@ -7,9 +7,7 @@
   2. TEXT_LLM（`modules.llm.text_llm_stage` — プランは ``BRANCH_REGISTRY`` で分岐。各 ``*_USE_CLAUDE_MANUAL`` と Claude CLI の認証が必要）
   3. 出力先ディレクトリ準備（テンプレコピーなし）→ `llm_raw_output/` に LLM 生出力を保存
      （Manus 待ちで 3 に進めない間は `output/phase2_llm_checkpoints/…/pre_manus/` に TEXT_LLM（Claude CLI）分のみ先行保存）
-  4. フェンス解析で TEXT_LLM 出力のみ `app/` 等へ反映（失敗時は例外）
-  5. ビルド検証（失敗時も成果物の自動修正は行わない）
-  6. GitHub push → Vercel デプロイ → site-annotator 登録 → スプレッドシートに公開 URL
+  4. GitHub push → Vercel デプロイ → site-annotator 登録 → スプレッドシートに公開 URL
 
 各段の LLM 割当は ``docs/pipeline/LLM_PIPELINE.md`` を参照。
 """
@@ -36,8 +34,6 @@ from config.config import (
     GA4_INJECT_TRACKING,
     GA4_MEASUREMENT_ID,
     OUTPUT_DIR,
-    SITE_BUILD_ENABLED,
-    SITE_IMPLEMENTATION_ENABLED,
     SITE_PROVISION_API_KEY,
     SITE_PROVISION_API_URL,
     SPREADSHEET_AI_STATUS_ERROR_MAX_LEN,
@@ -71,9 +67,7 @@ from modules.llm.llm_raw_output import (
 )
 from modules.llm.llm_step_trace import begin_case_llm_trace, end_case_llm_trace
 from modules.llm.text_llm_stage import run_text_llm_stage
-from modules.site_build import verify_site_build
 from modules.site_generator import SiteGenerator
-from modules.site_implementer import SiteImplementer
 from modules.spec_generator import SpecGenerator
 from modules.spreadsheet import (
     SpreadsheetClient,
@@ -144,7 +138,6 @@ class WebsiteBot:
         """SpreadsheetClient を常に初期化する。"""
         self.spreadsheet = SpreadsheetClient()
         self.spec_generator = SpecGenerator(sheets_service=self.spreadsheet.service)
-        self.site_implementer = SiteImplementer()
         self.site_generator = SiteGenerator()
         self._github_client: GitHubClient | None = None
         self.vercel_client = VercelClient()
@@ -220,7 +213,6 @@ class WebsiteBot:
 
                 req, spec = self._phase2_text_llm(case, bundle, work_branch, plan_info)
                 site_dir = self._phase3_prepare_site(case, req, spec, work_branch)
-                self._phase4_build(case, spec, site_dir, work_branch, plan_info)
                 return self._phase5_deploy(case, spec, site_dir)
             finally:
                 end_case_llm_trace()
@@ -395,59 +387,6 @@ class WebsiteBot:
                 inject_ga4_tracking(site_dir, measurement_id=GA4_MEASUREMENT_ID)
 
         return site_dir
-
-    # ------------------------------------------------------------------
-    # フェーズ4: ビルド検証
-    # ------------------------------------------------------------------
-
-    def _phase4_build(
-        self,
-        case: CaseRecord,
-        spec: dict[str, Any],
-        site_dir: Path,
-        work_branch: ContractWorkBranch,
-        plan_info: dict[str, Any],
-    ) -> None:
-        """引数: site_dir（フェーズ3 出力）/ spec・plan_info（プラン制御）
-        処理: package.json 存在確認 → npm build or 実装検証
-        出力: なし（失敗時は RuntimeError）
-        """
-        # Manus はビルド成功後にのみ GitHub push する（orchestration_prompt Step 3）。
-        # push 済みなら Vercel が GitHub から直接ビルドするのでローカル検証は不要。
-        # ローカル Node.js バージョン差による偽エラーでパイプラインを止めない。
-        manus_git = (spec.get("manus_deploy_github_url") or "").strip()
-        if manus_git:
-            logger.info(
-                "【フェーズ4】スキップ — Manus がビルド検証済み＆GitHub push 済み"
-                "（Vercel が %s から直接ビルド）",
-                manus_git,
-            )
-            return
-
-        if SITE_BUILD_ENABLED or SITE_IMPLEMENTATION_ENABLED:
-            pkg = site_dir / "package.json"
-            if not pkg.is_file():
-                raise RuntimeError(
-                    "package.json がありません。出力に `package.json` を含めてください。"
-                )
-
-        if SITE_IMPLEMENTATION_ENABLED:
-            logger.info("› サイト実装を実行（npm build 検証）…")
-            ok_impl, impl_log = self.site_implementer.implement(
-                spec, site_dir, case["contract_plan"], work_branch=work_branch,
-            )
-            if not ok_impl:
-                raise RuntimeError(
-                    "サイト実装または npm build に失敗しました。ログ末尾: "
-                    + (impl_log[-2000:] if impl_log else "")
-                )
-        elif SITE_BUILD_ENABLED:
-            logger.info("› 実装はスキップ — npm build で検証のみ…")
-            _cap = int(plan_info.get("pages") or 1)
-            ok_b, blog = verify_site_build(site_dir, contract_max_pages=_cap)
-            blog = blog or ""
-            if not ok_b:
-                raise RuntimeError("npm build に失敗: " + (blog[-2000:] if blog else ""))
 
     # ------------------------------------------------------------------
     # フェーズ5: GitHub push → Vercel デプロイ → site-annotator 登録 → スプレッドシート更新

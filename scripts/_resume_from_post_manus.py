@@ -190,10 +190,9 @@ def resume_post_manus(record_number: str) -> None:
         work_branch=ContractWorkBranch.STANDARD,
     )
 
-    # --- Phase 3-5 ---
+    # --- Phase 3, 5 ---
     work_branch = resolve_contract_work_branch(contract_plan)
     site_dir = bot._phase3_prepare_site(case, req, spec, work_branch)
-    bot._phase4_build(case, spec, site_dir, work_branch, plan_info)
     deploy_url = bot._phase5_deploy(case, spec, site_dir)
     logger.info("再開完了: record=%s deploy=%s", record_number, deploy_url)
 

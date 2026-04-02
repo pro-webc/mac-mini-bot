@@ -138,10 +138,6 @@ def run() -> None:
     if GA4_INJECT_TRACKING:
         inject_ga4_tracking(site_dir, measurement_id=GA4_MEASUREMENT_ID)
 
-    # --- Phase 4: ビルド ---
-    logger.info("【Phase 4】ビルド検証…")
-    bot._phase4_build(case, spec, site_dir, work_branch, plan_info)
-
     # --- Phase 5: デプロイ ---
     logger.info("【Phase 5】デプロイ…")
     deploy_url = bot._phase5_deploy(case, spec, site_dir)
