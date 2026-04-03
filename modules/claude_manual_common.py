@@ -204,6 +204,7 @@ def _run_claude_cli(
             ) from e
 
         if data.get("is_error"):
+            error_text = data.get("result", "") or ""
             if _is_rate_limit_error(data) and attempt + 1 < max_attempts:
                 _mark_rate_limited(config_idx)
                 config_idx, config_dir = _pick_config_dir()
@@ -212,8 +213,39 @@ def _run_claude_cli(
                     prefix, config_dir or "~/.claude", attempt + 2, max_attempts,
                 )
                 continue
+            if "thinking" in error_text and "cannot be modified" in error_text and session_id and resume:
+                logger.warning(
+                    "%sthinking blocks 改変エラー → セッションをリセットして新規チャットでリトライ",
+                    prefix,
+                )
+                # resume を解除して新規セッションとして再実行
+                new_cmd = [c for c in cmd if c not in ("--resume",)]
+                if session_id in [cmd[i + 1] for i, c in enumerate(cmd[:-1]) if c == "--resume"]:
+                    idx_r = cmd.index("--resume")
+                    new_cmd = cmd[:idx_r] + cmd[idx_r + 2:]
+                import uuid as _uuid
+                new_session = str(_uuid.uuid4())
+                new_cmd.extend(["--session-id", new_session])
+                try:
+                    result = subprocess.run(
+                        new_cmd,
+                        capture_output=True,
+                        text=True,
+                        timeout=float(CLAUDE_CLI_TIMEOUT_SEC),
+                        stdin=subprocess.DEVNULL,
+                        env=env,
+                    )
+                    stdout = result.stdout.strip()
+                    if stdout:
+                        data = json.loads(stdout)
+                        if not data.get("is_error"):
+                            if session_id:
+                                _session_config[new_session] = config_idx
+                            return data
+                except Exception:
+                    pass
             raise RuntimeError(
-                f"{prefix}Claude CLI エラー: {data.get('result', '(不明)')}"
+                f"{prefix}Claude CLI エラー: {error_text or '(不明)'}"
             )
 
         if session_id:

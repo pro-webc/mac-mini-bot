@@ -157,7 +157,7 @@ CLAUDE_BASIC_LP_MODEL = (
 ).strip()
 # subprocess タイムアウト（秒）。大規模コード出力は長時間かかりうる
 CLAUDE_CLI_TIMEOUT_SEC = _parse_float_env(
-    "CLAUDE_CLI_TIMEOUT_SEC", 900.0, minimum=60.0, maximum=3600.0
+    "CLAUDE_CLI_TIMEOUT_SEC", 1200.0, minimum=60.0, maximum=7200.0
 )
 # BASIC LP: 社内マニュアルどおりの Claude 多段プロンプト（既定 true・本番パイプライン向け）
 BASIC_LP_USE_CLAUDE_MANUAL = os.getenv(
