@@ -1,8 +1,59 @@
-# フィードバックループ設計（Phase B）
+# フィードバックループ設計（Phase B）— 部分実装済み
 
 ## 目的
 
 [自動スコアリング](./AUTO_SCORING.md)の評価結果を起点に、**プロンプト改善の提案・検証・適用**を自動化する。人間が output を見てプロンプトを直す現在のサイクルを、AI が自律的に回せるようにする。
+
+## 実装状況（2026-04-03）
+
+**Slack 修正指示をトリガーにした自己改善が稼働中。** Phase A（自動スコアリング）が未完成でも、Slack の修正指示を評価信号として利用し、プロンプトの自律的改善サイクルを回している。
+
+### 実装済みモジュール
+
+| モジュール | 役割 |
+|-----------|------|
+| `modules/correction_flow.py` | 修正フロー全体のオーケストレーション |
+| `modules/self_improvement.py` | プロンプト自己改善エンジン |
+| `modules/slack_client.py` | Slack チャンネルからの修正指示取得 |
+
+### 実装済みフロー
+
+```
+Slack 修正指示
+  → [1.5] 構造化抽出（雑談除去、カテゴリ分類、優先度判定）
+  → [2] 原因調査（浅い: 200文字プレビュー）
+  → [3] git clone
+  → [4] Claude CLI 修正（技術要件 technical_spec_prompt_block.txt 適用）
+  → [4.5] 画像修正（image カテゴリ → Manus に委譲）
+  → [5] git push
+  → [6] 修正記録保存
+  → [7] 自己改善（フルトレース + プロンプト全文で深い調査 → 改善適用 → Git commit）
+  → [8] Slack 報告（原因 → 改善内容 → 修正内容）
+  → スプレッドシート「デモサイト制作完了」更新（レコード番号で行再照合）
+```
+
+### パイプラインマニフェスト
+
+`self_improvement.py` に全 4 プランタイプのトレースステップ番号→プロンプトファイル対応表を定義:
+- `basic_lp`: 12 ステップ
+- `basic`: 11 ステップ
+- `standard`: 17 ステップ
+- `advance`: 16 ステップ
+
+### LLM トレース記録
+
+修正フローの全 LLM 呼び出しを生成工程と同じ `output/<record>/llm_steps/` に記録:
+- `correction_extract_instructions` — Slack 指示の構造化抽出
+- `correction_investigation` — 原因調査
+- `correction_site_fix` — サイト修正
+- `correction_manus_image` — Manus 画像修正
+
+### 未実装（元の Phase B 設計のうち）
+
+- A/B 比較実行
+- スコアベースの低品質検出（Phase A 依存）
+- プロンプトバージョニング（`prompt_version.json`）
+- 効果の統計的検定
 
 ---
 

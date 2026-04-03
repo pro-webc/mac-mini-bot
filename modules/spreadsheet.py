@@ -21,6 +21,7 @@ from config.config import (
     SPREADSHEET_BOT_REQUIRE_EMPTY_TEST_SITE_URL,
     SPREADSHEET_MIN_PHASE_DEADLINE,
     SPREADSHEET_REQUIRE_HEARING_BODY_NOT_URL,
+    SPREADSHEET_CORRECTION_AI_STATUS,
     SPREADSHEET_TARGET_AI_STATUS,
 )
 from config.spreadsheet_schema import (
@@ -674,6 +675,70 @@ class SpreadsheetClient:
             else "(なし)",
             [
                 f"row{c['row_number']}={c.get('record_number','?')}(T={c.get('phase_deadline','')[:10]})"
+                for c in cases
+            ],
+        )
+        return cases
+
+    def get_pending_correction_cases(self, sheet_name: str | None = None) -> list[dict]:
+        """修正フロー用: M列が SPREADSHEET_CORRECTION_AI_STATUS の案件を取得する。
+
+        条件:
+        - phase_status 列が SPREADSHEET_CORRECTION_AI_STATUS と完全一致
+        - ai_status 列が空欄（重複着手の防止）
+        - github_repo_url 列が非空（デプロイ済みであること）
+        """
+        if not SPREADSHEET_CORRECTION_AI_STATUS:
+            return []
+
+        sheet = sheet_name or self.sheet_name
+        range_name = a1_range(sheet, f"A:{self._data_range_end}")
+        try:
+            result = (
+                self.service.spreadsheets()
+                .values()
+                .get(spreadsheetId=self.spreadsheet_id, range=range_name)
+                .execute()
+            )
+        except HttpError as e:
+            logger.error(
+                "スプレッドシート全行取得に失敗しました（修正フロー） sheet=%r: %s",
+                sheet, _http_error_detail(e), exc_info=True,
+            )
+            raise
+
+        values = result.get("values", [])
+        if not values:
+            return []
+
+        cases: list[dict] = []
+        for row_index, row in enumerate(values[1:], start=2):
+            phase_status = self._cell(row, self.columns["phase_status"]).strip()
+            if phase_status != SPREADSHEET_CORRECTION_AI_STATUS:
+                continue
+            ai_status = self._cell(row, self.columns["ai_status"])
+            if ai_cell_excludes_from_pending_queue(ai_status):
+                continue
+            github_repo_url = self._cell(row, self.columns["github_repo_url"]).strip()
+            if not github_repo_url:
+                logger.debug(
+                    "行%s: 修正フロー対象だが github_repo_url が空のためスキップ",
+                    row_index,
+                )
+                continue
+
+            case = self._parse_row(row, row_index)
+            missing = missing_required_case_fields(case)
+            if missing:
+                continue
+            cases.append(case)
+
+        logger.info(
+            "修正フロー対象案件を %s 件取得 target_status=%r 一覧=%s",
+            len(cases),
+            SPREADSHEET_CORRECTION_AI_STATUS,
+            [
+                f"row{c['row_number']}={c.get('record_number','?')}"
                 for c in cases
             ],
         )

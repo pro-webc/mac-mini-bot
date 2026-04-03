@@ -97,6 +97,10 @@ GOOGLE_CLOUD_PROJECT = os.getenv("GOOGLE_CLOUD_PROJECT", "").strip()
 SPREADSHEET_TARGET_AI_STATUS = os.getenv(
     "SPREADSHEET_TARGET_AI_STATUS", "デモサイト制作中"
 ).strip()
+# 修正フロー対象のフェーズステータス（M列）
+SPREADSHEET_CORRECTION_AI_STATUS = os.getenv(
+    "SPREADSHEET_CORRECTION_AI_STATUS", "デモサイト評価中"
+).strip()
 # （2）テストサイトURL列が空である行のみ（true のとき）。デモ未着手の案件を区別するため。
 SPREADSHEET_BOT_REQUIRE_EMPTY_TEST_SITE_URL = os.getenv(
     "SPREADSHEET_BOT_REQUIRE_EMPTY_TEST_SITE_URL", "true"
@@ -295,6 +299,12 @@ SITE_ANNOTATOR_FRONTEND_URL = (
     os.getenv("SITE_ANNOTATOR_FRONTEND_URL", "https://www.propagate-annotator.com")
     .strip().rstrip("/")
 )
+
+# --- Slack 連携（修正フロー） ---
+# 修正指示を取得するチャンネルの Bot トークンとチャンネル ID。
+# 両方がセットされている場合にのみ修正フローの Slack 取得が有効になる。
+SLACK_BOT_TOKEN = os.getenv("SLACK_BOT_TOKEN", "").strip()
+SLACK_CORRECTION_CHANNEL_ID = os.getenv("SLACK_CORRECTION_CHANNEL_ID", "").strip()
 
 # --- GA4 トラッキング ---
 # GA4_MEASUREMENT_ID 設定時は測定IDごと注入する。

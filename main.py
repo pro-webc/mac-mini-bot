@@ -51,6 +51,7 @@ from config.log_theme import (
 from config.types import CaseRecord
 from config.validation import StartupValidationResult, validate_startup_config
 from modules.basic_lp_generated_apply import apply_contract_outputs_to_site_dir
+from modules.correction_flow import process_correction
 from modules.case_extraction import extract_hearing_bundle
 from modules.contract_workflow import (
     BRANCH_REGISTRY,
@@ -598,9 +599,50 @@ class WebsiteBot:
 
             logger.info(all_done_banner(use_color=_uc))
 
+            # ------ 修正フロー: M列「デモサイト評価中」の案件 ------
+            self._run_correction_flow()
+
         except Exception as e:
             logger.error("Bot実行エラー: %s", e, exc_info=True)
             raise
+
+    def _run_correction_flow(self) -> None:
+        """修正フロー: Slack 修正指示 → 原因調査 → 修正 → push → 記録 → 報告。"""
+        correction_cases = self.spreadsheet.get_pending_correction_cases()
+        if not correction_cases:
+            return
+
+        logger.info("修正フロー: %s 件の案件を処理します", len(correction_cases))
+        for case in correction_cases:
+            try:
+                self._refresh_case_row(case)
+                row_n = int(case["row_number"])
+                r_now = self.spreadsheet.get_ai_status_cell(row_n)
+                if ai_cell_excludes_from_pending_queue(r_now):
+                    logger.info(
+                        "修正フロースキップ（R列が非空） row=%s record=%s",
+                        case.get("row_number"), case.get("record_number"),
+                    )
+                    continue
+                self.spreadsheet.update_ai_status(row_n, "修正中")
+                process_correction(
+                    case,
+                    github_client=self.github_client,
+                    spreadsheet=self.spreadsheet,
+                )
+            except Exception as e:
+                logger.error(
+                    "修正フローが失敗しましたが続行します row=%s record=%s: %s",
+                    case.get("row_number"), case.get("record_number"), e,
+                )
+                try:
+                    self._refresh_case_row(case)
+                    self.spreadsheet.update_ai_status(
+                        case["row_number"],
+                        _format_ai_status_error(e),
+                    )
+                except Exception:
+                    pass
 
 
 def _emit_startup_validation(result: StartupValidationResult, *, to_stdout: bool) -> bool:

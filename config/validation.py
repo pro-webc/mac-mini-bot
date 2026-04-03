@@ -94,6 +94,17 @@ def validate_startup_config(*, require_full_pipeline: bool = True) -> StartupVal
                     f"{bc.plan_label} リファクタ段階はパイプライン上で実行されません。"
                 )
 
+        if cfg.SLACK_BOT_TOKEN and not cfg.SLACK_CORRECTION_CHANNEL_ID:
+            r.warnings.append(
+                "SLACK_BOT_TOKEN が設定されていますが SLACK_CORRECTION_CHANNEL_ID が空です。"
+                "修正フローの Slack 取得はスキップされます。"
+            )
+        if cfg.SLACK_CORRECTION_CHANNEL_ID and not cfg.SLACK_BOT_TOKEN:
+            r.warnings.append(
+                "SLACK_CORRECTION_CHANNEL_ID が設定されていますが SLACK_BOT_TOKEN が空です。"
+                "修正フローの Slack 取得はスキップされます。"
+            )
+
         if cfg.SITE_PROVISION_API_URL and not cfg.SITE_PROVISION_API_KEY:
             r.warnings.append(
                 "SITE_PROVISION_API_URL が設定されていますが SITE_PROVISION_API_KEY が空です。"
