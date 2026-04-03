@@ -7,11 +7,14 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-# .envファイルを読み込む
-load_dotenv()
-
 # プロジェクトルート
 PROJECT_ROOT = Path(__file__).parent.parent
+
+# 設定ファイル → .env の順で読み込む（.env が優先＝後勝ち）
+_settings_conf = PROJECT_ROOT / "config" / "settings.conf"
+if _settings_conf.is_file():
+    load_dotenv(_settings_conf, override=False)
+load_dotenv(override=True)
 
 
 def _parse_float_env(
